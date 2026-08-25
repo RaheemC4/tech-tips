@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tech Lounge Tweaks</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="aurora"><span class="a"></span><span class="b"></span><span class="c"></span></div>
+<div id="spot"></div>
+<div id="tip"></div>
+
+<div id="shell">
+  <div id="titlebar" class="pywebview-drag-region">
+    <div class="brand pywebview-drag-region"><i></i> Tech Lounge Tweaks</div>
+    <div id="winbtns">
+      <button onclick="api('minimize')">&#8212;</button>
+      <button onclick="api('maximize')">&#9633;</button>
+      <button class="close" onclick="api('close')">&#10005;</button>
+    </div>
+  </div>
+
+  <div id="body">
+    <aside id="sidebar">
+      <div class="logo">
+        <div class="mark">TL</div>
+        <div><h1>Tech Lounge</h1><p>Tweaking Utility</p></div>
+      </div>
+      <div id="navlist"></div>
+      <div class="sidefoot">
+        <b id="footCount">0 tweaks applied</b>
+        <span id="footAdmin">Administrator</span>
+      </div>
+    </aside>
+
+    <main id="main">
+      <div id="pagehead">
+        <div class="crumb" id="crumb">General › Home</div>
+        <h2 id="ptitle">Overview</h2>
+        <p id="psub">How tuned this machine is right now.</p>
+      </div>
+      <div id="scroll">
+        <section class="page show" id="page-home">
+          <div class="statgrid">
+            <div class="card">
+              <div class="label">TWEAK SCORE
+                <span class="info" data-t="Tweak score|How many of the tweaks in this app are currently applied, out of the total available for your hardware. It is a progress bar, not a health rating.|No need to chase 100 - some tweaks trade security or battery for speed.">?</span>
+              </div>
+              <div class="ringwrap">
+                <svg width="188" height="188" viewBox="0 0 188 188">
+                  <defs>
+                    <linearGradient id="rg" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0%" stop-color="#ff2d6b"/><stop offset="100%" stop-color="#7b5cff"/>
+                    </linearGradient>
+                    <filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/>
+                      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+                  </defs>
+                  <circle cx="94" cy="94" r="78" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="13"/>
+                  <circle id="ring" cx="94" cy="94" r="78" fill="none" stroke="url(#rg)" stroke-width="13"
+                          stroke-linecap="round" transform="rotate(-90 94 94)"
+                          stroke-dasharray="490" stroke-dashoffset="490" filter="url(#glow)"
+                          style="transition: stroke-dashoffset 1.1s cubic-bezier(.22,.85,.3,1)"/>
+                </svg>
+                <div class="val"><b id="scoreNum">0</b><span>OUT OF 100</span></div>
+              </div>
+              <p id="scoreNote" style="color:var(--muted);font-size:12px;margin-top:10px"></p>
+            </div>
+
+            <div class="card">
+              <div class="label">THIS MACHINE</div>
+              <div style="margin-top:12px" id="specs"></div>
+            </div>
+          </div>
+
+          <div class="section">BY CATEGORY</div>
+          <div class="grid g3" id="catGrid"></div>
+
+          <div class="section">QUICK ACTIONS</div>
+          <div class="row" id="quickRow"></div>
+        </section>
+
+        <section class="page" id="page-tweaks">
+          <div class="row" style="margin-bottom:16px">
+            <button class="btn" onclick="applyAll(true)">Apply All</button>
+            <button class="btn ghost" onclick="applyAll(false)">Revert All</button>
+            <button class="btn ghost" onclick="rescan()">Rescan</button>
+            <div class="spacer"></div>
+            <span id="catCount" style="color:var(--muted);font-size:12px"></span>
+          </div>
+          <div class="grid g3" id="tweakGrid"></div>
+        </section>
+        <section class="page" id="page-generic"></section>
+      </div>
+    </main>
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

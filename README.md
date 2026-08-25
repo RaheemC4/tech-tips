@@ -2,6 +2,16 @@
 
 Backup and organized index of the **Tech-Tips** forum channel from The Tech Lounge Discord server.
 
+## 🛠 Tech Lounge Tweaks (Windows 11 utility)
+
+A one-click tweaking utility that applies most of the tweaks in this archive for you — plus network testing, system info, disk cleanup and Windows repair tools.
+
+**[→ Download & guide](TechLoungeTweaks/README.md)**
+
+![Tech Lounge Tweaks](TechLoungeTweaks/docs/home.png)
+
+---
+
 
 ## Fixes
 
