@@ -1,14 +1,50 @@
 'use strict';
 
 /* ---------- bridge to Python (falls back to demo data in a browser) ---- */
+// Demo data is a DEVELOPMENT-ONLY preview aid. It must never stand in for
+// real system state - doing so once showed one machine's specs on another's
+// screen and made toggles look like they applied when nothing was written.
+// It is now opt-in via ?demo=1 and can never trigger by accident.
+const DEMO_ALLOWED = location.search.indexOf('demo=1') !== -1;
+const IN_APP = location.protocol !== 'http:' && location.protocol !== 'https:';
+let USE_DEMO = false;
+
 function bridgeReady() {
   return typeof window.pywebview !== 'undefined' &&
-         window.pywebview.api && typeof window.pywebview.api === 'object';
+         window.pywebview.api &&
+         typeof window.pywebview.api.init === 'function';
 }
-let USE_DEMO = false;   // only true when genuinely opened in a browser
+
+// pywebview injects window.pywebview.api asynchronously, and the
+// 'pywebviewready' event can fire a beat BEFORE the methods are attached.
+// So poll for the real thing instead of trusting either signal alone.
+let _bridgeWait = null;
+function waitForBridge(ms) {
+  if (bridgeReady()) return Promise.resolve(true);
+  if (_bridgeWait) return _bridgeWait;
+  _bridgeWait = new Promise(resolve => {
+    const deadline = Date.now() + ms;
+    let done = false;
+    const finish = ok => {
+      if (done) return;
+      done = true; _bridgeWait = null; resolve(ok);
+    };
+    window.addEventListener('pywebviewready',
+      () => { if (bridgeReady()) finish(true); }, { once: true });
+    (function tick() {
+      if (bridgeReady()) return finish(true);
+      if (Date.now() > deadline) return finish(false);
+      setTimeout(tick, 20);
+    })();
+  });
+  return _bridgeWait;
+}
 
 let LAST_ERR = '';
 async function api(name, ...args) {
+  // A call can land while the bridge is still being injected. Wait it out
+  // instead of failing - this is what caused the "Bridge not ready" flash.
+  if (!bridgeReady() && !USE_DEMO) await waitForBridge(IN_APP ? 20000 : 1200);
   if (bridgeReady() && window.pywebview.api[name]) {
     try {
       const r = await window.pywebview.api[name](...args);
@@ -20,9 +56,34 @@ async function api(name, ...args) {
       return null;
     }
   }
-  if (USE_DEMO) return demo(name, args);
-  banner(`Bridge not ready - "${name}" could not reach the app backend.`);
+  if (USE_DEMO && DEMO_ALLOWED) return demo(name, args);
+  fatal(name);
   return null;
+}
+
+// Hard stop. Shown instead of the UI when the Python backend is unreachable,
+// so nobody is ever looking at numbers that did not come from their machine.
+function fatal(what) {
+  if (document.getElementById('fatal')) return;
+  document.body.classList.remove('booting');
+  const el = document.createElement('div');
+  el.id = 'fatal';
+  el.innerHTML =
+    '<div class="fatal-card">' +
+    '<h1>Cannot read this machine</h1>' +
+    '<p>The app started but its system backend did not respond, so it has ' +
+    'nothing real to show you. Nothing has been changed on this PC.</p>' +
+    '<p class="fatal-why">This is not something you did wrong, and it is not ' +
+    'a problem with your PC settings.</p>' +
+    '<ol>' +
+    '<li>Close the app completely and open it again - this clears it most times</li>' +
+    '<li>If it keeps happening, reboot and try once more</li>' +
+    '<li>Still failing? Send <b>TL-api.log</b> from this app\'s folder - ' +
+    'it records exactly which step failed</li>' +
+    '</ol>' +
+    '<p class="fatal-code">failed call: ' + what + '</p>' +
+    '</div>';
+  document.body.appendChild(el);
 }
 
 function banner(msg) {
@@ -350,16 +411,30 @@ function demo(name, args) {
   }
   return true;
 }
-function startWhenReady() {
-  if (bridgeReady()) { boot(); return; }
-  window.addEventListener('pywebviewready', () => boot(), { once: true });
-  // Opened directly in a browser? fall back to demo data after a moment.
-  setTimeout(() => {
-    if (!bridgeReady() && !window.__booted) { USE_DEMO = true; boot(); }
-  }, 2500);
+async function startWhenReady() {
+  if (!bridgeReady()) {
+    document.body.classList.add('booting');
+    // In the app, wait as long as it takes (WebView2 cold start can be slow).
+    // In a browser there is no bridge coming, so bail quickly to demo data.
+    const ok = await waitForBridge(IN_APP ? 20000 : 1200);
+    document.body.classList.remove('booting');
+    if (!ok) {
+      if (DEMO_ALLOWED) {
+        USE_DEMO = true;
+      } else {
+        fatal('init');
+        return;          // never render anything rather than render fiction
+      }
+    }
+  }
+  boot();
 }
 const _origBoot = boot;
-boot = async function () { window.__booted = true; return _origBoot(); };
+boot = async function () {
+  if (window.__booted) return;
+  window.__booted = true;
+  return _origBoot();
+};
 startWhenReady();
 
 /* =====================================================================
@@ -370,10 +445,21 @@ window.py_scanned = d => {
   if (!d || !d.tweaks) return;
   const busy = new Set(Object.keys(INFLIGHT));
   const prev = new Map(STATE.tweaks.map(t => [t.key, t.applied]));
+  const hadNone = STATE.tweaks.length === 0;
   STATE.tweaks = d.tweaks.map(t =>
     busy.has(t.key) ? { ...t, applied: prev.get(t.key) } : t);
+
+  // init() now returns an empty list so it can answer instantly, so this is
+  // where the real tweaks (and the categories that actually have any) land.
+  if (d.categories && d.categories.length) {
+    const changed = d.categories.join('|') !== STATE.cats.join('|');
+    STATE.cats = d.categories;
+    if (changed || hadNone) buildNav();
+  }
   refreshCounts();
+  if (hadNone) buildQuick();
   if (STATE.cats.includes(STATE.page)) renderTweaks(STATE.page);
+  if (STATE.page === 'Home') show('Home');
   if (STATE.page === 'Networking') pageNetworking();
 };
 window.py_specs = d => renderSpecs(d);

@@ -13,11 +13,24 @@ Every tweak reads the live system state, so the app shows you what is
 
 ## Download
 
-**[⬇ Download TechLoungeTweaks.exe](https://github.com/RaheemC4/tech-tips/raw/main/TechLoungeTweaks/TechLoungeTweaks.exe)** (18 MB)
+**[⬇ Download TechLoungeTweaks.zip](https://github.com/RaheemC4/tech-tips/raw/main/TechLoungeTweaks/TechLoungeTweaks.zip)** (19 MB)
 
-It is a single file — no installer, no Python, nothing to set up. Just
-double-click it. Newer builds are also posted on the
-[Releases](../../releases) page.
+1. Download the zip
+2. **Extract it** somewhere you keep programs — `C:\Tools\` is a good spot.
+   Do not run it from inside the zip, and avoid leaving it in Downloads
+   (Windows cleans that folder out and scans it hard)
+3. Open the extracted folder and run **TechLoungeTweaks.exe**
+
+Keep the whole folder together — the `_internal` folder next to the exe is
+the app itself. Moving the exe out on its own will not work.
+
+### Why a folder and not one .exe
+
+An earlier version was a single self-extracting exe. It unpacked ~46 MB to
+your temp folder on *every* launch, which made startup slow and unpredictable,
+and the self-extracting behaviour is exactly what antivirus heuristics look
+for — Defender was flagging it as a false positive. The folder build starts
+almost instantly and does not trip those scanners.
 
 ### First run
 
@@ -27,9 +40,26 @@ which is not worth it for a free tool).
 
 > Click **More info** → **Run anyway**
 
-Some antivirus software may also flag it. That is a false positive caused by
-the way the app is packaged — a self-extracting Python bundle looks like
-packed malware to heuristic scanners.
+
+#### "Smart App Control blocked an app that may be unsafe"
+
+This is a **different** dialog — it only has **Okay** and **Get apps from the
+Store**, with no way to run the app anyway. That is Smart App Control, not
+SmartScreen, and it blocks every unsigned program with no per-app override.
+
+Only clean Windows 11 installs have it switched on. To check:
+
+> Windows Security → App & browser control → Smart App Control
+
+If it says **On**, the only ways round it are to turn it off or not run the app.
+
+⚠️ **Turning Smart App Control off is permanent.** Microsoft does not allow it
+to be switched back on afterwards — the only way to re-enable it is a clean
+reinstall of Windows. Do not turn it off casually, and never on someone else's
+machine without telling them that first.
+
+If it says **Evaluation** or **Off**, this dialog is not what is stopping you —
+see the SmartScreen steps above.
 
 **It needs to run as administrator** and will prompt for that automatically,
 because most of these settings live in `HKEY_LOCAL_MACHINE`.

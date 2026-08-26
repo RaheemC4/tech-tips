@@ -229,3 +229,42 @@ body {
 @keyframes pagein { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 
 .section { font-size: 9.5px; letter-spacing: 1.4px; color: var(--faint); font-weight: 650; margin: 24px 0 10px; }
+
+/* ---- shown only while the Python bridge is still being injected ---- */
+body.booting::after {
+  content: "Starting…";
+  position: fixed; inset: 0; z-index: 400;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(10, 11, 18, .82);
+  backdrop-filter: blur(10px);
+  font-size: 13px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted, #8b90a8);
+  animation: bootpulse 1.4s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes bootpulse { 0%,100% { opacity:.45 } 50% { opacity:.95 } }
+
+/* ---- shown when the Python backend never answers (never fake data) ---- */
+#fatal {
+  position: fixed; inset: 0; z-index: 500;
+  display: flex; align-items: center; justify-content: center;
+  padding: 32px; background: rgba(8, 9, 15, .94); backdrop-filter: blur(18px);
+}
+#fatal .fatal-card {
+  max-width: 560px; padding: 34px 38px; border-radius: 18px;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 93, 108, .3);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .55);
+}
+#fatal h1 {
+  margin: 0 0 14px; font-size: 21px; font-weight: 650; color: #ffb4bc;
+}
+#fatal p { margin: 0 0 13px; font-size: 13.5px; line-height: 1.62; color: #c3c7dc; }
+#fatal .fatal-why { color: #9aa0bb; }
+#fatal ol { margin: 4px 0 14px; padding-left: 20px; }
+#fatal li { font-size: 13.5px; line-height: 1.9; color: #c3c7dc; }
+#fatal b { color: #e8ebf7; font-weight: 600; }
+#fatal .fatal-code {
+  margin: 0; font-family: ui-monospace, Consolas, monospace;
+  font-size: 11px; color: #6f7590;
+}

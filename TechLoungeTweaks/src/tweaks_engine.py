@@ -29,9 +29,55 @@ def reg_get(hive, path, name, default=None):
         return default
 
 
-def reg_set(hive, path, name, value, vtype=winreg.REG_DWORD):
-    with winreg.CreateKeyEx(hive, path, 0, winreg.KEY_SET_VALUE) as k:
+_HIVE_NAME = {winreg.HKEY_LOCAL_MACHINE: "HKLM", winreg.HKEY_CURRENT_USER: "HKCU"}
+
+# Creating a key needs KEY_CREATE_SUB_KEY on the parent, not just KEY_SET_VALUE.
+# Asking for KEY_SET_VALUE alone made every tweak whose key did not already
+# exist fail with [WinError 5] Access is denied.
+_WRITE = winreg.KEY_WRITE | winreg.KEY_WOW64_64KEY
+
+
+def _reg_set_direct(hive, path, name, value, vtype):
+    with winreg.CreateKeyEx(hive, path, 0, _WRITE) as k:
         winreg.SetValueEx(k, name, 0, vtype, value)
+
+
+def _reg_set_stepwise(hive, path, name, value, vtype):
+    """Create each level in turn - some parents refuse a deep one-shot create."""
+    parts, cur = path.split("\\"), ""
+    for part in parts:
+        cur = f"{cur}\\{part}" if cur else part
+        winreg.CreateKeyEx(hive, cur, 0, _WRITE).Close()
+    _reg_set_direct(hive, path, name, value, vtype)
+
+
+def _reg_set_regexe(hive, path, name, value, vtype):
+    hn = _HIVE_NAME.get(hive)
+    if not hn:
+        raise OSError("unsupported hive for reg.exe fallback")
+    tn = {winreg.REG_DWORD: "REG_DWORD", winreg.REG_SZ: "REG_SZ",
+          winreg.REG_EXPAND_SZ: "REG_EXPAND_SZ"}.get(vtype, "REG_DWORD")
+    rc, out = run(["reg", "add", f"{hn}\\{path}", "/v", name,
+                   "/t", tn, "/d", str(value), "/f"])
+    if rc != 0:
+        raise OSError(f"reg.exe add failed: {out.strip()[:160]}")
+
+
+def reg_set(hive, path, name, value, vtype=winreg.REG_DWORD):
+    """Write a registry value, trying progressively more tolerant methods."""
+    last = None
+    for attempt in (_reg_set_direct, _reg_set_stepwise, _reg_set_regexe):
+        try:
+            attempt(hive, path, name, value, vtype)
+            return
+        except OSError as e:
+            last = e
+            if getattr(e, "winerror", None) not in (5, 1314, None):
+                raise
+    hn = _HIVE_NAME.get(hive, "?")
+    raise OSError(
+        5, f"Access denied writing {hn}\\{path}\\{name}. This key is "
+           f"locked down by Windows or by security software. ({last})")
 
 
 def reg_del_value(hive, path, name):
@@ -133,6 +179,40 @@ def simple_reg(hive, path, name, on_value, off_value,
 GAMEDVR_STORE = r"System\GameConfigStore"
 GAMEDVR_POLICY = (r"SOFTWARE\Microsoft\PolicyManager\default"
                   r"\ApplicationManagement\AllowGameDVR")
+
+
+def t_widgets():
+    """Disable the Widgets board.
+
+    HKLM\\SOFTWARE\\Policies\\Microsoft\\Dsh is the enterprise policy key and
+    is locked on some Windows 11 builds - writing it returned Access denied.
+    The per-user taskbar setting (TaskbarDa) is the one that reliably works
+    and needs no policy rights, so that is the source of truth here. The
+    policy key is still attempted, but never allowed to fail the tweak.
+    """
+    TASKBAR = r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
+    DSH = r"SOFTWARE\Policies\Microsoft\Dsh"
+
+    def _policy(value):
+        try:
+            reg_set(HKLM, DSH, "AllowNewsAndInterests", value)
+        except OSError:
+            pass                      # locked down - the user setting still works
+
+    def _apply():
+        reg_set(HKCU, TASKBAR, "TaskbarDa", 0)
+        _policy(0)
+
+    def _revert():
+        reg_set(HKCU, TASKBAR, "TaskbarDa", 1)
+        _policy(1)
+
+    def _check():
+        if reg_get(HKCU, TASKBAR, "TaskbarDa") == 0:
+            return True
+        return reg_get(HKLM, DSH, "AllowNewsAndInterests") == 0
+
+    return _apply, _revert, _check
 
 
 def t_gamedvr():
@@ -821,8 +901,7 @@ def build_tweaks():
         "Removes the Widgets board and its background feed process from "
         "the taskbar.",
         "Explorer & UI",
-        simple_reg(HKLM, r"SOFTWARE\Policies\Microsoft\Dsh",
-                   "AllowNewsAndInterests", 0, 1),
+        t_widgets(),
         icon="⌸")
 
     add("cdm_ads", "Disable Suggestions & Ads",

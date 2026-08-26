@@ -12,6 +12,7 @@ import sys
 import threading
 import time
 import traceback
+import tempfile
 from concurrent.futures import ThreadPoolExecutor
 
 import webview
@@ -95,8 +96,13 @@ def traced(fn):
 
 class Api:
     def __init__(self):
-        self._tweaks = None
+        self._tweaks_cache = None
         self._tlock = threading.Lock()
+        # build_tweaks() shells out to PowerShell for GPU detection and takes
+        # seconds. Start it NOW, on its own thread, so that by the time the UI
+        # asks for anything it is either ready or still safely off the bridge
+        # thread. Nothing user-facing waits on this.
+        threading.Thread(target=self._warm_tweaks, daemon=True).start()
         self.window = None
         self._locked = set()
         self._applied = set()
@@ -106,14 +112,27 @@ class Api:
         self._running = {}          # key -> Popen, for cancellable tasks
         self._busy = set()          # guards double-clicks
 
-    @property
-    def tweaks(self):
-        """Built lazily - GPU vendor detection shells out to PowerShell and
-        must not run before the window has painted."""
+    # NOTE: deliberately a private method, NOT a @property.
+    #
+    # pywebview builds its JS bridge with `for name in dir(api): getattr(api, name)`.
+    # Every public property is therefore EVALUATED while the bridge is being
+    # injected. As a property, this ran build_tweaks() - which shells out to
+    # PowerShell for GPU detection - on the injection thread. If that was slow
+    # or hung, window.pywebview.api was never created: the window rendered but
+    # no bridge call ever reached Python. Keeping it underscored means dir()
+    # skips it and nothing expensive runs during injection.
+    def _warm_tweaks(self):
+        try:
+            self._tweaks()
+            log("tweaks: built")
+        except Exception:
+            log("tweaks: build FAILED\n" + traceback.format_exc())
+
+    def _tweaks(self):
         with self._tlock:
-            if self._tweaks is None:
-                self._tweaks = {t.key: t for t in build_tweaks()}
-            return self._tweaks
+            if self._tweaks_cache is None:
+                self._tweaks_cache = {t.key: t for t in build_tweaks()}
+            return self._tweaks_cache
 
     # ---------------------------------------------------------- window
     # Driven through Win32 rather than pywebview's own helpers: those run on
@@ -187,7 +206,7 @@ class Api:
                 return key, False
 
         with ThreadPoolExecutor(max_workers=12) as pool:
-            for key, ok in pool.map(one, list(self.tweaks.items())):
+            for key, ok in pool.map(one, list(self._tweaks().items())):
                 if ok:
                     applied.add(key)
 
@@ -197,17 +216,18 @@ class Api:
             applied.add(key) if want else applied.discard(key)
         self._applied = applied
         self._locked = set()
-        return [self._payload(t) for t in self.tweaks.values()]
+        return [self._payload(t) for t in self._tweaks().values()]
 
     @traced
     def init(self):
         """Return instantly. The scan runs behind it and pushes results."""
         self._applied = getattr(self, "_applied", set())
         payload = {
-            "categories": [c for c in CATEGORY_ORDER
-                           if any(t.category == c
-                                  for t in self.tweaks.values())],
-            "tweaks": [self._payload(t) for t in self.tweaks.values()],
+            # Deliberately does NOT call _tweaks(): building the tweak list
+            # runs PowerShell, and doing that inside a bridge call froze the
+            # whole window. The list is pushed by the "scanned" event instead.
+            "categories": list(CATEGORY_ORDER),
+            "tweaks": [],
             "admin": is_admin(),
             "specs": {},
             "scanning": True,
@@ -217,9 +237,12 @@ class Api:
 
     def _background_start(self):
         try:
-            self._emit("scanned", {"tweaks": self.scan()})
+            tweaks = self.scan()
+            cats = [c for c in CATEGORY_ORDER
+                    if any(t["category"] == c for t in tweaks)]
+            self._emit("scanned", {"tweaks": tweaks, "categories": cats})
         except Exception:
-            pass
+            log("background scan FAILED\n" + traceback.format_exc())
         try:
             self._emit("specs", self.specs())
         except Exception:
@@ -229,7 +252,7 @@ class Api:
 
     @traced
     def toggle(self, key, want):
-        t = self.tweaks.get(key)
+        t = self._tweaks().get(key)
         if not t:
             return {"ok": False, "message": "Unknown tweak."}
         self._pending[key] = want
@@ -258,7 +281,7 @@ class Api:
 
     @traced
     def bulk(self, category, want):
-        for key, t in self.tweaks.items():
+        for key, t in self._tweaks().items():
             if t.category != category:
                 continue
             try:
@@ -517,11 +540,28 @@ class Api:
         return {"planned": planned, "done": done, "skipped": skipped,
                 "attention": attention, "findings": findings}
 
-    RES_CMDS = {
-        "sfc": ["sfc", "/scannow"],
-        "dism": ["dism", "/Online", "/Cleanup-Image", "/RestoreHealth"],
-        "chkdsk": ["chkdsk", "C:"],
-    }
+    @staticmethod
+    def _sys32(exe):
+        """Absolute path to a System32 tool.
+
+        Never rely on PATH here: a frozen app's PATH starts with the
+        PyInstaller extraction dir, and resolving 'chkdsk' through it was
+        producing [WinError 5] Access is denied on CreateProcess.
+        """
+        root = os.environ.get("SystemRoot", r"C:\Windows")
+        for sub in ("System32", "Sysnative"):
+            cand = os.path.join(root, sub, exe)
+            if os.path.exists(cand):
+                return cand
+        return exe
+
+    def _res_cmds(self):
+        return {
+            "sfc": [self._sys32("sfc.exe"), "/scannow"],
+            "dism": [self._sys32("dism.exe"), "/Online",
+                     "/Cleanup-Image", "/RestoreHealth"],
+            "chkdsk": [self._sys32("chkdsk.exe"), "C:", "/scan"],
+        }
 
     @staticmethod
     def _verdict(key, text, rc, cancelled):
@@ -551,9 +591,28 @@ class Api:
         elif key == "chkdsk":
             if "found no problems" in low or "no further action is required" in low:
                 return "clean", "No problems found on the drive."
-            if "found problems" in low or "errors found" in low:
-                return "problem", ("Errors found. Run 'chkdsk C: /f' from an "
-                                   "admin prompt and reboot to repair them.")
+            if "unable to obtain a handle" in low or "access denied" in low:
+                return "problem", ("Windows would not let the scan open the "
+                                   "drive. Close other disk tools and retry.")
+            if ("found problems" in low or "errors found" in low
+                    or "run chkdsk with the /f" in low):
+                return "problem", ("Errors found on the drive. Run "
+                                   "'chkdsk C: /f' from an admin prompt, "
+                                   "then reboot to repair them.")
+            # chkdsk's own exit codes, in plain English.
+            return {
+                0: ("clean", "No problems found on the drive."),
+                1: ("problem", "Errors were found on the drive. Run "
+                               "'chkdsk C: /f' from an admin prompt and "
+                               "reboot to repair them."),
+                2: ("clean", "No errors. Some tidy-up is still pending - "
+                             "it needs 'chkdsk C: /f' to finish, but "
+                             "nothing is wrong."),
+                3: ("problem", "The scan could not complete. Usually another "
+                               "program is using the drive - reboot and "
+                               "try again."),
+            }.get(rc, ("problem", f"Finished with an unexpected result "
+                                  f"(code {rc})."))
 
         if rc == 0:
             return "clean", "Finished with no errors reported."
@@ -567,13 +626,22 @@ class Api:
             return {"ok": False, "state": "busy",
                     "message": "That check is already running."}
         collected = []
+        cmd = self._res_cmds()[key]
+        popen_kw = dict(stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                        stdin=subprocess.DEVNULL, text=True, bufsize=1,
+                        encoding="utf-8", errors="replace",
+                        creationflags=CREATE_NO_WINDOW)
         try:
-            proc = subprocess.Popen(self.RES_CMDS[key], stdout=subprocess.PIPE,
-                                    stderr=subprocess.STDOUT,
-                                    stdin=subprocess.DEVNULL, text=True,
-                                    bufsize=1, encoding="utf-8",
-                                    errors="replace",
-                                    creationflags=CREATE_NO_WINDOW)
+            try:
+                proc = subprocess.Popen(cmd, **popen_kw)
+            except OSError as e:
+                if getattr(e, "winerror", None) != 5:
+                    raise
+                # Some AV / policy setups refuse a direct CreateProcess from a
+                # packed exe. Going through cmd.exe gets past that.
+                log(f"resource {key}: direct spawn denied, retrying via cmd.exe")
+                proc = subprocess.Popen(
+                    [self._sys32("cmd.exe"), "/c"] + cmd, **popen_kw)
             self._running[key] = proc
             for line in proc.stdout:
                 line = line.strip()
@@ -584,7 +652,12 @@ class Api:
             rc = proc.returncode
         except Exception as e:
             self._running.pop(key, None)
-            return {"ok": False, "state": "problem", "message": str(e)}
+            msg = str(e)
+            if getattr(e, "winerror", None) == 5:
+                msg = ("Windows refused to start the tool (Access denied). "
+                       "Usually antivirus blocking it - "
+                       f"{'the app IS elevated' if is_admin() else 'the app is NOT running as admin'}.")
+            return {"ok": False, "state": "problem", "message": msg}
 
         cancelled = getattr(proc, "_tl_cancelled", False)
         self._running.pop(key, None)
@@ -643,9 +716,72 @@ def relaunch_as_admin():
         pass
 
 
+WEBVIEW2_GUID = "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+
+
+def webview2_version():
+    """Installed Evergreen WebView2 runtime version, or None.
+
+    pywebview silently falls back to MSHTML (Internet Explorer) when the
+    runtime is missing. IE cannot render this UI, so the app comes up as a
+    broken white page instead of saying what is wrong. We check first.
+    """
+    import winreg
+    for hive, path in (
+        (winreg.HKEY_LOCAL_MACHINE,
+         rf"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{WEBVIEW2_GUID}"),
+        (winreg.HKEY_LOCAL_MACHINE,
+         rf"SOFTWARE\Microsoft\EdgeUpdate\Clients\{WEBVIEW2_GUID}"),
+        (winreg.HKEY_CURRENT_USER,
+         rf"SOFTWARE\Microsoft\EdgeUpdate\Clients\{WEBVIEW2_GUID}"),
+    ):
+        try:
+            with winreg.OpenKey(hive, path) as k:
+                pv = winreg.QueryValueEx(k, "pv")[0]
+                if pv and pv != "0.0.0.0":
+                    return pv
+        except OSError:
+            continue
+    return None
+
+
+def require_webview2():
+    """Return True if we can render. Otherwise explain and bail."""
+    ver = webview2_version()
+    if ver:
+        log(f"webview2 runtime: {ver}")
+        return True
+
+    log("webview2 runtime: NOT FOUND - refusing to start on MSHTML")
+    url = "https://developer.microsoft.com/microsoft-edge/webview2/"
+    msg = (
+        "Tech Lounge Tweaks needs the Microsoft WebView2 Runtime, "
+        "which is not installed on this PC.\n\n"
+        "Without it Windows falls back to Internet Explorer, which cannot "
+        "display this app - you would get a broken white window.\n\n"
+        "Click OK to open the Microsoft download page. Get the "
+        "\"Evergreen Standalone Installer\" for x64, install it, "
+        "then reboot and open this app again.\n\n"
+        "Note: WebView2 is a normal Windows component used by Office, Teams "
+        "and many other apps. It should not be uninstalled."
+    )
+    try:
+        # 0x40 = MB_ICONINFORMATION, 0x1 = MB_OKCANCEL
+        rc = ctypes.windll.user32.MessageBoxW(
+            None, msg, "WebView2 Runtime required", 0x40 | 0x1)
+        if rc == 1:
+            os.startfile(url)
+    except Exception:
+        pass
+    return False
+
+
 def main():
     if not is_admin():
         relaunch_as_admin()
+        return
+
+    if not require_webview2():
         return
 
     log("=" * 50)
@@ -660,7 +796,20 @@ def main():
         background_color="#0a0b12",
     )
     api.window = window
-    webview.start(gui="edgechromium", private_mode=False, debug=False)
+
+    # pywebview defaults to %APPDATA%\pywebview, which is a ROAMING folder
+    # shared with every other pywebview app - slow to open and a source of
+    # profile-lock stalls. Keep our own profile on the local disk.
+    store = os.path.join(
+        os.environ.get("LOCALAPPDATA", tempfile.gettempdir()),
+        "TechLoungeTweaks", "webview2")
+    try:
+        os.makedirs(store, exist_ok=True)
+    except Exception:
+        store = None
+
+    webview.start(gui="edgechromium", private_mode=False, debug=False,
+                  storage_path=store)
 
 
 if __name__ == "__main__":
