@@ -1,11 +1,12 @@
 # Tech Lounge Tweaks
 
 A Windows 11 tweaking utility built for The Tech Lounge. Toggle performance,
-latency and privacy tweaks, test your connection for bufferbloat, clean up
-junk files and check your GPU drivers — all from one window.
+latency and privacy tweaks, apply a tuned NVIDIA driver profile in one tap,
+turn Defender on or off, test your connection for bufferbloat, clean up junk
+files and check your GPU drivers — all from one window.
 
-Every tweak reads the live system state, so the app shows you what is
-**actually** set on your machine rather than assuming. Every toggle reverts.
+Every page reads the **live** system state, so the app shows what is actually
+set on your machine rather than assuming. Every toggle reverts.
 
 ![Overview](docs/home.png)
 
@@ -13,7 +14,7 @@ Every tweak reads the live system state, so the app shows you what is
 
 ## Download
 
-**[⬇ Download TechLoungeTweaks.zip](https://github.com/RaheemC4/tech-tips/raw/main/TechLoungeTweaks/TechLoungeTweaks.zip)** (19 MB)
+**[⬇ Download TechLoungeTweaks.zip](https://github.com/RaheemC4/tech-tips/raw/main/TechLoungeTweaks/TechLoungeTweaks.zip)** (15 MB)
 
 1. Download the zip
 2. **Extract it** somewhere you keep programs — `C:\Tools\` is a good spot.
@@ -21,8 +22,18 @@ Every tweak reads the live system state, so the app shows you what is
    (Windows cleans that folder out and scans it hard)
 3. Open the extracted folder and run **TechLoungeTweaks.exe**
 
-Keep the whole folder together — the `_internal` folder next to the exe is
-the app itself. Moving the exe out on its own will not work.
+Keep the whole folder together. What you will see inside it:
+
+```
+TechLoungeTweaks\
+├─ TechLoungeTweaks.exe     ← run this
+├─ TL-api.log               ← plain-text log, for troubleshooting
+├─ _internal\               ← the app itself, leave it alone
+└─ resources\               ← NVIDIA Profile Inspector + the .nip profile
+```
+
+Only the exe and the log sit at the top level, so there is nothing to click on
+by mistake. Moving the exe out on its own will not work.
 
 ### Why a folder and not one .exe
 
@@ -40,6 +51,10 @@ which is not worth it for a free tool).
 
 > Click **More info** → **Run anyway**
 
+If your browser blocks the download itself with **"Virus detected"**, that is
+the same false positive — use *Downloads → Keep* in the browser, or extract
+with 7-Zip, which avoids Windows tagging the extracted files as
+web-downloaded.
 
 #### "Smart App Control blocked an app that may be unsafe"
 
@@ -69,7 +84,8 @@ because most of these settings live in `HKEY_LOCAL_MACHINE`.
 | | |
 |---|---|
 | **Windows 11** | Works out of the box |
-| **Windows 10** | May need the [WebView2 runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (free, from Microsoft) |
+| **Windows 10** | Needs the [WebView2 runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (free, from Microsoft) — the app checks on launch and links you to it if it is missing |
+| **NVIDIA GPU** | Only needed for the NVIDIA Profile page; everything else works on any machine |
 
 ---
 
@@ -111,6 +127,54 @@ currently applied, and the toggle works both ways.
 | **Privacy** | Telemetry, activity history, advertising ID, error reporting, typing/speech/ink collection |
 | **Explorer & UI** | Classic context menu, Bing in Start, snap layouts, lock screen, widgets, ads |
 
+### NVIDIA Profile
+
+![NVIDIA Profile](docs/nvidia.png)
+
+One toggle applies a tuned set of global NVIDIA driver settings — the same
+profile for everyone, so there is no "what did you set yours to" in chat.
+
+**NVIDIA Profile Inspector (Revamped) ships inside the zip**, in the
+`resources` folder. Nothing to download.
+
+The table lists every setting the profile touches: what your driver holds
+**right now** on the left, what it becomes on the right, with the changed ones
+struck through. Highlights include Power Management on *Prefer maximum
+performance*, Low Latency Mode *Ultra*, Preferred Refresh Rate *Highest
+available*, and G-SYNC on for fullscreen **and** windowed.
+
+**How reverting works.** The first time you open the app on a PC with an
+NVIDIA card, it quietly exports that PC's current NVIDIA settings once and
+keeps the file in `%LOCALAPPDATA%\TechLoungeTweaks`. Turning the profile off
+restores *your* original settings, not a generic default. That backup is taken
+once per machine, is never overwritten, and is never shared.
+
+**It re-checks itself every launch.** The app reads your live driver settings
+in the background at startup rather than trusting its own record, so anything
+you changed in the NVIDIA Control Panel, in Profile Inspector directly, or
+that a driver reinstall reset shows up correctly. If only part of the profile
+is live you get *"Partly applied — 7 of 39 settings match"* rather than a
+toggle that quietly lies. The read is warmed on startup, so the page is
+already filled in by the time you click the tab.
+
+Only NVIDIA driver settings are touched — nothing else on the PC.
+
+### Windows Defender
+
+![Defender](docs/defender.png)
+
+One toggle for the whole of Microsoft Defender, with the live state of each
+component listed underneath.
+
+**Tamper Protection.** Since Windows 10 1903, Windows blocks *every* app —
+this one included — from switching real-time protection off while Tamper
+Protection is on. There is no legitimate way around that, and anything
+claiming otherwise is using a malware technique. So the toggle opens the exact
+Windows Security page for you to flip that one switch yourself, then finishes
+the rest. The same toggle turns everything back on.
+
+Turning Defender off leaves the PC with no antivirus until it goes back on.
+
 ### Connection test
 
 ![Networking](docs/network.png)
@@ -128,8 +192,8 @@ explanation of what the number means and what a good value looks like.
 ![System Info](docs/sysinfo.png)
 
 CPU, motherboard, memory (including whether XMP looks active), graphics,
-storage health and network adapters. Read once when the app opens, so
-switching tabs is instant.
+storage health and network adapters. Read once in the background while the app
+opens, so switching tabs is instant.
 
 ### Tools
 
@@ -140,11 +204,28 @@ switching tabs is instant.
 - **Disk Cleanup** — temp files, Windows Update cache, delivery optimization,
   crash dumps, thumbnails. Shows size per item, you pick what goes.
 - **Drivers** — checks your installed NVIDIA driver against the latest
-  release from NVIDIA's own lookup service.
+  release from NVIDIA's own lookup service. Versions are compared as numbers,
+  so a beta or hotfix that is *newer* than the public release is reported as
+  ahead rather than as an update you are missing.
 - **Resources** — SFC, DISM and a read-only disk check, each with a clear
   verdict on whether anything was actually wrong.
 - **BIOS Info** — firmware version, boot mode, Secure Boot, TPM,
   virtualization and memory speed.
+
+---
+
+## Themes
+
+![Themes](docs/themes.png)
+
+The palette button in the title bar switches the whole app between blue,
+blurple, purple, red, green and cyan. Everything follows — the icon, the score
+ring, buttons, selections and the background glow. Your choice is remembered
+between launches.
+
+![Purple theme](docs/theme-purple.png)
+
+The window is fully resizable, and drags at your monitor's refresh rate.
 
 ---
 
@@ -166,16 +247,27 @@ Change those settings in the firmware itself at POST.
 
 - Any individual tweak — toggle it off.
 - A whole category — **Revert All** at the top of the page.
+- NVIDIA profile — toggle it off; your own pre-profile settings come back.
+- Defender — the same toggle turns it back on.
 - Boot Optimizer — the **Undo** button restores from its rollback file.
 - Everything, including things this app never touched — Windows System
   Restore, using the point you made before you started.
 
 ---
 
+## Something not working?
+
+`TL-api.log` sits next to the exe and records what the app did, in plain text.
+If something misbehaves, that file says why — send it over.
+
+---
+
 ## Credits
 
-Built for [The Tech Lounge](https://discord.gg/) Discord community.
-Tweaks are drawn from the server's tech-tips archive plus documented Windows
-settings.
+Built for The Tech Lounge Discord community. Tweaks are drawn from the
+server's tech-tips archive plus documented Windows settings.
+
+Bundles [NVIDIA Profile Inspector Revamped](https://github.com/xHybred/NVIDIAProfileInspectorRevamped)
+by xHybred for the NVIDIA Profile page.
 
 Use at your own risk — read what a tweak does before applying it.

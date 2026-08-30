@@ -8,6 +8,7 @@ build used - only the presentation layer changed.
 import ctypes
 import functools
 import os
+import json
 import sys
 import threading
 import time
@@ -18,11 +19,12 @@ from concurrent.futures import ThreadPoolExecutor
 import webview
 
 import bootparse
+import nvprofile
 import cleanup
 import drivers
 import nettest
 import sysinfo
-from tweaks_engine import (build_tweaks, CATEGORY_ORDER, CATEGORY_ICONS, run)
+from tweaks_engine import (build_tweaks, CATEGORY_ORDER, CATEGORY_ICONS, run, ps)
 
 ICON_FOR = {
     "Performance": "bolt", "Graphics": "gpu", "GPU": "gpu",
@@ -103,12 +105,14 @@ class Api:
         # asks for anything it is either ready or still safely off the bridge
         # thread. Nothing user-facing waits on this.
         threading.Thread(target=self._warm_tweaks, daemon=True).start()
-        self.window = None
+        self._window = None
         self._locked = set()
         self._applied = set()
         self._cache = {}
         self._pending = {}          # user changes made during a scan
         self._cachelock = threading.Lock()
+        self._nv_checked = 0.0      # when the NVIDIA state was last verified
+        self._nv_scanning = False
         self._running = {}          # key -> Popen, for cancellable tasks
         self._busy = set()          # guards double-clicks
 
@@ -145,13 +149,36 @@ class Api:
             return None
 
     @traced
+    def start_drag(self):
+        """Hand the window drag to Windows itself.
+
+        pywebview's built-in drag region round-trips JS -> Python -> Win32 on
+        EVERY mousemove event. On a high-refresh screen with a high-polling
+        mouse that is hundreds of IPC calls a second, and the window visibly
+        lags behind the cursor.
+
+        WM_SYSCOMMAND / SC_MOVE hands the whole gesture to the OS: one single
+        message, then Windows runs its own move loop and the compositor draws
+        it at the monitor's full refresh rate. No further JS or Python.
+        """
+        h = self._hwnd()
+        if not h:
+            return False
+        WM_SYSCOMMAND = 0x0112
+        SC_MOVE_BY_MOUSE = 0xF012      # SC_MOVE | HTCAPTION
+        user32 = ctypes.windll.user32
+        user32.ReleaseCapture()
+        user32.PostMessageW(h, WM_SYSCOMMAND, SC_MOVE_BY_MOUSE, 0)
+        return True
+
+    @traced
     def minimize(self):
         h = self._hwnd()
         if h:
             ctypes.windll.user32.ShowWindow(h, 6)          # SW_MINIMIZE
             return True
         try:
-            self.window.minimize()
+            self._window.minimize()
         except Exception:
             pass
         return True
@@ -172,7 +199,7 @@ class Api:
             ctypes.windll.user32.PostMessageW(h, 0x0010, 0, 0)   # WM_CLOSE
             return True
         try:
-            self.window.destroy()
+            self._window.destroy()
         except Exception:
             pass
         return True
@@ -220,6 +247,7 @@ class Api:
 
     @traced
     def init(self):
+        _close_splash()
         """Return instantly. The scan runs behind it and pushes results."""
         self._applied = getattr(self, "_applied", set())
         payload = {
@@ -247,6 +275,17 @@ class Api:
             self._emit("specs", self.specs())
         except Exception:
             pass
+        # One-time NVIDIA settings backup (per machine), used as the revert
+        # target. No-op unless there's an NVIDIA GPU + the Inspector, and it
+        # never runs twice. Runs before the NVIDIA warm-up below so the two
+        # never fire an -exportCustomized at the same time.
+        try:
+            has_nv = any(v == "NVIDIA" for _, _, v in drivers.detect_gpus())
+            res = nvprofile.ensure_backup(has_nv)
+            log(f"nv backup: {res}")
+            self._emit("nvbackup", res)
+        except Exception:
+            log("nv backup FAILED\n" + traceback.format_exc())
         self._prefetch()
         self._emit("prefetched", {})
 
@@ -365,7 +404,73 @@ class Api:
             self.bios_info()
         except Exception:
             pass
+        # NVIDIA profile page: the settings read shells out to the Inspector,
+        # so warm it here and serve the tab from cache when it is opened.
+        try:
+            self._warm_nvidia()
+        except Exception:
+            pass
         log("prefetch complete")
+
+    def _warm_nvidia(self):
+        """Silently re-read the machine's real NVIDIA state, in the background.
+
+        Runs at every startup (and again when the page is opened), so settings
+        changed outside this app - NVIDIA Control Panel, Profile Inspector, a
+        driver reinstall - are reflected instead of trusting our own marker.
+        """
+        if self._nv_scanning:
+            return
+        self._nv_scanning = True
+        try:
+            st = self._nv_status()
+            if not st.get("nvidia"):
+                with self._cachelock:
+                    self._cache["nv:status"] = st
+                    self._cache["nv:settings"] = []
+                    self._nv_checked = time.time()
+                self._emit("nvready", {})
+                return
+            try:
+                res = nvprofile.scan_state()
+                st = dict(res["status"])
+                st["nvidia"] = True
+                with self._cachelock:
+                    self._cache["nv:status"] = st
+                    self._cache["nv:settings"] = res["settings"]
+                    self._nv_checked = time.time()
+                log(f"nv state: {st.get('state')} "
+                    f"{st.get('matched')}/{st.get('total')}")
+            except Exception:
+                log("nv scan FAILED\n" + traceback.format_exc())
+                with self._cachelock:
+                    self._cache.setdefault("nv:status", st)
+                    self._cache.setdefault("nv:settings", [])
+            self._emit("nvready", {})
+        finally:
+            self._nv_scanning = False
+
+    def _nv_recheck(self, max_age=45):
+        """Kick a silent re-scan if the cached state is stale. Never blocks."""
+        with self._cachelock:
+            fresh = (time.time() - self._nv_checked) < max_age
+        if fresh or self._nv_scanning:
+            return
+        threading.Thread(target=self._warm_nvidia, daemon=True).start()
+
+    def _nv_status(self):
+        st = nvprofile.status()
+        try:
+            st["nvidia"] = any(v == "NVIDIA" for _, _, v in drivers.detect_gpus())
+        except Exception:
+            st["nvidia"] = True
+        return st
+
+    def _nv_drop_cache(self):
+        with self._cachelock:
+            self._cache.pop("nv:status", None)
+            self._cache.pop("nv:settings", None)
+            self._nv_checked = 0.0
 
     @traced
     def sysinfo_sections(self):
@@ -391,16 +496,16 @@ class Api:
         from the GUI thread, and calling it from a worker thread is what
         makes the window stop responding.
         """
-        if not self.window:
+        if not self._window:
             return
         import json
         script = (f"window.onPy && window.onPy({json.dumps(event)},"
                   f"{json.dumps(data)})")
         try:
-            if hasattr(self.window, "run_js"):
-                self.window.run_js(script)
+            if hasattr(self._window, "run_js"):
+                self._window.run_js(script)
             else:
-                self.window.evaluate_js(script)
+                self._window.evaluate_js(script)
         except Exception as e:
             log(f"emit {event} failed: {e}")
 
@@ -440,9 +545,18 @@ class Api:
                 if vendor == "NVIDIA":
                     installed = drivers.nvidia_marketing_version(ver)
                     latest = drivers.nvidia_latest(name)
+                latest_ver = latest[0] if latest else None
+                # Decide the verdict here, with a real numeric comparison.
+                # The UI used to do `latest === installed`, so ANY difference
+                # - including an installed driver NEWER than the one the
+                # vendor lists - was reported as "update available".
+                cmp = drivers.compare_versions(installed, latest_ver)
+                status = {None: "unknown", -1: "update",
+                          0: "current", 1: "ahead"}[cmp]
                 out.append({"name": name, "vendor": vendor,
                             "installed": installed,
-                            "latest": latest[0] if latest else None,
+                            "latest": latest_ver,
+                            "status": status,
                             "url": latest[1] if latest else None,
                             "page": drivers.vendor_page(vendor)})
         except Exception as e:
@@ -459,6 +573,137 @@ class Api:
             return {"ok": True, "path": path}
         except Exception as e:
             return {"ok": False, "error": str(e)}
+
+    # ---------------------------------------------------------- defender
+    _DEF_READ = r"""
+$ErrorActionPreference='SilentlyContinue'
+$s = Get-MpComputerStatus
+if ($null -eq $s) { '{"present":false}'; exit }
+$o = [ordered]@{
+  present     = $true
+  realtime    = [bool]$s.RealTimeProtectionEnabled
+  antispyware = [bool]$s.AntispywareEnabled
+  behavior    = [bool]$s.BehaviorMonitorEnabled
+  onaccess    = [bool]$s.OnAccessProtectionEnabled
+  ioav        = [bool]$s.IoavProtectionEnabled
+  nis         = [bool]$s.NISEnabled
+  tamper      = [bool]$s.IsTamperProtected
+  amservice   = [bool]$s.AMServiceEnabled
+}
+$o | ConvertTo-Json -Compress
+"""
+
+    # Only ever runs when Tamper Protection is OFF - otherwise Windows refuses
+    # these and we never call it. Every line here is reversed by _DEF_ENABLE.
+    _DEF_DISABLE = r"""
+$ErrorActionPreference='SilentlyContinue'
+Set-MpPreference -DisableRealtimeMonitoring $true
+Set-MpPreference -DisableBehaviorMonitoring $true
+Set-MpPreference -DisableOnAccessProtection $true
+Set-MpPreference -DisableIOAVProtection $true
+Set-MpPreference -DisableScriptScanning $true
+Set-MpPreference -DisableIntrusionPreventionSystem $true
+reg add "HKLM\SOFTWARE\Microsoft\Windows Defender Security Center\Notifications" /v DisableNotifications /t REG_DWORD /d 1 /f | Out-Null
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\Notifications" /v DisableEnhancedNotifications /t REG_DWORD /d 1 /f | Out-Null
+'done'
+"""
+
+    _DEF_ENABLE = r"""
+$ErrorActionPreference='SilentlyContinue'
+Set-MpPreference -DisableRealtimeMonitoring $false
+Set-MpPreference -DisableBehaviorMonitoring $false
+Set-MpPreference -DisableOnAccessProtection $false
+Set-MpPreference -DisableIOAVProtection $false
+Set-MpPreference -DisableScriptScanning $false
+Set-MpPreference -DisableIntrusionPreventionSystem $false
+reg delete "HKLM\SOFTWARE\Microsoft\Windows Defender Security Center\Notifications" /v DisableNotifications /f | Out-Null
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\Notifications" /v DisableEnhancedNotifications /f | Out-Null
+'done'
+"""
+
+    def _defender_payload(self, d):
+        present = bool(d.get("present"))
+        realtime = bool(d.get("realtime"))
+        active = present and (realtime or bool(d.get("amservice")))
+        items = [
+            {"label": "Real-time protection", "on": realtime},
+            {"label": "Behaviour monitoring", "on": bool(d.get("behavior"))},
+            {"label": "On-access scanning", "on": bool(d.get("onaccess"))},
+            {"label": "Downloaded-file & web scanning", "on": bool(d.get("ioav"))},
+            {"label": "Network inspection", "on": bool(d.get("nis"))},
+            {"label": "Antimalware engine", "on": bool(d.get("antispyware"))},
+        ]
+        return {"present": present, "active": active,
+                "tamper": bool(d.get("tamper")), "items": items}
+
+    @traced
+    def defender_status(self):
+        rc, out = ps(self._DEF_READ)
+        try:
+            d = json.loads((out or "").strip() or "{}")
+        except Exception:
+            d = {}
+        return self._defender_payload(d)
+
+    @traced
+    def defender_set(self, on):
+        st = self.defender_status()
+        if not st.get("present"):
+            return {"ok": True, "status": st,
+                    "message": "Defender is not installed on this PC."}
+        if on:
+            ps(self._DEF_ENABLE)
+            return {"ok": True, "status": self.defender_status()}
+
+        # Turning OFF. Windows forbids this while Tamper Protection is on, and
+        # no tool can flip that switch - only the user, in the Windows Security
+        # UI. Open that exact page and tell them.
+        if st.get("tamper"):
+            try:
+                os.startfile("windowsdefender://threatsettings")
+            except Exception:
+                pass
+            return {"ok": False, "tamper": True, "status": st,
+                    "message": ("Tamper Protection is on. Turn it off in the "
+                                "Windows Security window that just opened "
+                                "(Virus & threat protection > Manage settings), "
+                                "then tap the toggle again.")}
+        ps(self._DEF_DISABLE)
+        return {"ok": True, "status": self.defender_status()}
+
+    # ---------------------------------------------------------- nvidia profile
+    @traced
+    def nvprofile_status(self):
+        # Answer instantly from the startup scan, then quietly re-verify in the
+        # background - the page updates itself via the "nvready" event.
+        st = self._cached("nv:status", self._nv_status)
+        self._nv_recheck()
+        return st
+
+    @traced
+    def nvprofile_set(self, on):
+        res = nvprofile.apply_profile(bool(on))
+        # The machine's values just changed - re-read them in the background.
+        self._nv_drop_cache()
+        threading.Thread(target=self._warm_nvidia, daemon=True).start()
+        return res
+
+    @traced
+    def nvprofile_settings(self):
+        return self._cached("nv:settings", nvprofile.profile_settings)
+
+    @traced
+    def nvprofile_refresh(self):
+        """Force an immediate re-read (the page's Refresh)."""
+        self._nv_drop_cache()
+        threading.Thread(target=self._warm_nvidia, daemon=True).start()
+        return True
+
+    @traced
+    def nvprofile_ready(self):
+        """True once the NVIDIA page can be filled with no waiting."""
+        with self._cachelock:
+            return "nv:settings" in self._cache
 
     @traced
     def open_url(self, url):
@@ -776,6 +1021,15 @@ def require_webview2():
     return False
 
 
+def _close_splash():
+    """Close the PyInstaller native splash. No-op in non-splash/dev runs."""
+    try:
+        import pyi_splash  # only present in --splash builds
+        pyi_splash.close()
+    except Exception:
+        pass
+
+
 def main():
     if not is_admin():
         relaunch_as_admin()
@@ -791,25 +1045,26 @@ def main():
         "Tech Lounge Tweaks",
         here("web", "index.html"),
         js_api=api,
-        width=1380, height=900, min_size=(1100, 720),
+        width=1380, height=900, min_size=(940, 640),
+        resizable=True,
         frameless=True, easy_drag=False,
         background_color="#0a0b12",
     )
-    api.window = window
+    api._window = window
+    log("window created")
 
-    # pywebview defaults to %APPDATA%\pywebview, which is a ROAMING folder
-    # shared with every other pywebview app - slow to open and a source of
-    # profile-lock stalls. Keep our own profile on the local disk.
-    store = os.path.join(
-        os.environ.get("LOCALAPPDATA", tempfile.gettempdir()),
-        "TechLoungeTweaks", "webview2")
-    try:
-        os.makedirs(store, exist_ok=True)
-    except Exception:
-        store = None
+    # THE fix for "hangs on first launch, works on reopen": the app runs as
+    # administrator (needed to write HKLM), and WebView2's sandboxed browser
+    # process deadlocks against that elevation on the GUI thread. Passing
+    # --no-sandbox (plus the GPU-sandbox variant) lets WebView2 initialise
+    # inside an elevated process reliably. This env var is the supported way
+    # to hand extra flags to WebView2, read at start-up.
+    prev = os.environ.get("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "")
+    os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = (
+        (prev + " " if prev else "") + "--no-sandbox --disable-gpu-sandbox").strip()
 
-    webview.start(gui="edgechromium", private_mode=False, debug=False,
-                  storage_path=store)
+    log("starting webview…")
+    webview.start(gui="edgechromium", private_mode=False, debug=False)
 
 
 if __name__ == "__main__":

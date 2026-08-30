@@ -81,24 +81,55 @@ def _series_ids(name):
     return NV_SERIES[0][1], NV_SERIES[0][2]
 
 
+def version_tuple(v):
+    """'616.56' -> (616, 56). Used for real ordering, never string equality."""
+    parts = re.findall(r"\d+", str(v or ""))
+    return tuple(int(p) for p in parts) if parts else ()
+
+
+def compare_versions(installed, latest):
+    """-1 installed older, 0 same, 1 installed newer. None if uncomparable."""
+    a, b = version_tuple(installed), version_tuple(latest)
+    if not a or not b:
+        return None
+    n = max(len(a), len(b))
+    a += (0,) * (n - len(a))
+    b += (0,) * (n - len(b))
+    return (a > b) - (a < b)
+
+
 def nvidia_latest(gpu_name):
-    """Ask NVIDIA for the newest Game Ready driver. (version, url) or None."""
+    """Newest Game Ready driver as (version, url), or None.
+
+    Asks for several results and picks the highest version rather than
+    trusting the API's ordering - requesting a single result was handing
+    back an older driver than the one already installed.
+    """
     psid, pfid = _series_ids(gpu_name)
     params = {
         "func": "DriverManualLookup", "psid": psid, "pfid": pfid,
         "osID": 135, "languageCode": 1033, "isWHQL": 1, "beta": "null",
         "dltype": -1, "dch": 1, "upCRD": 0, "qnf": 0, "ctk": "null",
-        "sort1": 0, "numberOfResults": 1,
+        "sort1": 0, "numberOfResults": 10,
     }
     url = NV_API + "?" + urllib.parse.urlencode(params)
     try:
         req = urllib.request.Request(url, headers=UA)
         with urllib.request.urlopen(req, timeout=25) as resp:
             data = json.loads(resp.read().decode("utf-8", "replace"))
-        info = data["IDS"][0]["downloadInfo"]
-        return str(info["Version"]).strip(), str(info["DownloadURL"]).strip()
     except Exception:
         return None
+
+    best = None
+    for entry in (data.get("IDS") or []):
+        info = entry.get("downloadInfo") or {}
+        ver = str(info.get("Version") or "").strip()
+        dl = str(info.get("DownloadURL") or "").strip()
+        if not ver or not dl:
+            continue
+        if best is None or version_tuple(ver) > version_tuple(best[0]):
+            best = (ver, dl)
+    return best
 
 
 def is_official(url, vendor):
