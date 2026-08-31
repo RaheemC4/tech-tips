@@ -1002,7 +1002,12 @@ function pageRes() {
       if (running) {
         const pctTxt = (typeof job.progress === 'number' && job.progress > 0)
           ? Math.round(job.progress * 100) + '%  ·  ' : '';
-        H('res_' + k).textContent = pctTxt + (job.line || 'Working…');
+        // Elapsed time proves it is alive even when the tool goes quiet -
+        // DISM can sit silent for several minutes mid-repair.
+        const el = job.elapsed || 0;
+        const mins = Math.floor(el / 60), secs = el % 60;
+        const time = el ? '  ·  ' + (mins ? mins + 'm ' : '') + secs + 's' : '';
+        H('res_' + k).textContent = pctTxt + (job.line || 'Working…') + time;
         H('verdict_' + k).innerHTML = '';
       } else if (job && job.result) {
         H('res_' + k).textContent = '';

@@ -825,11 +825,30 @@ reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\No
     def _job_new(self, key, kind, label, indeterminate=True):
         job = {"key": key, "kind": kind, "label": label, "state": "running",
                "progress": None if indeterminate else 0.0,
-               "line": "", "result": None, "cancellable": True}
+               "line": "", "result": None, "cancellable": True,
+               "started": time.time(), "elapsed": 0}
         with self._jobslock:
             self._jobs[key] = job
-        self._emit("job", job)
+        self._emit("job", dict(job))
+        # A throttled update can swallow the last line of a burst, and a tool
+        # that then goes quiet for minutes (DISM) leaves the page looking
+        # frozen. This re-sends the current state once a second so the elapsed
+        # timer keeps moving and the newest line always lands.
+        threading.Thread(target=self._job_heartbeat, args=(key,),
+                         daemon=True).start()
         return job
+
+    def _job_heartbeat(self, key):
+        while True:
+            time.sleep(1.0)
+            with self._jobslock:
+                job = self._jobs.get(key)
+                if not job or job.get("state") != "running":
+                    return
+                job["elapsed"] = int(time.time() - job.get("started", 0))
+                job["_sent"] = time.time()
+                snap = {k: v for k, v in job.items() if k != "_sent"}
+            self._emit("job", snap)
 
     def _job_update(self, key, throttle=0.0, **fields):
         """Update a job. throttle caps how often the page is told - SFC emits
@@ -856,7 +875,8 @@ reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\No
             job["result"] = result
             job["line"] = line
             job["progress"] = 1.0
-            snap = dict(job)
+            job["elapsed"] = int(time.time() - job.get("started", 0))
+            snap = {k: v for k, v in job.items() if k != "_sent"}
         log(f"job {key}: {state} {snap.get('result')}")
         self._emit("job", snap)
 
@@ -1103,7 +1123,10 @@ reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\No
             text_buf = ""        # decoded text not yet split into lines
             enc = None
             while True:
-                chunk = proc.stdout.read(4096)
+                # read1: hand back whatever has arrived. Plain read(n) blocks
+                # until it has all n bytes, so a tool that goes quiet mid-run
+                # (DISM does, for minutes) showed nothing at all.
+                chunk = proc.stdout.read1(4096)
                 if not chunk:
                     break
                 raw += chunk
@@ -1123,7 +1146,7 @@ reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\No
                 parts = re.split(r"[\r\n]+", text_buf)
                 text_buf = parts.pop()          # keep the incomplete tail
                 for part in parts:
-                    part = part.strip("\x00 \t")
+                    part = self._clean_line(part)
                     if not part:
                         continue
                     collected.append(part)
@@ -1171,6 +1194,19 @@ reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\No
                                  "state": state, "message": message})
 
     _PCT = re.compile(r"(\d{1,3}(?:\.\d+)?)\s*%")
+    _CTRL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+    @classmethod
+    def _clean_line(cls, text):
+        """DISM redraws its progress bar with backspaces and pads it with
+        '=' and spaces; strip that down to something readable."""
+        text = cls._CTRL.sub("", text)
+        text = text.replace("\x7f", "")
+        # [=========  42.0%  =========]  ->  42.0%
+        bar = re.match(r"^\s*\[[=\s]*([\d.]+%)[=\s]*\]\s*$", text)
+        if bar:
+            return bar.group(1) + " complete"
+        return text.strip(" \t")
 
     @classmethod
     def _parse_percent(cls, line):

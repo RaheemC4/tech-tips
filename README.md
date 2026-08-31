@@ -242,7 +242,12 @@ opens, so switching tabs is instant.
 Scans and downloads take minutes, so the app tracks them properly rather than
 freezing a button. While one is going, the **Run** / **Download** button is
 replaced by **Cancel** and a progress bar showing the tool's own real
-percentage, with its current output line underneath.
+percentage, with its current output line and an elapsed timer underneath.
+
+**Windows Image Repair legitimately takes 10–30 minutes** and will sit on one
+percentage for long stretches — that is DISM working, not the app hanging. The
+elapsed timer keeps ticking so you can tell the difference, and Cancel stops it
+cleanly at any point.
 
 The job lives in the app itself, not the page, so you can switch to another tab
 and come back to find it still running at the right progress. It will not let
