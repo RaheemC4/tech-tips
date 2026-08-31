@@ -2,8 +2,9 @@
 
 A Windows 11 tweaking utility built for The Tech Lounge. Toggle performance,
 latency and privacy tweaks, apply a tuned NVIDIA driver profile in one tap,
-turn Defender on or off, test your connection for bufferbloat, clean up junk
-files and check your GPU drivers — all from one window.
+turn Defender on or off, install runtimes, browsers and game clients silently,
+test your connection for bufferbloat, clean up junk files and check your GPU
+drivers — all from one window.
 
 Every page reads the **live** system state, so the app shows what is actually
 set on your machine rather than assuming. Every toggle reverts, and one button
@@ -87,6 +88,7 @@ because most of these settings live in `HKEY_LOCAL_MACHINE`.
 | **Windows 11** | Works out of the box |
 | **Windows 10** | Needs the [WebView2 runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (free, from Microsoft) — the app checks on launch and links you to it if it is missing |
 | **NVIDIA GPU** | Only needed for the NVIDIA Profile page; everything else works on any machine |
+| **App Installer / winget** | Optional. Install Apps prefers it, and falls back to direct vendor downloads when a debloated image has removed it |
 
 ---
 
@@ -234,6 +236,8 @@ opens, so switching tabs is instant.
   verdict on whether anything was actually wrong.
 - **BIOS Info** — firmware version, boot mode, Secure Boot, TPM,
   virtualization and memory speed.
+- **Install Apps** — runtimes, browsers and game clients, installed silently
+  from the vendor. See below.
 
 ### While something is running
 
@@ -253,6 +257,39 @@ The job lives in the app itself, not the page, so you can switch to another tab
 and come back to find it still running at the right progress. It will not let
 you start a second copy of something already going, and cancelling a download
 removes the half-finished file.
+
+### Install Apps
+
+![Install Apps](docs/apps.png)
+
+Runtimes, browsers and game clients, installed silently — the useful half of a
+toolbox like Ghost's, without the baggage.
+
+| Group | What's in it |
+|---|---|
+| **Runtimes** | Visual C++ Redistributables (2005–2022, x86 + x64), DirectX web installer, .NET Desktop Runtime 8 |
+| **Browsers** | Edge & WebView2, Brave, Chrome, Firefox, Opera GX, Vivaldi |
+| **Game clients** | Steam, Epic, Ubisoft Connect, EA App, GOG Galaxy, Battle.net, Rockstar, Amazon Games |
+
+Each card shows how it will be installed. **WINGET** goes through the Windows
+Package Manager, which is built into Windows 11 and keeps its own download
+URLs and silent switches current — nothing to rot. **DIRECT** downloads
+straight from the vendor's own domain. **MANUAL** means neither route is
+available and the vendor page is the way in.
+
+Downloads are checked against an allowlist of vendor domains before anything
+is fetched, so a link that is not on the vendor's own domain is refused.
+Installers run with their official silent switches. Nothing is bundled with
+this app, and nothing is repacked or modified.
+
+If the Windows Package Manager has been stripped out — debloated images
+usually remove it — the page says so and falls back to direct downloads.
+
+**Microsoft Store & Xbox apps** sit at the top of the same page: one button
+removes them, another restores them by re-registering the copy Windows keeps
+on disk. On an image where they were stripped rather than uninstalled there is
+nothing left to restore from, and the app tells you that plainly instead of
+failing quietly.
 
 ---
 
@@ -294,6 +331,8 @@ Change those settings in the firmware itself at POST.
 - A whole category — **Revert All** at the top of the page.
 - NVIDIA profile — toggle it off; your own pre-profile settings come back.
 - Defender — the same toggle turns it back on.
+- Microsoft Store / Xbox apps — the Install / restore button on the Install
+  Apps page, as long as the image still holds a copy to restore from.
 - Boot Optimizer — the **Undo** button restores from its rollback file.
 - Everything, including things this app never touched — Windows System
   Restore, using the point you made before you started.
@@ -314,5 +353,10 @@ server's tech-tips archive plus documented Windows settings.
 
 Bundles [NVIDIA Profile Inspector Revamped](https://github.com/xHybred/NVIDIAProfileInspectorRevamped)
 by xHybred for the NVIDIA Profile page.
+
+The Install Apps page installs software from each vendor's own servers, or
+through the Windows Package Manager. No third-party installer is bundled with
+this app, and nothing is repacked, patched or modified. If an app is not on the
+list it is because there is no legitimate automated source for it.
 
 Use at your own risk — read what a tweak does before applying it.

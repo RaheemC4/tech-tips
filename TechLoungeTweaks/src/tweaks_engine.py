@@ -456,14 +456,33 @@ def t_mouse_accel():
     return _apply, _revert, _check
 
 
+def restart_explorer():
+    """The context-menu switch only shows up once Explorer reloads. Ghost
+    Toolbox restarts it too; without this the toggle looks like it did
+    nothing until the next sign-in."""
+    try:
+        run(["taskkill", "/f", "/im", "explorer.exe"])
+    except Exception:
+        pass
+    try:
+        subprocess.Popen([os.path.join(os.environ.get("SystemRoot",
+                                                      r"C:\Windows"),
+                                       "explorer.exe")],
+                         creationflags=CREATE_NO_WINDOW)
+    except Exception:
+        pass
+
+
 def t_classic_context():
     clsid = r"SOFTWARE\CLASSES\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}"
 
     def _apply():
         reg_set(HKCU, clsid + r"\InprocServer32", "", "", winreg.REG_SZ)
+        restart_explorer()
 
     def _revert():
         reg_del_tree("HKCU", clsid)
+        restart_explorer()
 
     def _check():
         # Key existence alone is not enough - the classic menu only comes

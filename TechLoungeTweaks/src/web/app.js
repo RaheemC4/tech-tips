@@ -159,7 +159,8 @@ const ICONS = {
   info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 8h.01"/>',
   wrench:'<path d="M15 3a6 6 0 0 0-5.5 8.4L3 18v3h3l6.6-6.5A6 6 0 1 0 15 3"/>',
   driver:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 19v2h10v-2"/>',
-  restore:'<path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/>'
+  restore:'<path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/>',
+  box:'<path d="M21 8v8a2 2 0 0 1-1 1.7l-7 4a2 2 0 0 1-2 0l-7-4A2 2 0 0 1 3 16V8a2 2 0 0 1 1-1.7l7-4a2 2 0 0 1 2 0l7 4A2 2 0 0 1 21 8"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/>'
 };
 const svg = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
   stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICONS[k]||ICONS.cpu}</svg>`;
@@ -177,6 +178,7 @@ const NAV = [
   ['page','System Info','info'], ['page','Disk Cleanup','disk'],
   ['page','Drivers','driver'], ['page','NVIDIA Profile','nvidia'], ['page','Defender','shield'], ['page','Resources','wrench'],
   ['sec','TOOLS'],
+  ['page','Install Apps','box'],
   ['page','Boot Optimizer','bolt'], ['page','BIOS Info','cpu'],
   ['page','System Restore','restore']
 ];
@@ -200,6 +202,7 @@ function show(name) {
   const routes = {
     'System Info': pageSysInfo, 'Disk Cleanup': pageClean,
     'Drivers': pageDrivers, 'NVIDIA Profile': pageNvProfile, 'Defender': pageDefender, 'Resources': pageRes,
+    'Install Apps': pageApps,
     'Boot Optimizer': pageBoot, 'BIOS Info': pageBios,
     'System Restore': pageRestore, 'Networking': pageNetworking,
   };
@@ -1042,6 +1045,177 @@ function pageRes() {
     cxBtn.onclick = () => api('cancel_task', jobkey);
   });
   restoreJobs();
+}
+
+/* ---------------- Install Apps ----------------
+   Mirrors the useful half of a toolbox like Ghost's: pick an app, it is
+   fetched and installed silently. winget does the work where it exists
+   (Microsoft keeps those URLs and switches current); otherwise the app falls
+   back to a direct download from the vendor's own domain. */
+let APPCACHE = null;
+
+async function pageApps() {
+  pageShell('Install Apps', {crumb: 'Tools › Install Apps',
+    text: 'Runtimes, browsers and game clients, installed silently from the vendor.'},
+    `<div id="appsBody"><div class="card">Loading the catalogue…</div></div>`);
+  const cat = APPCACHE || await api('app_catalog');
+  if (!cat) return;
+  APPCACHE = cat;
+
+  const groups = cat.groups.map(g => {
+    const items = cat.apps.filter(a => a.group === g);
+    if (!items.length) return '';
+    return `<div class="section">${g}</div>
+      <div class="grid g2">${items.map(a => `
+        <div class="card appcard" data-app="${a.id}">
+          <div class="row" style="align-items:flex-start;gap:12px">
+            <div style="flex:1">
+              <b style="font-size:14.5px">${a.name}</b>
+              <p style="color:var(--muted);font-size:11.5px;line-height:1.55;margin-top:5px">${a.desc}</p>
+            </div>
+            <span class="badge" title="${a.route === 'winget'
+              ? 'Installed through the Windows Package Manager'
+              : (a.route === 'direct' ? 'Downloaded straight from the vendor'
+                                      : 'No automatic route - opens the vendor page')}"
+              >${a.route === 'winget' ? 'WINGET' : (a.route === 'direct' ? 'DIRECT' : 'MANUAL')}</span>
+          </div>
+          <div id="appline_${a.id}" style="color:var(--muted);font-size:11.5px;margin-top:9px"></div>
+          <div class="jobbar" id="appbar_${a.id}" style="display:none"><i></i></div>
+          <div id="appres_${a.id}" style="margin-top:8px"></div>
+          <div class="row" style="margin-top:11px;gap:9px">
+            ${a.installable ? `<button class="btn" data-inst="${a.id}">Install</button>` : ''}
+            <button class="btn ghost" data-cancelapp="${a.id}" style="display:none">Cancel</button>
+            <button class="btn ghost" onclick="api('open_url','${a.page}')">Vendor page</button>
+          </div>
+        </div>`).join('')}</div>`;
+  }).join('');
+
+  H('appsBody').innerHTML = `
+    ${cat.winget ? '' : `<div class="card" style="margin-bottom:14px;
+        border-color:rgba(255,190,61,.3);background:rgba(255,190,61,.08)">
+        <b style="color:var(--warn);font-size:13px">Windows Package Manager is missing</b>
+        <p style="color:var(--muted);font-size:12px;line-height:1.6;margin-top:6px">
+          Debloated Windows images usually strip it out. Anything marked
+          <b>DIRECT</b> still installs normally, straight from the vendor.
+          Entries marked <b>MANUAL</b> need their vendor page.</p></div>`}
+    ${storeCardHtml()}
+    ${groups}
+    <div class="card" style="margin-top:16px"><p style="color:var(--muted);font-size:11.5px;line-height:1.65">
+      Downloads only ever come from each vendor's own domain — the app refuses
+      any link that is not on that allowlist — and installers run with their
+      official silent switches. Nothing is bundled with this app and nothing is
+      repacked or modified.</p></div>`;
+
+  wireApps(cat);
+  wireStoreCard();
+  restoreJobs();
+}
+
+function wireApps(cat) {
+  cat.apps.forEach(a => {
+    const jobkey = 'app:' + a.id;
+    const btn = document.querySelector(`[data-inst="${a.id}"]`);
+    const cx = document.querySelector(`[data-cancelapp="${a.id}"]`);
+    if (!btn && !cx) return;
+
+    const paint = job => {
+      const running = job && job.state === 'running';
+      if (btn) btn.style.display = running ? 'none' : '';
+      if (cx) cx.style.display = running ? '' : 'none';
+      const bar = H('appbar_' + a.id);
+      if (bar) {
+        bar.style.display = running ? '' : 'none';
+        const hasPct = running && typeof job.progress === 'number' && job.progress > 0;
+        bar.classList.toggle('indet', running && !hasPct);
+        const fill = bar.querySelector('i');
+        if (fill) fill.style.width = hasPct ? (job.progress * 100) + '%' : '';
+      }
+      if (running) {
+        const el = job.elapsed || 0;
+        const t = el ? '  ·  ' + (el >= 60 ? Math.floor(el / 60) + 'm ' : '') + (el % 60) + 's' : '';
+        H('appline_' + a.id).textContent = (job.line || 'Working…') + t;
+        H('appres_' + a.id).innerHTML = '';
+      } else if (job && job.result) {
+        H('appline_' + a.id).textContent = '';
+        const r = job.result, good = r.ok;
+        H('appres_' + a.id).innerHTML =
+          `<div style="display:flex;gap:9px;padding:9px 11px;border-radius:10px;
+            font-size:12px;line-height:1.5;background:${good ? 'rgba(61,220,151,.13)' : 'rgba(255,93,108,.13)'};
+            color:${good ? 'var(--good)' : 'var(--bad)'}">
+            <b>${good ? '✓' : '!'}</b><span>${r.message || 'Finished.'}</span></div>`;
+      }
+    };
+    JOB_RENDERERS[jobkey] = paint;
+    if (JOBS[jobkey]) paint(JOBS[jobkey]);
+
+    if (btn) btn.onclick = async () => {
+      H('appres_' + a.id).innerHTML = '';
+      paint({state: 'running', progress: 0, line: 'Starting…'});
+      await api('app_install', a.id);
+    };
+    if (cx) cx.onclick = () => api('cancel_app', jobkey);
+  });
+}
+
+/* ---- Microsoft Store & Xbox ---- */
+function storeCardHtml() {
+  return `<div class="card" id="storeCard" style="margin-bottom:6px">
+    <div class="row" style="align-items:flex-start;gap:14px">
+      <div style="flex:1">
+        <b style="font-size:15px">Microsoft Store &amp; Xbox apps</b>
+        <p id="storeState" style="color:var(--muted);font-size:12px;margin-top:5px">Checking…</p>
+      </div>
+    </div>
+    <div class="row" style="margin-top:13px;gap:9px;flex-wrap:wrap">
+      <button class="btn" id="storeOn">Install / restore</button>
+      <button class="btn ghost" id="storeOff">Remove both</button>
+      <span id="storeMsg" style="color:var(--muted);font-size:11.5px"></span>
+    </div></div>`;
+}
+
+async function wireStoreCard() {
+  const paint = st => {
+    if (!st || !H('storeState')) return;
+    const bits = [];
+    bits.push('Microsoft Store: ' + (st.store ? 'installed' : 'not installed'));
+    bits.push('Xbox apps: ' + (st.xbox ? 'installed' : 'not installed'));
+    H('storeState').textContent = bits.join('   ·   ');
+    H('storeState').style.color = (st.store || st.xbox) ? 'var(--good)' : 'var(--muted)';
+  };
+  paint(await api('store_status'));
+
+  H('storeOn').onclick = async () => {
+    H('storeMsg').textContent = 'Restoring…'; H('storeMsg').style.color = 'var(--muted)';
+    const r = await api('store_set', 'both', true);
+    paint(r && r.status);
+    if (r && r.ok) { H('storeMsg').textContent = 'Done.'; H('storeMsg').style.color = 'var(--good)'; }
+    else {
+      H('storeMsg').textContent = (r && r.message) || 'Could not restore them.';
+      H('storeMsg').style.color = 'var(--warn)';
+    }
+  };
+  H('storeOff').onclick = () => {
+    showModal(`<div class="modal-card">
+      <h2 style="margin:0 0 8px;font-size:18px;color:var(--warn)">Remove Store and Xbox apps?</h2>
+      <p style="color:var(--muted);font-size:12.5px;line-height:1.6;margin:0 0 14px">
+        Removes the Microsoft Store, Xbox Game Bar and the Xbox app for this
+        user. On a normal Windows install they can be restored from here.
+        <b>On a debloated image they may not come back</b>, because Windows
+        keeps no copy to restore from.</p>
+      <div class="row" style="gap:10px">
+        <button class="btn" id="stYes">Remove</button>
+        <button class="btn ghost" id="stNo">Cancel</button>
+      </div></div>`);
+    H('stYes').onclick = async () => {
+      closeModal();
+      H('storeMsg').textContent = 'Removing…';
+      const r = await api('store_set', 'both', false);
+      paint(r && r.status);
+      H('storeMsg').textContent = 'Removed.';
+      H('storeMsg').style.color = 'var(--muted)';
+    };
+    H('stNo').onclick = closeModal;
+  };
 }
 
 /* ---------------- BIOS ---------------- */

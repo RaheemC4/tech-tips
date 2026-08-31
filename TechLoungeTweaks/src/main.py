@@ -19,6 +19,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import webview
 
+import apps
 import bootparse
 import nvprofile
 import cleanup
@@ -807,6 +808,132 @@ reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\No
         """True once the NVIDIA page can be filled with no waiting."""
         with self._cachelock:
             return "nv:settings" in self._cache
+
+    # ------------------------------------------------------------- apps
+    @traced
+    def app_catalog(self):
+        return apps.catalog()
+
+    @traced
+    def app_install(self, app_id):
+        """Install one catalogue app as a background job."""
+        jobkey = "app:" + str(app_id)
+        with self._jobslock:
+            existing = self._jobs.get(jobkey)
+            if existing and existing.get("state") == "running":
+                return {"started": False, "job": dict(existing)}
+        entry = apps.by_id(app_id)
+        if not entry:
+            return {"started": False, "error": "Unknown app."}
+        self._job_new(jobkey, "app", entry["name"], indeterminate=False)
+        self._dl_cancel.discard(jobkey)
+        threading.Thread(target=self._run_app_install,
+                         args=(app_id, jobkey), daemon=True).start()
+        return {"started": True, "key": jobkey}
+
+    def _run_app_install(self, app_id, jobkey):
+        dest = os.path.join(os.environ.get("LOCALAPPDATA", tempfile.gettempdir()),
+                            "TechLoungeTweaks", "installers")
+        try:
+            ok, msg = apps.install(
+                app_id, dest,
+                on_progress=lambda f: self._job_update(jobkey, throttle=0.2,
+                                                       progress=f),
+                on_line=lambda t: self._job_update(jobkey, throttle=0.25,
+                                                   line=t),
+                should_cancel=lambda: jobkey in self._dl_cancel)
+        except Exception as e:
+            log(f"app {app_id} FAILED\n" + traceback.format_exc())
+            ok, msg = False, str(e) or "The install could not run."
+        cancelled = jobkey in self._dl_cancel
+        self._dl_cancel.discard(jobkey)
+        self._job_finish(jobkey,
+                         "cancelled" if cancelled else ("done" if ok else "error"),
+                         result={"ok": ok, "state": "clean" if ok else "problem",
+                                 "message": msg},
+                         line=msg[:160])
+        # Installers leave big files behind; keep the folder tidy.
+        try:
+            for name in os.listdir(dest):
+                p = os.path.join(dest, name)
+                if os.path.isfile(p):
+                    os.remove(p)
+        except Exception:
+            pass
+
+    @traced
+    def cancel_app(self, jobkey):
+        self._dl_cancel.add(jobkey)
+        return {"ok": True}
+
+    # ---------------------------------------------- Microsoft Store / Xbox
+    _STORE_PKGS = {
+        "store": ["Microsoft.WindowsStore", "Microsoft.StorePurchaseApp",
+                  "Microsoft.DesktopAppInstaller"],
+        "xbox": ["Microsoft.XboxGamingOverlay", "Microsoft.GamingApp",
+                 "Microsoft.XboxApp", "Microsoft.XboxIdentityProvider",
+                 "Microsoft.XboxSpeechToTextOverlay",
+                 "Microsoft.Xbox.TCUI", "Microsoft.XboxGameOverlay"],
+    }
+
+    @traced
+    def store_status(self):
+        """Which of the Store / Xbox packages are installed for this user."""
+        names = self._STORE_PKGS["store"] + self._STORE_PKGS["xbox"]
+        filt = ",".join(f"'{n}'" for n in names)
+        rc, out = ps(f"$n=@({filt}); "
+                     "Get-AppxPackage | Where-Object {$n -contains $_.Name} | "
+                     "Select-Object -ExpandProperty Name | ConvertTo-Json -Compress")
+        present = []
+        try:
+            data = json.loads((out or "").strip() or "[]")
+            present = [data] if isinstance(data, str) else list(data or [])
+        except Exception:
+            pass
+        return {
+            "store": any(n in present for n in self._STORE_PKGS["store"]),
+            "xbox": any(n in present for n in self._STORE_PKGS["xbox"]),
+            "present": present,
+        }
+
+    @traced
+    def store_set(self, which, on):
+        """Install or remove the Store / Xbox app family. which: store|xbox|both"""
+        groups = (["store", "xbox"] if which == "both" else [which])
+        names = []
+        for g in groups:
+            names += self._STORE_PKGS.get(g, [])
+        if not names:
+            return {"ok": False, "message": "Unknown package group."}
+        filt = ",".join(f"'{n}'" for n in names)
+
+        if not on:
+            ps(f"$n=@({filt}); Get-AppxPackage | "
+               "Where-Object {$n -contains $_.Name} | Remove-AppxPackage "
+               "-ErrorAction SilentlyContinue")
+            return {"ok": True, "status": self.store_status()}
+
+        # Re-register from the payload Windows still holds on disk. This is the
+        # supported route and works whenever the package was removed rather
+        # than stripped out of the image.
+        rc, out = ps(
+            f"$n=@({filt}); Get-AppxPackage -AllUsers | "
+            "Where-Object {$n -contains $_.Name} | ForEach-Object "
+            "{Add-AppxPackage -DisableDevelopmentMode -Register "
+            "\"$($_.InstallLocation)\\AppXManifest.xml\" "
+            "-ErrorAction SilentlyContinue}")
+        st = self.store_status()
+        want = all(st.get(g) for g in groups)
+        if want:
+            return {"ok": True, "status": st}
+        # Nothing left to re-register - a debloated image (Ghost Spectre and
+        # friends) deletes the payload, and Windows cannot rebuild it.
+        return {"ok": False, "status": st, "stripped": True,
+                "message": ("Windows has no copy of these packages left to "
+                            "restore - this image had them removed, not just "
+                            "uninstalled. They have to come back from a "
+                            "Microsoft source; the button below opens the "
+                            "official page.")}
 
     @traced
     def open_url(self, url):
