@@ -7,6 +7,7 @@ build used - only the presentation layer changed.
 
 import ctypes
 import functools
+import re
 import os
 import json
 import sys
@@ -115,6 +116,13 @@ class Api:
         self._nv_scanning = False
         self._running = {}          # key -> Popen, for cancellable tasks
         self._busy = set()          # guards double-clicks
+        # Long-running jobs (SFC, DISM, disk check, driver download, boot,
+        # restore point). Kept server-side so the UI can leave the tab and
+        # come back to find the job still running with its live progress.
+        self._jobs = {}             # key -> job dict
+        self._jobslock = threading.Lock()
+        self._snapshot = None       # applied-state of each tweak at first open
+        self._dl_cancel = set()     # driver-download job keys asked to cancel
 
     # NOTE: deliberately a private method, NOT a @property.
     #
@@ -264,10 +272,20 @@ class Api:
         return payload
 
     def _background_start(self):
+        # The NVIDIA read shells out to Profile Inspector and is the slowest
+        # thing at startup, so give it its own thread right away - it must not
+        # sit behind the tweak scan, specs and every sysinfo section. Backup
+        # then warm run in sequence on this thread so the two -exportCustomized
+        # calls never overlap.
+        threading.Thread(target=self._nv_startup, daemon=True).start()
         try:
             tweaks = self.scan()
             cats = [c for c in CATEGORY_ORDER
                     if any(t["category"] == c for t in tweaks)]
+            # Snapshot how the machine was when the app opened - this is what
+            # "Revert all" puts things back to. Captured once.
+            if self._snapshot is None:
+                self._snapshot = {t["key"]: bool(t["applied"]) for t in tweaks}
             self._emit("scanned", {"tweaks": tweaks, "categories": cats})
         except Exception:
             log("background scan FAILED\n" + traceback.format_exc())
@@ -275,10 +293,10 @@ class Api:
             self._emit("specs", self.specs())
         except Exception:
             pass
-        # One-time NVIDIA settings backup (per machine), used as the revert
-        # target. No-op unless there's an NVIDIA GPU + the Inspector, and it
-        # never runs twice. Runs before the NVIDIA warm-up below so the two
-        # never fire an -exportCustomized at the same time.
+        self._prefetch()
+        self._emit("prefetched", {})
+
+    def _nv_startup(self):
         try:
             has_nv = any(v == "NVIDIA" for _, _, v in drivers.detect_gpus())
             res = nvprofile.ensure_backup(has_nv)
@@ -286,8 +304,10 @@ class Api:
             self._emit("nvbackup", res)
         except Exception:
             log("nv backup FAILED\n" + traceback.format_exc())
-        self._prefetch()
-        self._emit("prefetched", {})
+        try:
+            self._warm_nvidia()
+        except Exception:
+            log("nv warm FAILED\n" + traceback.format_exc())
 
     @traced
     def toggle(self, key, want):
@@ -317,6 +337,59 @@ class Api:
                                 "need a reboot, or another policy is "
                                 "enforcing it.")}
         return {"ok": True, "applied": want}
+
+    # Tweaks excluded from "Apply recommended": the two that break kernel
+    # anti-cheat / weaken security, plus GameDVR and Fullscreen Optimizations
+    # (they interfere with the Xbox app, Game Bar overlay and some controllers).
+    RECOMMENDED_SKIP = {"mem_integrity", "mitigations", "gamedvr", "fse"}
+
+    @traced
+    def bulk_tweaks(self, mode):
+        """Apply/revert many tweaks at once. mode:
+             all         - apply every tweak
+             recommended - apply every tweak except the risky/compat ones
+             revert      - back to how the machine was when the app opened
+             defaults    - Windows-stock: turn every tweak off
+        Returns the resulting applied-state map so the UI can repaint at once.
+        """
+        tweaks = self._tweaks()
+        targets = {}
+        if mode in ("all", "recommended"):
+            for key, t in tweaks.items():
+                if mode == "recommended" and key in self.RECOMMENDED_SKIP:
+                    continue
+                targets[key] = True
+        elif mode == "revert":
+            snap = self._snapshot or {}
+            for key in tweaks:
+                targets[key] = bool(snap.get(key, False))
+        elif mode == "defaults":
+            for key in tweaks:
+                targets[key] = False
+        else:
+            return {"ok": False, "message": "Unknown bulk mode."}
+
+        for key, want in targets.items():
+            t = tweaks.get(key)
+            if not t:
+                continue
+            try:
+                if want:
+                    t.apply(); self._applied.add(key)
+                else:
+                    t.revert(); self._applied.discard(key)
+            except Exception:
+                log(f"bulk {mode}: {key} failed\n" + traceback.format_exc())
+
+        applied = {}
+        for key, t in tweaks.items():
+            try:
+                applied[key] = bool(t.check())
+            except Exception:
+                applied[key] = key in self._applied
+        return {"ok": True, "mode": mode, "applied": applied,
+                "skipped": sorted(self.RECOMMENDED_SKIP)
+                           if mode == "recommended" else []}
 
     @traced
     def bulk(self, category, want):
@@ -404,12 +477,6 @@ class Api:
             self.bios_info()
         except Exception:
             pass
-        # NVIDIA profile page: the settings read shells out to the Inspector,
-        # so warm it here and serve the tab from cache when it is opened.
-        try:
-            self._warm_nvidia()
-        except Exception:
-            pass
         log("prefetch complete")
 
     def _warm_nvidia(self):
@@ -461,9 +528,14 @@ class Api:
     def _nv_status(self):
         st = nvprofile.status()
         try:
-            st["nvidia"] = any(v == "NVIDIA" for _, _, v in drivers.detect_gpus())
+            gpus = drivers.detect_gpus()
+            st["nvidia"] = any(v == "NVIDIA" for _, _, v in gpus)
+            # Name the non-NVIDIA card so the block can say what it found.
+            non_nv = [n for n, _i, v in gpus if v != "NVIDIA" and n]
+            st["gpu_name"] = non_nv[0] if (non_nv and not st["nvidia"]) else None
         except Exception:
             st["nvidia"] = True
+            st["gpu_name"] = None
         return st
 
     def _nv_drop_cache(self):
@@ -564,15 +636,46 @@ class Api:
         return {"gpus": out}
 
     @traced
-    def download_driver(self, url, vendor):
+    def download_driver(self, url, vendor, idx=0):
+        """Start a driver download as a job. Returns immediately; the UI
+        follows it through the job registry."""
+        jobkey = "driver:" + str(idx)
+        with self._jobslock:
+            existing = self._jobs.get(jobkey)
+            if existing and existing.get("state") == "running":
+                return {"started": False, "job": dict(existing)}
+        self._job_new(jobkey, "driver", "Driver download", indeterminate=False)
+        self._dl_cancel.discard(jobkey)
+        threading.Thread(target=self._run_download,
+                         args=(url, vendor, jobkey), daemon=True).start()
+        return {"started": True, "key": jobkey}
+
+    def _run_download(self, url, vendor, jobkey):
         try:
             path = drivers.download(
                 url, vendor,
-                lambda f: self._emit("dlprogress", {"frac": f}))
+                progress=lambda f: self._job_update(jobkey, throttle=0.2,
+                    progress=f, line=f"{int(f*100)}%"),
+                should_cancel=lambda: jobkey in self._dl_cancel)
             drivers.reveal(path)
-            return {"ok": True, "path": path}
+            self._job_finish(jobkey, "done",
+                             result={"ok": True, "path": path},
+                             line="Saved to Downloads")
+        except drivers.Cancelled:
+            self._job_finish(jobkey, "cancelled",
+                             result={"ok": False, "cancelled": True},
+                             line="Cancelled")
         except Exception as e:
-            return {"ok": False, "error": str(e)}
+            self._job_finish(jobkey, "error",
+                             result={"ok": False, "error": str(e)},
+                             line="Failed")
+        finally:
+            self._dl_cancel.discard(jobkey)
+
+    @traced
+    def cancel_download(self, jobkey):
+        self._dl_cancel.add(jobkey)
+        return {"ok": True}
 
     # ---------------------------------------------------------- defender
     _DEF_READ = r"""
@@ -709,6 +812,76 @@ reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\No
     def open_url(self, url):
         import webbrowser
         webbrowser.open(url)
+        return True
+
+    # ----------------------------------------------------------- jobs
+    # A job is any action that takes a while: SFC/DISM/disk check, a driver
+    # download, the boot optimizer, a restore point. The registry lets the UI
+    # walk away and come back to a still-running job instead of a fresh "Run"
+    # button. Every job dict carries: key, kind, label, state
+    # (running/done/error/cancelled), an optional 0..1 progress, a short
+    # status line and, when finished, a result payload.
+
+    def _job_new(self, key, kind, label, indeterminate=True):
+        job = {"key": key, "kind": kind, "label": label, "state": "running",
+               "progress": None if indeterminate else 0.0,
+               "line": "", "result": None, "cancellable": True}
+        with self._jobslock:
+            self._jobs[key] = job
+        self._emit("job", job)
+        return job
+
+    def _job_update(self, key, throttle=0.0, **fields):
+        """Update a job. throttle caps how often the page is told - SFC emits
+        a progress line several times a second and every emit costs a run_js
+        hop on the GUI thread."""
+        with self._jobslock:
+            job = self._jobs.get(key)
+            if not job:
+                return
+            job.update(fields)
+            now = time.time()
+            if throttle and (now - job.get("_sent", 0.0)) < throttle:
+                return
+            job["_sent"] = now
+            snap = {k: v for k, v in job.items() if k != "_sent"}
+        self._emit("job", snap)
+
+    def _job_finish(self, key, state, result=None, line=""):
+        with self._jobslock:
+            job = self._jobs.get(key)
+            if not job:
+                return
+            job["state"] = state
+            job["result"] = result
+            job["line"] = line
+            job["progress"] = 1.0
+            snap = dict(job)
+        log(f"job {key}: {state} {snap.get('result')}")
+        self._emit("job", snap)
+
+    @traced
+    def active_jobs(self):
+        """Every job the UI should still be showing (running, or finished but
+        not yet acknowledged). Called when a page mounts so it can restore the
+        running state after a tab switch."""
+        with self._jobslock:
+            return [{k: v for k, v in j.items() if k != "_sent"}
+                    for j in self._jobs.values()]
+
+    @traced
+    def job_state(self, key):
+        with self._jobslock:
+            j = self._jobs.get(key)
+            return dict(j) if j else None
+
+    @traced
+    def ack_job(self, key):
+        """The UI has shown the finished result - drop it from the registry."""
+        with self._jobslock:
+            j = self._jobs.get(key)
+            if j and j.get("state") != "running":
+                self._jobs.pop(key, None)
         return True
 
     # ----------------------------------------------------------- tools
@@ -863,38 +1036,112 @@ reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\No
             return "clean", "Finished with no errors reported."
         return "problem", f"Finished with exit code {rc}."
 
+    _RES_LABELS = {"sfc": "System File Checker",
+                   "dism": "Windows Image Repair",
+                   "chkdsk": "Disk Check"}
+
     @traced
     def resource_task(self, key):
+        """Start a repair scan as a background job. Returns immediately; the
+        UI follows it through the job registry / 'job' events."""
+        jobkey = "res:" + key
+        with self._jobslock:
+            existing = self._jobs.get(jobkey)
+            if existing and existing.get("state") == "running":
+                return {"started": False, "job": dict(existing)}
+        self._job_new(jobkey, "resource",
+                      self._RES_LABELS.get(key, key), indeterminate=False)
+        threading.Thread(target=self._run_resource, args=(key, jobkey),
+                         daemon=True).start()
+        return {"started": True, "key": jobkey}
+
+    def _run_resource(self, key, jobkey):
+        """Runs on a worker thread. EVERY exit path must finish the job with a
+        real state + message, and log what happened - a silent thread here is
+        what made the page show a bare 'Finished.' with no explanation."""
         import subprocess
         from tweaks_engine import CREATE_NO_WINDOW
-        if key in self._running:
-            return {"ok": False, "state": "busy",
-                    "message": "That check is already running."}
         collected = []
-        cmd = self._res_cmds()[key]
-        popen_kw = dict(stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                        stdin=subprocess.DEVNULL, text=True, bufsize=1,
-                        encoding="utf-8", errors="replace",
-                        creationflags=CREATE_NO_WINDOW)
+        proc = None
+        rc = None
         try:
+            if not is_admin():
+                # sfc / dism / chkdsk all refuse to do anything unelevated and
+                # exit within a second. Say so instead of reporting a result.
+                self._job_finish(jobkey, "error", result={
+                    "ok": False, "state": "problem",
+                    "message": ("This scan needs administrator rights and the "
+                                "app is not elevated. Close it and reopen with "
+                                "Run as administrator.")})
+                log(f"resource {key}: refused, not elevated")
+                return
+
+            cmd = self._res_cmds()[key]
+            # These tools write UTF-16 to a redirected pipe, so decode bytes
+            # ourselves rather than letting Python assume UTF-8 - reading them
+            # as UTF-8 produced NUL-riddled junk that matched none of the
+            # verdict phrases, so every scan came back with a generic result.
+            popen_kw = dict(stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            stdin=subprocess.DEVNULL,
+                            creationflags=CREATE_NO_WINDOW)
+            log(f"resource {key}: spawning {cmd}")
             try:
                 proc = subprocess.Popen(cmd, **popen_kw)
             except OSError as e:
                 if getattr(e, "winerror", None) != 5:
                     raise
-                # Some AV / policy setups refuse a direct CreateProcess from a
-                # packed exe. Going through cmd.exe gets past that.
                 log(f"resource {key}: direct spawn denied, retrying via cmd.exe")
                 proc = subprocess.Popen(
                     [self._sys32("cmd.exe"), "/c"] + cmd, **popen_kw)
+
             self._running[key] = proc
-            for line in proc.stdout:
-                line = line.strip()
-                if line:
-                    collected.append(line)
-                    self._emit("resline", {"key": key, "text": line[:160]})
+            # Decode FIRST, split lines second. Splitting the raw bytes on
+            # b"\r" is wrong for UTF-16LE, where a newline is 0D 00 - the
+            # orphaned 00 shifts every later line by one byte and the text
+            # comes out as CJK gibberish.
+            raw = b""            # undecoded bytes (may end mid-character)
+            text_buf = ""        # decoded text not yet split into lines
+            enc = None
+            while True:
+                chunk = proc.stdout.read(4096)
+                if not chunk:
+                    break
+                raw += chunk
+                if enc is None:
+                    enc = self._sniff_encoding(raw)
+                    if enc is None and len(raw) < 64:
+                        continue          # not enough to tell yet
+                    enc = enc or "cp1252"
+                if enc == "utf-16-le":
+                    usable = len(raw) - (len(raw) % 2)   # whole code units only
+                else:
+                    usable = len(raw)
+                if usable:
+                    text_buf += raw[:usable].decode(enc, "replace")
+                    raw = raw[usable:]
+                # Now split on real newlines in the decoded text.
+                parts = re.split(r"[\r\n]+", text_buf)
+                text_buf = parts.pop()          # keep the incomplete tail
+                for part in parts:
+                    part = part.strip("\x00 \t")
+                    if not part:
+                        continue
+                    collected.append(part)
+                    # These tools report their own percentage ("Verification
+                    # 21% complete.", DISM's [====  30.0% ====]) - use it for a
+                    # real progress bar instead of a bar that just animates.
+                    pct = self._parse_percent(part)
+                    fields = {"line": part[:160]}
+                    if pct is not None:
+                        fields["progress"] = pct
+                    self._job_update(jobkey, throttle=0.25, **fields)
+            leftover = (text_buf + raw.decode(enc or "cp1252", "replace")
+                        ).strip("\x00 \t\r\n")
+            if leftover:
+                collected.append(leftover)
             proc.wait()
             rc = proc.returncode
+            log(f"resource {key}: exit {rc}, {len(collected)} lines")
         except Exception as e:
             self._running.pop(key, None)
             msg = str(e)
@@ -902,18 +1149,67 @@ reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\No
                 msg = ("Windows refused to start the tool (Access denied). "
                        "Usually antivirus blocking it - "
                        f"{'the app IS elevated' if is_admin() else 'the app is NOT running as admin'}.")
-            return {"ok": False, "state": "problem", "message": msg}
+            log(f"resource {key} FAILED\n" + traceback.format_exc())
+            self._job_finish(jobkey, "error",
+                             result={"ok": False, "state": "problem",
+                                     "message": msg or "The scan could not run."})
+            return
 
         cancelled = getattr(proc, "_tl_cancelled", False)
         self._running.pop(key, None)
-        blob = " ".join(collected[-40:])
-        state, message = self._verdict(key, blob, rc, cancelled)
-        return {"ok": state in ("clean", "fixed"), "state": state,
-                "message": message}
+        blob = " ".join(collected[-60:])
+        try:
+            state, message = self._verdict(key, blob, rc, cancelled)
+        except Exception:
+            log(f"resource {key}: verdict failed\n" + traceback.format_exc())
+            state, message = "problem", f"Finished with exit code {rc}."
+        if not message:
+            message = f"Finished with exit code {rc}."
+        log(f"resource {key}: verdict {state} - {message}")
+        self._job_finish(jobkey, "cancelled" if cancelled else "done",
+                         result={"ok": state in ("clean", "fixed"),
+                                 "state": state, "message": message})
+
+    _PCT = re.compile(r"(\d{1,3}(?:\.\d+)?)\s*%")
+
+    @classmethod
+    def _parse_percent(cls, line):
+        """0..1 progress out of a tool's own output line, or None."""
+        m = cls._PCT.search(line)
+        if not m:
+            return None
+        try:
+            val = float(m.group(1))
+        except ValueError:
+            return None
+        if 0.0 <= val <= 100.0:
+            return val / 100.0
+        return None
+
+    @staticmethod
+    def _sniff_encoding(raw):
+        """Which codec this console tool is using. sfc.exe emits UTF-16LE down
+        a pipe; dism and chkdsk emit the ANSI codepage. Returns None when
+        there is not enough evidence yet."""
+        if raw.startswith(b"\xff\xfe"):
+            return "utf-16-le"
+        head = raw[:256]
+        if not head:
+            return None
+        # UTF-16LE ASCII text puts a NUL in every odd position.
+        odd_nuls = sum(1 for i in range(1, len(head), 2) if head[i] == 0)
+        odd_total = len(range(1, len(head), 2))
+        if odd_total and odd_nuls / odd_total > 0.8:
+            return "utf-16-le"
+        if b"\x00" not in head:
+            return "cp1252"
+        return None
 
     @traced
     def cancel_task(self, key):
-        proc = self._running.get(key)
+        # Accept either the raw key ("sfc") or the job key ("res:sfc").
+        raw = key.split(":", 1)[1] if key.startswith("res:") else key
+        proc = self._running.get(raw)
         if not proc:
             return {"ok": False}
         try:
@@ -924,7 +1220,7 @@ reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\No
             except Exception:
                 proc.kill()
         except Exception as e:
-            log(f"cancel {key}: {e}")
+            log(f"cancel {raw}: {e}")
         return {"ok": True}
 
     @traced

@@ -11,9 +11,11 @@ hand-written file.
 """
 
 import os
+import re
 import glob
 import shutil
 import subprocess
+import threading
 
 CREATE_NO_WINDOW = 0x08000000
 
@@ -220,29 +222,99 @@ def apply_profile(on):
 
 # Human-readable view of what the bundled profile applies. Only the settings
 # whose meaning is well-established are shown, so nothing misleading appears.
-NV_FRIENDLY = {
-    "274197361": ("Power Management Mode",
-                  {"0": "Normal", "1": "Prefer Maximum Performance",
-                   "2": "Optimal Power"}),
-    "13510289":  ("Texture Filtering – Quality",
-                  {"16": "Performance", "20": "High Performance",
-                   "21": "Quality", "22": "High Quality"}),
-    "15151633":  ("Texture Filtering – Aniso Sample Optimization",
-                  {"0": "Off", "1": "On"}),
-    "8102046":   ("Max Pre-Rendered Frames", None),
-    "277041152": ("Low Latency Mode",
-                  {"0": "Off", "1": "On", "2": "Ultra"}),
-    "11041231":  ("Vertical Sync",
-                  {"138504007": "Off", "96486874": "On",
-                   "1199754633": "Adaptive", "60925292": "Use 3D app setting"}),
-    "6600001":   ("Preferred Refresh Rate",
-                  {"0": "Application-controlled", "1": "Highest available"}),
-    "279476687": ("G-SYNC",
-                  {"1": "Fullscreen", "2": "Fullscreen & Windowed",
-                   "4": "Off / Fixed refresh"}),
+# Display names we prefer over the tool's internal ones. The VALUE labels are
+# never hardcoded - they come from the Inspector's own reference XMLs at
+# runtime (see _value_names), because hand-written maps went stale and showed
+# raw numbers like "G-SYNC 0" instead of what the setting actually is.
+NV_LABELS = {
+    "274197361": "Power Management Mode",
+    "277041152": "Low Latency Mode",
+    "11041231":  "Vertical Sync",
+    "5912412":   "V-Sync Tear Control",
+    "6600001":   "Preferred Refresh Rate",
+    "279476687": "G-SYNC",
+    "294973784": "G-SYNC Mode",
+    "13510289":  "Texture Filtering - Quality",
+    "15151633":  "Texture Filtering - Aniso Sample Optimization",
+    "8102046":   "Max Pre-Rendered Frames",
 }
-NV_ORDER = ["274197361", "277041152", "11041231", "6600001", "279476687",
-            "13510289", "15151633", "8102046"]
+NV_ORDER = ["274197361", "277041152", "11041231", "5912412", "6600001",
+            "279476687", "294973784", "13510289", "15151633", "8102046"]
+
+# A few values read better in plain English than in the tool's own wording.
+NV_VALUE_OVERRIDES = {
+    "279476687": {"0": "On (allowed)", "1": "Force off", "2": "Off (disallowed)",
+                  "3": "Ultra Low Motion Blur", "4": "Fixed refresh rate"},
+    "294973784": {"0": "Off", "1": "Fullscreen only", "2": "Fullscreen & windowed"},
+    "6600001":   {"0": "Application-controlled", "1": "Highest available"},
+    "11041231":  {"138504007": "Off", "1199655232": "On",
+                  "1620202130": "Application-controlled"},
+    "274197361": {"0": "Normal", "1": "Prefer maximum performance",
+                  "5": "Optimal power"},
+}
+
+_REF_FILES = ("Reference.xml", "CustomSettingNames.xml")
+_ref_cache = None
+_ref_lock = threading.Lock()
+
+
+def _load_reference():
+    """SettingID -> (name, {value: label}) straight from the Inspector's XMLs.
+
+    These ship beside the tool, define every setting the driver exposes, and
+    are the same source the Inspector's own UI reads, so the labels we show
+    always match what the user sees in Profile Inspector.
+    """
+    global _ref_cache
+    with _ref_lock:
+        if _ref_cache is not None:
+            return _ref_cache
+    out = {}
+    tool = find_tool()
+    tdir = os.path.dirname(tool) if tool else None
+    for fname in _REF_FILES:
+        path = os.path.join(tdir, fname) if tdir else None
+        if not path or not os.path.exists(path):
+            continue
+        try:
+            raw = open(path, "rb").read().decode("utf-8", "replace")
+        except Exception:
+            continue
+        for block in re.findall(r"<CustomSetting>(.*?)</CustomSetting>", raw, re.S):
+            m = re.search(r"<HexSettingID>0x([0-9A-Fa-f]+)</HexSettingID>", block)
+            if not m:
+                continue
+            sid = str(int(m.group(1), 16))
+            if sid in out:               # first file wins
+                continue
+            nm = re.search(r"<UserfriendlyName>([^<]*)</UserfriendlyName>", block)
+            values = {}
+            for label, hexval in re.findall(
+                    r"<UserfriendlyName>([^<]*)</UserfriendlyName>\s*"
+                    r"<HexValue>0x([0-9A-Fa-f]+)</HexValue>", block):
+                values[str(int(hexval, 16))] = label.strip()
+            out[sid] = ((nm.group(1).strip() if nm else sid), values)
+    with _ref_lock:
+        _ref_cache = out
+    return out
+
+
+def _friendly(sid, raw):
+    """(row label, value label) for one setting."""
+    ref = _load_reference()
+    ref_name, values = ref.get(sid, (None, {}))
+    label = NV_LABELS.get(sid) or ref_name or sid
+    key = str(raw).strip()
+    text = NV_VALUE_OVERRIDES.get(sid, {}).get(key)
+    if text is not None:
+        return label, text
+    text = values.get(key)
+    if text is None:
+        text = str(raw)
+    else:
+        # The XMLs spell some values as sentences; trim to the useful half.
+        text = text.split(" - ")[0].strip()
+    return label, text
 
 
 GLOBAL_NAMES = ("base profile", "_global_driver_profile", "global")
@@ -319,9 +391,6 @@ def current_values():
     return (True, vals)
 
 
-def _friendly(sid, raw):
-    label, vmap = NV_FRIENDLY[sid]
-    return label, (raw if vmap is None else vmap.get(raw, raw))
 
 
 def compare_to_profile(ran, cur):
@@ -386,7 +455,7 @@ def profile_settings(ran=None, cur=None):
 
     out = []
     for sid in NV_ORDER:
-        if sid not in target or sid not in NV_FRIENDLY:
+        if sid not in target:
             continue
         label, target_text = _friendly(sid, target[sid])
         if not ran:

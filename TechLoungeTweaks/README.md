@@ -6,7 +6,8 @@ turn Defender on or off, test your connection for bufferbloat, clean up junk
 files and check your GPU drivers — all from one window.
 
 Every page reads the **live** system state, so the app shows what is actually
-set on your machine rather than assuming. Every toggle reverts.
+set on your machine rather than assuming. Every toggle reverts, and one button
+on the dashboard does the lot.
 
 ![Overview](docs/home.png)
 
@@ -127,6 +128,22 @@ currently applied, and the toggle works both ways.
 | **Privacy** | Telemetry, activity history, advertising ID, error reporting, typing/speech/ink collection |
 | **Explorer & UI** | Classic context menu, Bing in Start, snap layouts, lock screen, widgets, ads |
 
+### One-click setup
+
+Four buttons on the dashboard, for when you do not want to work through nine
+categories by hand:
+
+| Button | What it does |
+|---|---|
+| **Apply Recommended** | Every safe tweak, plus the NVIDIA profile and Defender off. Skips the four that cause trouble: Memory Integrity and CPU Mitigations (kernel anti-cheat / security), GameDVR and Fullscreen Optimizations (Xbox app, Game Bar overlay and some controllers). |
+| **Apply All** | Everything, including the risky ones, plus the NVIDIA profile and Defender off. |
+| **Revert All** | Puts every tweak back to exactly how this PC was the moment you first opened the app. |
+| **Windows Defaults** | Turns every tweak off, restores NVIDIA settings and turns Defender back on — Windows as it ships. |
+
+Both apply buttons check for an NVIDIA GPU first and quietly skip the driver
+profile if there isn't one. Every switch flips the moment you click, with the
+registry write happening behind it, so nothing ever looks frozen mid-apply.
+
 ### NVIDIA Profile
 
 ![NVIDIA Profile](docs/nvidia.png)
@@ -158,6 +175,12 @@ toggle that quietly lies. The read is warmed on startup, so the page is
 already filled in by the time you click the tab.
 
 Only NVIDIA driver settings are touched — nothing else on the PC.
+
+**On a machine without an NVIDIA card** the page seals itself and names the GPU
+it actually found, so nobody applies a driver profile that cannot do anything.
+Every other tab keeps working normally.
+
+![No NVIDIA GPU](docs/nvidia-amd.png)
 
 ### Windows Defender
 
@@ -212,6 +235,20 @@ opens, so switching tabs is instant.
 - **BIOS Info** — firmware version, boot mode, Secure Boot, TPM,
   virtualization and memory speed.
 
+### While something is running
+
+![A scan in progress](docs/resources.png)
+
+Scans and downloads take minutes, so the app tracks them properly rather than
+freezing a button. While one is going, the **Run** / **Download** button is
+replaced by **Cancel** and a progress bar showing the tool's own real
+percentage, with its current output line underneath.
+
+The job lives in the app itself, not the page, so you can switch to another tab
+and come back to find it still running at the right progress. It will not let
+you start a second copy of something already going, and cancelling a download
+removes the half-finished file.
+
 ---
 
 ## Themes
@@ -245,6 +282,9 @@ Change those settings in the firmware itself at POST.
 
 ## Undoing things
 
+- Everything at once — **Revert All** on the dashboard puts the machine back to
+  how it was when you first opened the app, or **Windows Defaults** puts it back
+  to stock Windows.
 - Any individual tweak — toggle it off.
 - A whole category — **Revert All** at the top of the page.
 - NVIDIA profile — toggle it off; your own pre-profile settings come back.

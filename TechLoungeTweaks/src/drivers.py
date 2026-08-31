@@ -147,8 +147,15 @@ def is_official(url, vendor):
         host == d or host.endswith("." + d) for d in allowed)
 
 
-def download(url, vendor, progress=None):
-    """Download an installer into Downloads. Returns the path, or raises."""
+class Cancelled(Exception):
+    pass
+
+
+def download(url, vendor, progress=None, should_cancel=None):
+    """Download an installer into Downloads. Returns the path, or raises.
+
+    progress(frac) is called as it goes; should_cancel() is polled and, if it
+    returns True, the partial file is removed and Cancelled is raised."""
     if not is_official(url, vendor):
         raise ValueError("Refusing to download - not a %s URL" % vendor)
 
@@ -163,6 +170,13 @@ def download(url, vendor, progress=None):
         got = 0
         with open(dest, "wb") as fh:
             while True:
+                if should_cancel and should_cancel():
+                    fh.close()
+                    try:
+                        os.remove(dest)
+                    except Exception:
+                        pass
+                    raise Cancelled()
                 chunk = resp.read(1 << 20)
                 if not chunk:
                     break

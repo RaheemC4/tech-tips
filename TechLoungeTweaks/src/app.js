@@ -164,7 +164,7 @@ const ICONS = {
 const svg = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
   stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICONS[k]||ICONS.cpu}</svg>`;
 
-let STATE = { tweaks: [], cats: [], page: 'Home', specs: {}, admin: true };
+let STATE = { tweaks: [], cats: [], page: 'Home', specs: {}, admin: true, snapshot: null };
 
 /* ---------- nav ---------- */
 const NAV = [
@@ -311,9 +311,107 @@ function renderTweaks(cat) {
 
 async function applyAll(on) {
   const items = STATE.tweaks.filter(t => t.category === STATE.page);
-  await api('bulk', STATE.page, on);
-  items.forEach(t => t.applied = on);
+  items.forEach(t => t.applied = on);      // flip first, write behind
   renderTweaks(STATE.page); refreshCounts();
+  await api('bulk', STATE.page, on);
+}
+
+/* ---------- dashboard one-click setup ---------- */
+// Tweaks "Apply recommended" leaves off - kept in sync with the server's
+// RECOMMENDED_SKIP: the two risky ones plus GameDVR and Fullscreen Optimizations.
+const RECOMMENDED_SKIP = ['mem_integrity', 'mitigations', 'gamedvr', 'fse'];
+
+function wireBulk() {
+  document.querySelectorAll('[data-bulk]').forEach(b => {
+    b.onclick = () => runBulk(b.dataset.bulk);
+  });
+}
+
+function bulkTargets(mode) {
+  if (mode === 'all') return () => true;
+  if (mode === 'recommended') return t => !RECOMMENDED_SKIP.includes(t.key);
+  if (mode === 'defaults') return () => false;
+  if (mode === 'revert') {
+    const snap = STATE.snapshot || {};
+    return t => !!snap[t.key];
+  }
+  return () => false;
+}
+
+let BULK_BUSY = false;
+async function runBulk(mode) {
+  if (BULK_BUSY) return;
+  BULK_BUSY = true;
+  const btns = document.querySelectorAll('[data-bulk]');
+  btns.forEach(b => b.disabled = true);
+  const status = H('bulkStatus');
+
+  // 1) Flip every affected toggle immediately so the UI never looks frozen.
+  const want = bulkTargets(mode);
+  STATE.tweaks.forEach(t => { t.applied = want(t); });
+  refreshCounts();
+  if (STATE.cats.includes(STATE.page)) renderTweaks(STATE.page);
+
+  const setStatus = (txt, spin) => {
+    if (!status) return;
+    status.hidden = false;
+    status.innerHTML = (spin ? '<span class="spin"></span>' : '') +
+      '<span>' + txt + '</span>';
+  };
+  const LABEL = {all: 'Applying every tweak', recommended: 'Applying the recommended tweaks',
+                 revert: 'Reverting to how the PC was', defaults: 'Restoring Windows defaults'}[mode];
+  setStatus(LABEL + '…', true);
+
+  // 2) Write the tweaks.
+  const r = await api('bulk_tweaks', mode);
+  if (r && r.applied) {
+    STATE.tweaks.forEach(t => {
+      if (t.key in r.applied) t.applied = r.applied[t.key];
+    });
+    refreshCounts();
+    if (STATE.cats.includes(STATE.page)) renderTweaks(STATE.page);
+  }
+
+  // 3) Defender + NVIDIA, per mode.
+  const extras = [];
+  const wantDefenderOff = (mode === 'all' || mode === 'recommended');
+  const wantDefenderOn  = (mode === 'defaults');
+  const wantNvidiaOn    = (mode === 'all' || mode === 'recommended');
+  const wantNvidiaOff   = (mode === 'defaults' || mode === 'revert');
+
+  // Only touch NVIDIA when this PC actually has an NVIDIA GPU + the tool.
+  let nv = null;
+  try { nv = await api('nvprofile_status'); } catch (e) {}
+  const nvUsable = nv && nv.nvidia && nv.tool && nv.profile;
+
+  if (wantNvidiaOn && nvUsable) {
+    setStatus(LABEL + ' — applying NVIDIA profile…', true);
+    const nr = await api('nvprofile_set', true);
+    extras.push(nr && nr.ok !== false ? 'NVIDIA profile applied'
+                                      : 'NVIDIA profile could not apply');
+  } else if (wantNvidiaOn && nv && !nv.nvidia) {
+    extras.push('No NVIDIA GPU — profile skipped');
+  } else if (wantNvidiaOff && nvUsable) {
+    setStatus(LABEL + ' — restoring NVIDIA settings…', true);
+    await api('nvprofile_set', false);
+    extras.push('NVIDIA settings restored');
+  }
+
+  if (wantDefenderOff || wantDefenderOn) {
+    setStatus(LABEL + ' — ' + (wantDefenderOff ? 'turning Defender off' : 'turning Defender on') + '…', true);
+    const dr = await api('defender_set', wantDefenderOn);
+    if (dr && dr.tamper && wantDefenderOff)
+      extras.push('Defender needs one manual step — open the Defender tab to finish');
+    else
+      extras.push(wantDefenderOff ? 'Defender turned off' : 'Defender turned on');
+  }
+
+  const done = {all: 'Applied everything.', recommended: 'Recommended tweaks applied.',
+                revert: 'Reverted to your original setup.', defaults: 'Windows defaults restored.'}[mode];
+  setStatus(done + (extras.length ? '  •  ' + extras.join('  •  ') : ''), false);
+
+  btns.forEach(b => b.disabled = false);
+  BULK_BUSY = false;
 }
 
 async function rescan() {
@@ -437,7 +535,7 @@ let boot = async function boot() {
     renderSpecs(info.specs || {});
   }
   buildNav(); show('Home'); refreshCounts(); wireTips(); wireTheme();
-  buildQuick();
+  buildQuick(); wireBulk();
   if (info && info.scanning) {
     H('scoreNote').textContent = 'Checking what is already applied…';
     renderSpecs({ Status: 'Reading hardware…' });
@@ -524,6 +622,9 @@ window.py_scanned = d => {
   const hadNone = STATE.tweaks.length === 0;
   STATE.tweaks = d.tweaks.map(t =>
     busy.has(t.key) ? { ...t, applied: prev.get(t.key) } : t);
+  // First real scan defines the "how it was" baseline for Revert All.
+  if (!STATE.snapshot)
+    STATE.snapshot = Object.fromEntries(d.tweaks.map(t => [t.key, !!t.applied]));
 
   // init() now returns an empty list so it can answer instantly, so this is
   // where the real tweaks (and the categories that actually have any) land.
@@ -533,12 +634,38 @@ window.py_scanned = d => {
     if (changed || hadNone) buildNav();
   }
   refreshCounts();
-  if (hadNone) buildQuick();
+  if (hadNone) { buildQuick(); wireBulk(); }
   if (STATE.cats.includes(STATE.page)) renderTweaks(STATE.page);
   if (STATE.page === 'Home') show('Home');
   if (STATE.page === 'Networking') pageNetworking();
 };
 window.py_specs = d => renderSpecs(d);
+
+/* ---------- long-running jobs (SFC, DISM, disk check, driver download) ------
+   Jobs live on the Python side, so leaving a tab and coming back finds the
+   job still running with its live progress instead of a fresh Run button.
+   Every job pushes 'job' events; each page registers a renderer by job key. */
+const JOBS = {};                 // key -> latest job snapshot
+const JOB_RENDERERS = {};        // key -> fn(job)
+
+window.py_job = job => {
+  if (!job || !job.key) return;
+  JOBS[job.key] = job;
+  const r = JOB_RENDERERS[job.key];
+  if (r) r(job);
+};
+
+async function restoreJobs() {
+  // Called when a page mounts: pull whatever is still running so the page can
+  // paint its in-progress state.
+  let list = [];
+  try { list = await api('active_jobs') || []; } catch (e) {}
+  list.forEach(j => {
+    JOBS[j.key] = j;
+    const r = JOB_RENDERERS[j.key];
+    if (r) r(j);
+  });
+}
 
 // The NVIDIA settings are read once in the background at startup, so the tab
 // opens instantly. If the user got there before the read finished, this fills
@@ -737,19 +864,47 @@ async function pageDrivers() {
         <span id="dlp${i}" style="color:var(--muted);font-size:11.5px"></span></div>
     </div>`;
   }).join('');
-  document.querySelectorAll('[data-dl]').forEach(b => b.onclick = async () => {
-    const g = d.gpus[+b.dataset.dl];
-    b.disabled = true; b.textContent = 'Downloading…';
-    const r = await api('download_driver', g.url, g.vendor);
-    b.disabled = false; b.textContent = 'Download Driver';
-    H('dlp' + b.dataset.dl).textContent =
-      r && r.ok ? 'Saved to Downloads' : 'Failed: ' + (r && r.error || '');
+  document.querySelectorAll('[data-dl]').forEach(b => {
+    const i = +b.dataset.dl;
+    const g = d.gpus[i];
+    const jobkey = 'driver:' + i;
+    const row = b.parentElement;              // the button row
+    // Give the row a progress bar + cancel button it can show while running.
+    const bar = document.createElement('div');
+    bar.className = 'jobbar'; bar.style.cssText = 'display:none;flex:1;max-width:220px';
+    bar.innerHTML = '<i></i>';
+    const cancel = document.createElement('button');
+    cancel.className = 'btn ghost'; cancel.textContent = 'Cancel';
+    cancel.style.display = 'none';
+    row.appendChild(bar); row.appendChild(cancel);
+
+    const paint = job => {
+      const running = job && job.state === 'running';
+      b.style.display = running ? 'none' : '';
+      cancel.style.display = running ? '' : 'none';
+      bar.style.display = running ? '' : 'none';
+      if (running) {
+        const p = (job.progress || 0) * 100;
+        bar.classList.toggle('indet', !job.progress);
+        bar.querySelector('i').style.width = p + '%';
+        H('dlp' + i).textContent = job.line || 'Downloading…';
+      } else if (job && job.result) {
+        const r = job.result;
+        H('dlp' + i).textContent = r.ok ? 'Saved to Downloads'
+          : (r.cancelled ? 'Cancelled' : 'Failed: ' + (r.error || ''));
+      }
+    };
+    JOB_RENDERERS[jobkey] = paint;
+    if (JOBS[jobkey]) paint(JOBS[jobkey]);
+
+    b.onclick = async () => {
+      paint({state: 'running', progress: 0, line: 'Starting…'});
+      await api('download_driver', g.url, g.vendor, i);
+    };
+    cancel.onclick = () => api('cancel_download', jobkey);
   });
+  restoreJobs();
 }
-window.py_dlprogress = d => {
-  const el = document.querySelector('[id^=dlp]');
-  if (el) el.textContent = Math.round(d.frac * 100) + '%';
-};
 
 /* ---------------- Boot Optimizer ---------------- */
 async function pageBoot() {
@@ -820,40 +975,69 @@ function pageRes() {
       <b style="font-size:15px">${t}</b>
       <p style="color:var(--muted);font-size:12px;margin-top:6px;line-height:1.6">${d}</p>
       <div id="res_${k}" style="color:var(--muted);font-size:11.5px;margin-top:10px"></div>
+      <div id="prog_${k}" class="jobbar" style="display:none"><i></i></div>
       <div id="verdict_${k}" style="margin-top:10px"></div>
       <div class="row" style="margin-top:12px">
         <button class="btn" data-res="${k}">Run</button>
         <button class="btn ghost" data-cancel="${k}" style="display:none">Cancel</button></div></div>`).join(''));
-  document.querySelectorAll('[data-cancel]').forEach(b =>
-    b.onclick = () => api('cancel_task', b.dataset.cancel));
-  document.querySelectorAll('[data-res]').forEach(b => b.onclick = async () => {
-    const k = b.dataset.res;
-    const cx = document.querySelector(`[data-cancel="${k}"]`);
-    b.disabled = true; b.textContent = 'Running…';
-    if (cx) cx.style.display = '';
-    H('verdict_' + k).innerHTML = '';
-    const r = await api('resource_task', k);
-    b.disabled = false; b.textContent = 'Run';
-    if (cx) cx.style.display = 'none';
-    H('res_' + k).textContent = '';
-    const st = (r && r.state) || 'problem';
-    const look = {
-      clean:   ['✓', 'var(--good)', 'rgba(61,220,151,.13)'],
-      fixed:   ['✓', 'var(--good)', 'rgba(61,220,151,.13)'],
-      problem: ['!', 'var(--bad)',  'rgba(255,93,108,.13)'],
-      cancelled:['—','var(--muted)','rgba(255,255,255,.06)'],
-      busy:    ['—','var(--warn)', 'rgba(255,190,61,.13)'],
-    }[st] || ['!', 'var(--bad)', 'rgba(255,93,108,.13)'];
-    H('verdict_' + k).innerHTML =
-      `<div style="display:flex;gap:10px;align-items:flex-start;padding:12px 14px;
-        border-radius:12px;background:${look[2]};color:${look[1]};font-size:12.5px;
-        line-height:1.55"><b style="font-size:14px">${look[0]}</b>
-        <span>${(r && r.message) || 'Finished.'}</span></div>`;
+
+  RES.forEach(([k]) => {
+    const jobkey = 'res:' + k;
+    const runBtn = document.querySelector(`[data-res="${k}"]`);
+    const cxBtn = document.querySelector(`[data-cancel="${k}"]`);
+
+    const paint = job => {
+      const running = job && job.state === 'running';
+      runBtn.style.display = running ? 'none' : '';
+      cxBtn.style.display = running ? '' : 'none';
+      const bar = H('prog_' + k);
+      if (bar) {
+        bar.style.display = running ? '' : 'none';
+        // Real percentage when the tool reports one, animated bar until then.
+        const hasPct = running && typeof job.progress === 'number' && job.progress > 0;
+        bar.classList.toggle('indet', running && !hasPct);
+        const fill = bar.querySelector('i');
+        if (fill) fill.style.width = hasPct ? (job.progress * 100) + '%' : '';
+      }
+      if (running) {
+        const pctTxt = (typeof job.progress === 'number' && job.progress > 0)
+          ? Math.round(job.progress * 100) + '%  ·  ' : '';
+        H('res_' + k).textContent = pctTxt + (job.line || 'Working…');
+        H('verdict_' + k).innerHTML = '';
+      } else if (job && job.result) {
+        H('res_' + k).textContent = '';
+        const r = job.result || {};
+        const st = r.state || (job.state === 'cancelled' ? 'cancelled' : 'problem');
+        const look = {
+          clean:   ['✓', 'var(--good)', 'rgba(61,220,151,.13)'],
+          fixed:   ['✓', 'var(--good)', 'rgba(61,220,151,.13)'],
+          problem: ['!', 'var(--bad)',  'rgba(255,93,108,.13)'],
+          cancelled:['—','var(--muted)','rgba(255,255,255,.06)'],
+        }[st] || ['!', 'var(--bad)', 'rgba(255,93,108,.13)'];
+        // Never fall back to a bare "Finished." - if the message is missing
+        // something went wrong upstream and the user needs to know that.
+        const msg = r.message || (st === 'cancelled' ? 'Cancelled before it finished.'
+          : 'The scan ended without reporting a result. Check TL-api.log next to the app.');
+        H('verdict_' + k).innerHTML =
+          `<div style="display:flex;gap:10px;align-items:flex-start;padding:12px 14px;
+            border-radius:12px;background:${look[2]};color:${look[1]};font-size:12.5px;
+            line-height:1.55"><b style="font-size:14px">${look[0]}</b>
+            <span>${msg}</span></div>`;
+      }
+    };
+    JOB_RENDERERS[jobkey] = paint;
+    if (JOBS[jobkey]) paint(JOBS[jobkey]);
+
+    runBtn.onclick = async () => {
+      H('verdict_' + k).innerHTML = '';
+      // Optimistically show the running state at once.
+      paint({state: 'running', line: 'Starting…'});
+      await api('resource_task', k);
+    };
+    cxBtn.onclick = () => api('cancel_task', jobkey);
   });
+  restoreJobs();
 }
-window.py_resline = d => {
-  const el = H('res_' + d.key); if (el) el.textContent = d.text;
-};
 
 /* ---------------- BIOS ---------------- */
 let BIOSCACHE = null;
@@ -1184,7 +1368,8 @@ const NV_LOGO = '<svg viewBox="0 0 48 48" width="34" height="34" fill="#fff">' +
 async function pageNvProfile() {
   pageShell('NVIDIA Profile', {crumb: 'System › NVIDIA Profile',
     text: 'One-tap NVIDIA driver profile — the same tuned global settings, applied for anyone.'},
-    `<div class="card" id="nvCard">
+    `<div id="nvWrap" style="position:relative">
+     <div class="card" id="nvCard">
        <div class="row" style="align-items:center;gap:16px">
          <div class="nvlogo">${NV_LOGO}</div>
          <div style="flex:1">
@@ -1202,6 +1387,8 @@ async function pageNvProfile() {
      <div class="card nvsettings" id="nvSettings" style="margin-top:15px">
        <h3>What this profile applies</h3>
        <div id="nvSettingsList" style="color:var(--muted);font-size:12.5px">Loading…</div>
+     </div>
+     <div id="nvBlock" hidden></div>
      </div>`);
   await refreshNvProfile();
   loadNvSettings();
@@ -1211,6 +1398,26 @@ async function refreshNvProfile() {
   const st = await api('nvprofile_status');
   if (!st) return;
   window.__nv = st;
+  // No NVIDIA GPU: seal the whole page behind a block the user can't click
+  // off. They can still switch tabs (the sidebar is outside this overlay).
+  const block = H('nvBlock');
+  if (block) {
+    if (st.nvidia === false) {
+      block.hidden = false;
+      block.innerHTML =
+        `<div class="nvblock-inner">
+           <div class="nvlogo" style="opacity:.9;margin-bottom:14px">${NV_LOGO}</div>
+           <h2 style="margin:0 0 8px;font-size:19px">This profile is for NVIDIA GPUs</h2>
+           <p style="color:var(--muted);font-size:13px;line-height:1.65;max-width:430px">
+             This PC's graphics are ${st.gpu_name ? '<b>' + st.gpu_name + '</b>'
+               : 'an AMD / integrated GPU'}, not an NVIDIA card, so there is no NVIDIA
+             driver profile to apply here. Everything else in the app works as normal —
+             just pick another tab on the left.</p>
+         </div>`;
+      return;
+    }
+    block.hidden = true;
+  }
   const tgl = H('nvTgl');
   const ready = st.tool && st.profile;
   if (tgl) {

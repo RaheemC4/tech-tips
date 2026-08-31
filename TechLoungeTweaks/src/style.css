@@ -402,3 +402,60 @@ body.dragging #spot { transition: none !important; }
 .nvrow .nvcur.chg { color:var(--faint); text-decoration:line-through; opacity:.75; }
 .nvrow .nvarrow { color:var(--accent); margin:0 12px; font-size:14px; width:auto; }
 .nvrow .nvval { width:190px; text-align:right; }
+
+/* ---------- dashboard one-click setup ---------- */
+.bulkgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+@media (max-width: 1050px) { .bulkgrid { grid-template-columns: 1fr; } }
+.bulkbtn {
+  text-align: left; padding: 15px 17px; border-radius: 14px; cursor: pointer;
+  background: rgba(255,255,255,.035); border: 1px solid var(--stroke);
+  color: var(--text); transition: border-color .16s var(--ease),
+    background .16s var(--ease), transform .12s var(--ease);
+  display: flex; flex-direction: column; gap: 5px;
+}
+.bulkbtn:hover { border-color: var(--accent); background: rgba(255,255,255,.06);
+  transform: translateY(-1px); }
+.bulkbtn:disabled { opacity: .5; cursor: default; transform: none; }
+.bulkbtn.primary { border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.bulkbtn.primary:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+.bulkbtn .bt { font-size: 14px; font-weight: 680; }
+.bulkbtn .bd { font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+/* [hidden] must beat the flex display below */
+.bulkstatus[hidden] { display: none; }
+.bulkstatus {
+  margin-top: 12px; padding: 12px 15px; border-radius: 12px; font-size: 12.5px;
+  line-height: 1.55; background: rgba(255,255,255,.04); border: 1px solid var(--stroke);
+  color: var(--text); display: flex; align-items: center; gap: 11px;
+}
+.bulkstatus .spin {
+  width: 15px; height: 15px; border-radius: 50%; flex: 0 0 auto;
+  border: 2px solid rgba(255,255,255,.18); border-top-color: var(--accent-2);
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- progress bar for long-running jobs ---------- */
+.jobbar { height: 7px; border-radius: 6px; margin: 10px 0 2px; overflow: hidden;
+  background: rgba(255,255,255,.08); position: relative; }
+.jobbar > i { display: block; height: 100%; width: 0; border-radius: 6px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition: width .25s var(--ease); }
+.jobbar.indet > i { width: 35% !important;
+  animation: jobslide 1.15s var(--ease) infinite; }
+@keyframes jobslide {
+  0% { margin-left: -35%; } 100% { margin-left: 100%; } }
+
+/* ---------- NVIDIA page: block for non-NVIDIA machines ---------- */
+#nvBlock[hidden] { display: none; }
+#nvBlock {
+  position: absolute; inset: -4px; z-index: 40; border-radius: 18px;
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  padding: 30px; background: rgba(10,12,20,.82);
+  -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+}
+#nvBlock .nvblock-inner {
+  display: flex; flex-direction: column; align-items: center;
+  background: var(--bg-1); border: 1px solid var(--stroke-hi);
+  border-radius: 16px; padding: 34px 40px; box-shadow: 0 24px 70px rgba(0,0,0,.5);
+}
