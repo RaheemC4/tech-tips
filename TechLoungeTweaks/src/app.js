@@ -1479,14 +1479,27 @@ async function refreshDefender() {
     state.style.color = st.active ? 'var(--good)' : 'var(--warn)';
   }
   const list = H('defList');
-  if (list) list.innerHTML = (st.items || []).map(it =>
-    `<div class="row" style="gap:9px;margin:5px 0;font-size:12.5px">
-       <span style="width:9px;height:9px;border-radius:50%;flex:0 0 auto;
-         background:${it.on ? 'var(--good)' : 'var(--warn)'}"></span>
-       <span style="color:var(--text)">${it.label}</span>
-       <span class="spacer"></span>
-       <span style="color:${it.on ? 'var(--good)' : 'var(--muted)'}">${it.on ? 'On' : 'Off'}</span>
-     </div>`).join('');
+  if (list) {
+    let html = (st.items || []).map(it =>
+      `<div class="row" style="gap:9px;margin:5px 0;font-size:12.5px">
+         <span style="width:9px;height:9px;border-radius:50%;flex:0 0 auto;
+           background:${it.on ? 'var(--good)' : 'var(--warn)'}"></span>
+         <span style="color:var(--text)">${it.label}</span>
+         <span class="spacer"></span>
+         <span style="color:${it.on ? 'var(--good)' : 'var(--muted)'}">${it.on ? 'On' : 'Off'}</span>
+       </div>`).join('');
+    // The antimalware service stays resident even with everything above off.
+    // Show it, but make clear it is not something the toggle failed to turn
+    // off - Windows keeps it running and no tool can stop it.
+    if (st.engine_resident && !st.active) {
+      html += `<div style="margin-top:11px;padding:9px 11px;border-radius:9px;
+        background:rgba(255,255,255,.04);font-size:11.5px;line-height:1.55;color:var(--muted)">
+        The antimalware service is still resident in memory. That is normal —
+        Windows keeps it loaded and nothing can unload it while Defender is the
+        installed antivirus. With real-time protection off it is not scanning.</div>`;
+    }
+    list.innerHTML = html;
+  }
   const tam = H('defTamper');
   if (tam) tam.innerHTML = (st.tamper && st.active)
     ? `<div style="margin-top:12px;padding:10px 12px;border-radius:10px;

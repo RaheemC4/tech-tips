@@ -728,17 +728,27 @@ reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\No
     def _defender_payload(self, d):
         present = bool(d.get("present"))
         realtime = bool(d.get("realtime"))
-        active = present and (realtime or bool(d.get("amservice")))
+        # The toggle follows REAL-TIME PROTECTION - the thing the user actually
+        # controls and the part that scans files as they run and download.
+        # It must NOT depend on AMServiceEnabled: the antimalware *service*
+        # stays resident even with real-time protection off and cannot be
+        # stopped from PowerShell, so folding it in here left the toggle stuck
+        # on no matter how many times it was turned off.
+        active = present and realtime
         items = [
             {"label": "Real-time protection", "on": realtime},
             {"label": "Behaviour monitoring", "on": bool(d.get("behavior"))},
             {"label": "On-access scanning", "on": bool(d.get("onaccess"))},
             {"label": "Downloaded-file & web scanning", "on": bool(d.get("ioav"))},
             {"label": "Network inspection", "on": bool(d.get("nis"))},
-            {"label": "Antimalware engine", "on": bool(d.get("antispyware"))},
         ]
         return {"present": present, "active": active,
-                "tamper": bool(d.get("tamper")), "items": items}
+                "tamper": bool(d.get("tamper")),
+                # The always-resident service, shown for transparency but never
+                # part of the on/off decision - Windows will not let anything
+                # stop it while Defender is the active antivirus.
+                "engine_resident": bool(d.get("amservice")),
+                "items": items}
 
     @traced
     def defender_status(self):

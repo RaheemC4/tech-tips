@@ -198,6 +198,14 @@ claiming otherwise is using a malware technique. So the toggle opens the exact
 Windows Security page for you to flip that one switch yourself, then finishes
 the rest. The same toggle turns everything back on.
 
+**The antimalware service stays in memory.** With everything switched off you
+will still see `MsMpEng.exe` running, and Windows still reports the service as
+enabled. That is normal and not a failed toggle — Windows keeps the service
+resident for as long as Defender is the installed antivirus, and nothing can
+unload it. What matters is real-time protection, which is what the toggle
+follows and what actually scans files. The page says as much underneath the
+component list so it is not mistaken for something that did not work.
+
 Turning Defender off leaves the PC with no antivirus until it goes back on.
 
 ### Connection test
