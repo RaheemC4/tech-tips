@@ -419,7 +419,7 @@ async function runBulk(mode) {
       if (vs && vs.mode !== 'gaming') {
         setStatus(LABEL + ' — setting up for gaming…', true);
         const vr = await api('virt_set', 'gaming');
-        if (vr && vr.ok) extras.push('Set up for gaming (restart needed)');
+        if (vr && vr.ok) extras.push('Set up for gaming, Memory Integrity off (restart needed)');
       }
     } catch (e) {}
   }
@@ -1111,10 +1111,10 @@ async function refreshVirt() {
          'Fixes VirtualBox failing to start a machine',
          'Turns off Memory Integrity, so less protection from bad drivers'],
         'Set up for virtual machines')}
-      ${card('gaming', isGame, 'Gaming &amp; Security',
+      ${card('gaming', isGame, 'Gaming &amp; Normal Use',
         'Pick this for everyday use and playing games.',
-        ['Best for anti-cheat games like Valorant',
-         'Full Windows driver protection switched on',
+        ['Secure Boot and TPM untouched — what anti-cheat checks',
+         'Memory Integrity stays off, so installers and games stay fast',
          'Virtual machines still run, just slower'],
         'Set up for gaming')}
     </div>
@@ -1138,8 +1138,12 @@ async function refreshVirt() {
           : 'Not changed by this page'}</span></div>
       <p style="color:var(--muted);font-size:11.5px;line-height:1.65;margin-top:12px">
         Neither button touches Secure Boot or TPM — those are the firmware
-        settings anti-cheat actually looks at. <b>Either choice needs a restart
-        to take effect</b>, and you can swap back any time.</p>
+        settings anti-cheat looks at. <b>Memory Integrity is left off by
+        both</b>, because turning it on taxes every driver load and makes
+        installers crawl. One exception worth knowing: <b>Valorant can ask for
+        Memory Integrity to be on</b> — if Vanguard complains, switch it on in
+        Windows Security &gt; Device security &gt; Core isolation, and this app
+        will leave it alone. <b>Either choice needs a restart.</b></p>
     </div>`;
 
   document.querySelectorAll('[data-mode]').forEach(b => {
@@ -1156,8 +1160,10 @@ function confirmVirt(mode) {
         ${vm ? 'VirtualBox and VMware will get full use of your CPU, so machines '
              + 'run at proper speed. The trade is that Windows Memory Integrity '
              + 'gets switched off, which is what blocks dodgy drivers from loading.'
-             : 'Windows gets its driver protection back and anti-cheat games are '
-             + 'happiest here. Virtual machines will still run, just slower.'}</p>
+             : 'Puts the machine back to normal for gaming and everyday use. '
+             + 'Memory Integrity is left OFF either way, so nothing here will '
+             + 'slow your installers or games down. Virtual machines still run, '
+             + 'just slower.'}</p>
       <p style="color:var(--muted);font-size:12px;line-height:1.6;margin:0 0 14px">
         Secure Boot and TPM are not touched. <b>You need to restart for this to
         take effect</b> — and you can switch back whenever you like.</p>

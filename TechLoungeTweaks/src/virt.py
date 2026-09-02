@@ -11,8 +11,14 @@ but far slower, and some fail outright.
 
 So there are two sensible states, and this module flips between them:
 
-  vm      hypervisor off at boot + HVCI off  -> VirtualBox gets native VT-x
-  gaming  hypervisor auto + HVCI on          -> Windows' kernel protection back
+  vm      hypervisor off at boot, HVCI off  -> VirtualBox gets native VT-x
+  gaming  hypervisor at its normal setting,  -> everything else works normally
+          HVCI still off
+
+Memory Integrity (HVCI) is left OFF in both. It is a heavy performance tax -
+every kernel code page goes through the secure kernel - and turning it on is
+what made MSI installers crawl on a machine that never had it enabled. Nothing
+in this file ever switches it on; that is left to the user in Windows Security.
 
 What it deliberately does NOT touch
 -----------------------------------
@@ -24,6 +30,8 @@ exactly as they are.
 Both directions need a reboot, because hypervisorlaunchtype is a boot setting.
 """
 
+import json
+import os
 import re
 import winreg
 
@@ -60,6 +68,46 @@ try {
 } catch { $o.tpm = $null }
 $o | ConvertTo-Json -Compress -Depth 3
 """
+
+
+def _store_dir():
+    d = os.path.join(os.environ.get("LOCALAPPDATA", ""), "TechLoungeTweaks")
+    try:
+        os.makedirs(d, exist_ok=True)
+    except Exception:
+        pass
+    return d
+
+
+def _baseline_path():
+    return os.path.join(_store_dir(), "virt-baseline.json")
+
+
+def read_baseline():
+    try:
+        with open(_baseline_path(), "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception:
+        return None
+
+
+def capture_baseline(launch, hvci, vbs):
+    """Record how this PC was set up BEFORE we ever touched it - once, ever.
+
+    Without this, "put it back" meant "turn Windows' defaults on", which is
+    wrong on any machine that did not start there. Debloated images ship with
+    Memory Integrity off; switching it on made installers crawl and was not
+    something the user had asked for. The baseline is what we restore to.
+    """
+    if read_baseline() is not None:
+        return
+    data = {"launchtype": launch or "auto", "hvci": bool(hvci),
+            "vbs": bool(vbs)}
+    try:
+        with open(_baseline_path(), "w", encoding="utf-8") as fh:
+            json.dump(data, fh)
+    except Exception:
+        pass
 
 
 def hypervisor_launchtype():
@@ -110,6 +158,11 @@ def status():
     hyperv_present = bool(d.get("hypervisor_present"))
     vt = bool(d.get("vt_firmware")) or hyperv_present or vbs_running
 
+    # Snapshot the machine's own starting point the first time we look, so
+    # "back to normal" restores THIS PC rather than Microsoft's defaults.
+    capture_baseline(launch, hvci, vbs_running)
+    base = read_baseline() or {}
+
     # "vm" once Windows is not launching its hypervisor and HVCI is off.
     # bcdedit reports nothing at all when the setting was never written, and
     # Windows treats that as auto - so a missing value is NOT vm mode.
@@ -138,6 +191,7 @@ def status():
         "virtualbox_version": vbox_ver,
         "mode": "vm" if in_vm_mode else ("gaming" if in_gaming_mode else "mixed"),
         "blockers": blockers,
+        "baseline": base,
         "reboot_required": False,
     }
 
@@ -171,22 +225,37 @@ def set_mode(mode):
             pass
         return True, "Reboot to finish switching to VM mode.", changes
 
-    # Back to gaming / protected.
-    rc, out = run(["bcdedit", "/set", "hypervisorlaunchtype", "auto"])
+    # Back to normal use / gaming.
+    #
+    # Memory Integrity is deliberately left OFF in BOTH modes. This app is a
+    # performance tool: HVCI routes every kernel code page through the secure
+    # kernel, which is what made MSI installers crawl after an earlier build
+    # switched it on. Anti-cheat does not need it either - Vanguard and friends
+    # check Secure Boot and TPM, which this file never touches.
+    #
+    # Anyone who wants Memory Integrity back turns it on themselves in
+    # Windows Security > Device security > Core isolation. Nothing here will
+    # ever switch it on behind their back.
+    base = read_baseline() or {}
+    want_launch = base.get("launchtype") or "auto"
+
+    rc, out = run(["bcdedit", "/set", "hypervisorlaunchtype", want_launch])
     if rc != 0:
         return (False,
                 "Could not change the boot setting. The app needs to be "
                 f"running as administrator. ({(out or '').strip()[:120]})",
                 changes)
-    changes.append("Windows hypervisor starts at boot again")
+    changes.append(f"Windows hypervisor at boot: {want_launch}")
+
     try:
-        reg_set(HKLM, HVCI_KEY, "Enabled", 1)
-        changes.append("Memory Integrity (HVCI) turned back on")
+        reg_set(HKLM, HVCI_KEY, "Enabled", 0)
+        changes.append("Memory Integrity left off (keeps installers fast)")
     except OSError as e:
-        return False, f"Could not turn Memory Integrity on: {e}", changes
+        return False, f"Could not set Memory Integrity: {e}", changes
     try:
-        reg_set(HKLM, DG_KEY, "EnableVirtualizationBasedSecurity", 1)
-        changes.append("Virtualization Based Security re-enabled")
+        reg_set(HKLM, DG_KEY, "EnableVirtualizationBasedSecurity", 0)
     except OSError:
         pass
-    return True, "Reboot to finish switching back.", changes
+    return (True,
+            "Set up for gaming. Memory Integrity stays off so installers and "
+            "games are not slowed down. Reboot to finish.", changes)
