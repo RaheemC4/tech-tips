@@ -178,6 +178,7 @@ const NAV = [
   ['page','System Info','info'], ['page','Disk Cleanup','disk'],
   ['page','Drivers','driver'], ['page','NVIDIA Profile','nvidia'], ['page','Defender','shield'], ['page','Resources','wrench'],
   ['sec','TOOLS'],
+  ['page','Virtual Machines','box'],
   ['page','Install Apps','box'],
   ['page','Boot Optimizer','bolt'], ['page','BIOS Info','cpu'],
   ['page','System Restore','restore']
@@ -202,7 +203,7 @@ function show(name) {
   const routes = {
     'System Info': pageSysInfo, 'Disk Cleanup': pageClean,
     'Drivers': pageDrivers, 'NVIDIA Profile': pageNvProfile, 'Defender': pageDefender, 'Resources': pageRes,
-    'Install Apps': pageApps,
+    'Install Apps': pageApps, 'Virtual Machines': pageVirt,
     'Boot Optimizer': pageBoot, 'BIOS Info': pageBios,
     'System Restore': pageRestore, 'Networking': pageNetworking,
   };
@@ -407,6 +408,20 @@ async function runBulk(mode) {
       extras.push('Defender needs one manual step — open the Defender tab to finish');
     else
       extras.push(wantDefenderOff ? 'Defender turned off' : 'Defender turned on');
+  }
+
+  // Virtualisation: the apply modes and Windows Defaults are all gaming-facing,
+  // so put the machine in the gaming/protected state. Revert All is left alone
+  // because we did not record which mode the PC was in beforehand.
+  if (mode === 'all' || mode === 'recommended' || mode === 'defaults') {
+    try {
+      const vs = await api('virt_status');
+      if (vs && vs.mode !== 'gaming') {
+        setStatus(LABEL + ' — setting up for gaming…', true);
+        const vr = await api('virt_set', 'gaming');
+        if (vr && vr.ok) extras.push('Set up for gaming (restart needed)');
+      }
+    } catch (e) {}
   }
 
   const done = {all: 'Applied everything.', recommended: 'Recommended tweaks applied.',
@@ -1045,6 +1060,126 @@ function pageRes() {
     cxBtn.onclick = () => api('cancel_task', jobkey);
   });
   restoreJobs();
+}
+
+/* ---------------- Virtualisation ----------------
+   VirtualBox wants VT-x directly. Windows only hands it over when it is not
+   running its own hypervisor for VBS / HVCI / WSL2 / Sandbox. This page flips
+   between the two states and never touches Secure Boot or TPM, which is what
+   kernel anti-cheat actually checks. */
+async function pageVirt() {
+  pageShell('Virtual Machines', {crumb: 'Tools › Virtual Machines',
+    text: 'Give VirtualBox and VMware direct access to the CPU, or hand it back to Windows.'},
+    `<div id="virtBody"><div class="card">Reading virtualisation state…</div></div>`);
+  await refreshVirt();
+}
+
+async function refreshVirt() {
+  const st = await api('virt_status');
+  if (!st || !H('virtBody')) return;
+  window.__virt = st;
+
+  const isVm = st.mode === 'vm';
+  const isGame = st.mode === 'gaming';
+
+  const card = (id, active, title, blurb, points, btn) => `
+    <button class="bulkbtn modecard ${active ? 'active' : ''}" data-mode="${id}"
+      ${active ? 'disabled' : ''}>
+      <span class="row" style="align-items:center;gap:9px;width:100%">
+        <span class="bt" style="font-size:15.5px">${title}</span>
+        ${active ? '<span class="badge on" style="margin-left:auto">ACTIVE NOW</span>' : ''}
+      </span>
+      <span class="bd" style="font-size:12.5px;color:var(--text)">${blurb}</span>
+      <span style="font-size:11.5px;color:var(--muted);line-height:1.7;margin-top:4px">
+        ${points.map(p => '• ' + p).join('<br>')}</span>
+      <span class="modego">${active ? 'Currently using this' : btn}</span>
+    </button>`;
+
+  H('virtBody').innerHTML = `
+    ${!st.vt_firmware ? `<div class="card" style="margin-bottom:14px;
+      border-color:rgba(255,93,108,.35);background:rgba(255,93,108,.1)">
+      <b style="color:var(--bad);font-size:13.5px">Virtualisation is turned off in your BIOS</b>
+      <p style="color:var(--muted);font-size:12px;line-height:1.65;margin-top:7px">
+        No software setting can work around this. Restart, go into your BIOS/UEFI
+        at POST, and turn on <b>Intel VT-x</b> (Intel) or <b>SVM Mode</b> (AMD).
+        Until then no virtual machine software will run at all.</p></div>` : ''}
+
+    <div class="bulkgrid">
+      ${card('vm', isVm, 'Virtual Machines',
+        'Pick this to run VirtualBox, VMware or WSL properly.',
+        ['VMs run at full speed instead of crawling',
+         'Fixes VirtualBox failing to start a machine',
+         'Turns off Memory Integrity, so less protection from bad drivers'],
+        'Set up for virtual machines')}
+      ${card('gaming', isGame, 'Gaming &amp; Security',
+        'Pick this for everyday use and playing games.',
+        ['Best for anti-cheat games like Valorant',
+         'Full Windows driver protection switched on',
+         'Virtual machines still run, just slower'],
+        'Set up for gaming')}
+    </div>
+    <div id="virtMsgWrap" class="bulkstatus" hidden><span id="virtMsg"></span></div>
+
+    <div class="section">DETAILS</div>
+    <div class="card">
+      <div class="row" style="gap:10px;margin:4px 0;font-size:12.5px">
+        <span style="color:var(--muted);flex:1">Windows hypervisor at boot</span>
+        <span>${st.launchtype === 'off' ? 'Off' : 'On'}</span></div>
+      <div class="row" style="gap:10px;margin:4px 0;font-size:12.5px">
+        <span style="color:var(--muted);flex:1">Memory Integrity</span>
+        <span>${st.hvci ? 'On' : 'Off'}</span></div>
+      <div class="row" style="gap:10px;margin:4px 0;font-size:12.5px">
+        <span style="color:var(--muted);flex:1">VirtualBox</span>
+        <span>${st.virtualbox ? (st.virtualbox_version || 'Installed') : 'Not installed'}</span></div>
+      <div class="row" style="gap:10px;margin:4px 0;font-size:12.5px">
+        <span style="color:var(--muted);flex:1">Secure Boot &amp; TPM (what anti-cheat checks)</span>
+        <span style="color:var(--good)">${
+          st.secureboot === true && st.tpm === true ? 'Both on — never changed here'
+          : 'Not changed by this page'}</span></div>
+      <p style="color:var(--muted);font-size:11.5px;line-height:1.65;margin-top:12px">
+        Neither button touches Secure Boot or TPM — those are the firmware
+        settings anti-cheat actually looks at. <b>Either choice needs a restart
+        to take effect</b>, and you can swap back any time.</p>
+    </div>`;
+
+  document.querySelectorAll('[data-mode]').forEach(b => {
+    b.onclick = () => confirmVirt(b.dataset.mode);
+  });
+}
+
+function confirmVirt(mode) {
+  const vm = mode === 'vm';
+  showModal(`<div class="modal-card">
+      <h2 style="margin:0 0 10px;font-size:18px">
+        ${vm ? 'Set this PC up for virtual machines?' : 'Set this PC up for gaming?'}</h2>
+      <p style="color:var(--muted);font-size:12.5px;line-height:1.7;margin:0 0 12px">
+        ${vm ? 'VirtualBox and VMware will get full use of your CPU, so machines '
+             + 'run at proper speed. The trade is that Windows Memory Integrity '
+             + 'gets switched off, which is what blocks dodgy drivers from loading.'
+             : 'Windows gets its driver protection back and anti-cheat games are '
+             + 'happiest here. Virtual machines will still run, just slower.'}</p>
+      <p style="color:var(--muted);font-size:12px;line-height:1.6;margin:0 0 14px">
+        Secure Boot and TPM are not touched. <b>You need to restart for this to
+        take effect</b> — and you can switch back whenever you like.</p>
+      <div class="row" style="gap:10px">
+        <button class="btn" id="vtYes">${vm ? 'Set up for VMs' : 'Set up for gaming'}</button>
+        <button class="btn ghost" id="vtNo">Cancel</button>
+      </div></div>`);
+  H('vtYes').onclick = async () => {
+    closeModal();
+    const wrap = H('virtMsgWrap');
+    if (wrap) { wrap.hidden = false; H('virtMsg').textContent = 'Applying…'; }
+    const r = await api('virt_set', mode);
+    await refreshVirt();
+    const w2 = H('virtMsgWrap');
+    if (w2) {
+      w2.hidden = false;
+      H('virtMsg').innerHTML = (r && r.ok)
+        ? '<b style="color:var(--good)">Done — restart your PC to finish.</b>'
+        : '<b style="color:var(--warn)">' + ((r && r.message) || 'Could not apply.') + '</b>';
+    }
+  };
+  H('vtNo').onclick = closeModal;
 }
 
 /* ---------------- Install Apps ----------------

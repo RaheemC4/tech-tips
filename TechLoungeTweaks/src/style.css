@@ -464,3 +464,13 @@ body.dragging #spot { transition: none !important; }
 /* ---------- install-apps cards ---------- */
 .appcard { padding: 15px 17px; }
 .appcard .badge { flex: 0 0 auto; font-size: 9.5px; letter-spacing: .06em; }
+
+/* ---------- virtualisation mode cards ---------- */
+.modecard { min-height: 168px; position: relative; }
+.modecard.active { border-color: color-mix(in srgb, var(--accent) 65%, transparent);
+  background: color-mix(in srgb, var(--accent) 13%, transparent); opacity: 1; }
+.modecard:disabled { cursor: default; transform: none; }
+.modecard .modego { margin-top: auto; padding-top: 11px; font-size: 12px;
+  font-weight: 650; color: var(--accent-2); }
+.modecard.active .modego { color: var(--good); }
+.modecard .badge.on { background: rgba(61,220,151,.16); color: var(--good); }

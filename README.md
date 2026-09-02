@@ -246,6 +246,8 @@ opens, so switching tabs is instant.
   virtualization and memory speed.
 - **Install Apps** — runtimes, browsers and game clients, installed silently
   from the vendor. See below.
+- **Virtual Machines** — switch the CPU between VirtualBox and Windows'
+  hypervisor-backed security. See below.
 
 ### While something is running
 
@@ -265,6 +267,38 @@ The job lives in the app itself, not the page, so you can switch to another tab
 and come back to find it still running at the right progress. It will not let
 you start a second copy of something already going, and cancelling a download
 removes the half-finished file.
+
+### Virtual Machines
+
+![Virtual Machines](docs/virt.png)
+
+Two buttons, in plain English:
+
+| | |
+|---|---|
+| **Virtual Machines** | Pick this to run VirtualBox, VMware or WSL properly. VMs run at full speed instead of crawling, and it fixes VirtualBox failing to start a machine. |
+| **Gaming & Security** | Pick this for everyday use and playing games. Best for anti-cheat titles, full Windows driver protection on. VMs still run, just slower. |
+
+Whichever one is live is marked **ACTIVE NOW**, so there is never any doubt
+which state the PC is in. **Apply Recommended** on the dashboard picks Gaming &
+Security automatically.
+
+Why this is even a choice: VirtualBox wants the CPU's virtualisation directly,
+but Windows runs its own hypervisor for Memory Integrity, WSL2, Docker and
+Sandbox. Whoever holds it, the other one loses out. The trade is real — the
+VM option turns Memory Integrity off, and that is what blocks malicious drivers
+from loading.
+
+**Neither button touches Secure Boot or TPM.** Those are the firmware settings
+Riot Vanguard and similar kernel anti-cheats actually check on Windows 11, so
+switching to VM mode should not lock you out of Valorant. If a game does
+complain, one click puts it back.
+
+**Either choice needs a restart** — the hypervisor setting is applied at boot.
+
+If CPU virtualisation is switched off in your BIOS the page says so in red, with
+what to turn on (Intel VT-x, or SVM Mode on AMD). No software setting can work
+around that one.
 
 ### Install Apps
 

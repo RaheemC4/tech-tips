@@ -1,17 +1,36 @@
-# Building from source
+# Building Tech Lounge Tweaks
 
-The published `TechLoungeTweaks.exe` is built from exactly these files.
+## Screenshots
+
+Regenerate **all** of them with one command:
 
 ```
-pip install pywebview pyinstaller
-pyinstaller --onefile --windowed --name TechLoungeTweaks --uac-admin ^
-  --icon app.ico --add-data "web;web" --add-data "app.ico;." ^
-  --collect-all webview --collect-all clr_loader ^
-  --hidden-import proxy_tools --hidden-import bottle --hidden-import clr ^
-  main.py
+node tools/make-screenshots.js
 ```
 
-The UI is plain HTML/CSS/JS in `web/`, rendered by the WebView2 runtime that
-ships with Windows 11. `tweaks_engine.py` holds every tweak — each one is an
-apply/revert/check triple, so you can read exactly what any toggle writes
-before you run it.
+Do this after **any** UI change. This matters more than it looks: adding a page
+to the sidebar changes every screenshot, not just the new page's, because the
+sidebar is in all of them. Two releases shipped with stale shots before this
+was automated.
+
+`PUSH-TO-GITHUB.bat` checks for this before it pushes — if any file in `src/`
+(`.js`, `.html`, `.css`) is newer than the oldest PNG in `docs/`, it warns and
+asks before continuing.
+
+The script drives `web/index.html` in headless Chromium with a stubbed Python
+bridge, so it needs no Windows build and no real hardware. Override paths with
+`PW=` (playwright module) and `CHROME=` (browser binary) if yours differ.
+
+## App build
+
+```
+wine /tmp/winpy/python.exe -m PyInstaller --noconfirm TechLoungeTweaks.spec
+```
+
+Then, before zipping:
+
+- delete `dist/TechLoungeTweaks/_internal/web/node_modules` if present
+- copy `resources/` (NVIDIA Profile Inspector + the .nip) next to the exe
+
+Use `--onedir`, never `--onefile`: onefile self-extracts ~46 MB to %TEMP% on
+every launch, which is both slow and exactly what antivirus heuristics flag.

@@ -26,6 +26,7 @@ import cleanup
 import drivers
 import nettest
 import sysinfo
+import virt
 from tweaks_engine import (build_tweaks, CATEGORY_ORDER, CATEGORY_ICONS, run, ps)
 
 ICON_FOR = {
@@ -944,6 +945,17 @@ reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\No
                             "uninstalled. They have to come back from a "
                             "Microsoft source; the button below opens the "
                             "official page.")}
+
+    # ---------------------------------------------------- virtualisation
+    @traced
+    def virt_status(self):
+        return virt.status()
+
+    @traced
+    def virt_set(self, mode):
+        ok, message, changes = virt.set_mode(mode)
+        return {"ok": ok, "message": message, "changes": changes,
+                "status": virt.status()}
 
     @traced
     def open_url(self, url):
