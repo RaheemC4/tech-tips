@@ -14,7 +14,10 @@ const CHROME = process.env.CHROME || '/opt/pw-browsers/chromium';
 const D = __dirname + '/../docs/';
 const PAGE = 'file://' + __dirname + '/../web/index.html';
 
-const CAT={groups:['Runtimes','Browsers','Game clients'],winget:true,apps:[
+const CAT={groups:['Chat & voice','Runtimes','Browsers','Game clients','Tuning tools'],winget:true,apps:[
+ {id:'afterburner',name:'MSI Afterburner',group:'Tuning tools',desc:'The standard GPU tuning + monitoring tool. Installed without RivaTuner (RTSS). Overclocking is done here in the real tool - this app never touches clocks itself.',page:'#',route:'winget',installable:true},
+ {id:'discord',name:'Discord',group:'Chat & voice',desc:'The desktop client. Installs and self-updates on first launch.',page:'#',route:'winget',installable:true},
+ {id:'discordptb',name:'Discord PTB',group:'Chat & voice',desc:'Public Test Build - runs alongside the normal client, gets features early.',page:'#',route:'winget',installable:true},
  {id:'vcredist',name:'Visual C++ Redistributables (all)',group:'Runtimes',desc:"Every VC++ runtime from 2005 to 2022, x86 and x64. Fixes most 'missing MSVCP140.dll' style errors.",page:'#',route:'direct',installable:true},
  {id:'directx',name:'DirectX Runtime (web installer)',group:'Runtimes',desc:'The legacy DirectX 9/10/11 runtime components many older games still need.',page:'#',route:'direct',installable:true},
  {id:'dotnet8',name:'.NET Desktop Runtime 8',group:'Runtimes',desc:'Runtime for modern .NET desktop apps.',page:'#',route:'winget',installable:true},

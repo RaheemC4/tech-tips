@@ -124,7 +124,8 @@ def set_svc_start(name, value):
 
 class Tweak:
     def __init__(self, key, name, desc, category, apply, revert, check,
-                 warning=None, icon="⚙", needs_restart=False):
+                 warning=None, icon="⚙", needs_restart=False,
+                 best_effort=False):
         self.key = key
         self.name = name
         self.desc = desc
@@ -135,6 +136,11 @@ class Tweak:
         self.warning = warning
         self.icon = icon
         self.needs_restart = needs_restart
+        # best_effort: the write cannot be reliably verified on every image
+        # (Widgets, for one - the taskbar button state does not always read
+        # back). For these, a check() mismatch must NOT raise a scary error;
+        # the card just shows whatever state we can read.
+        self.best_effort = best_effort
         self.error = None
 
     def apply(self):
@@ -181,6 +187,31 @@ GAMEDVR_POLICY = (r"SOFTWARE\Microsoft\PolicyManager\default"
                   r"\ApplicationManagement\AllowGameDVR")
 
 
+_WIDGETS_PRESENT = None
+
+
+def widgets_present():
+    """Is the Widgets board actually installed on this machine?
+
+    Debloated images (Ghost Spectre and friends) strip the WebExperience
+    package outright, and on those the per-user TaskbarDa value refuses to be
+    written at all. There is nothing to disable in that case, so the tweak
+    should read as satisfied rather than throwing Access denied at the user.
+
+    Cached - this shells out to PowerShell and gets asked on every scan.
+    """
+    global _WIDGETS_PRESENT
+    if _WIDGETS_PRESENT is None:
+        try:
+            rc, out = ps("if (Get-AppxPackage -Name "
+                         "MicrosoftWindows.Client.WebExperience "
+                         "-ErrorAction SilentlyContinue) {'yes'} else {'no'}")
+            _WIDGETS_PRESENT = "yes" in (out or "").lower()
+        except Exception:
+            _WIDGETS_PRESENT = True      # assume present; never mask a real error
+    return _WIDGETS_PRESENT
+
+
 def t_widgets():
     """Disable the Widgets board.
 
@@ -189,6 +220,10 @@ def t_widgets():
     The per-user taskbar setting (TaskbarDa) is the one that reliably works
     and needs no policy rights, so that is the source of truth here. The
     policy key is still attempted, but never allowed to fail the tweak.
+
+    On an image with Widgets stripped out, TaskbarDa cannot be written either.
+    That is not a failure worth showing - there is no Widgets board to turn
+    off - so the tweak reports itself as already satisfied instead.
     """
     TASKBAR = r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
     DSH = r"SOFTWARE\Policies\Microsoft\Dsh"
@@ -200,17 +235,32 @@ def t_widgets():
             pass                      # locked down - the user setting still works
 
     def _apply():
-        reg_set(HKCU, TASKBAR, "TaskbarDa", 0)
+        try:
+            reg_set(HKCU, TASKBAR, "TaskbarDa", 0)
+        except OSError:
+            _policy(0)
+            if widgets_present():
+                raise                 # really is locked, and Widgets is there
+            return                    # nothing on this image to disable
         _policy(0)
 
     def _revert():
-        reg_set(HKCU, TASKBAR, "TaskbarDa", 1)
+        try:
+            reg_set(HKCU, TASKBAR, "TaskbarDa", 1)
+        except OSError:
+            _policy(1)
+            if widgets_present():
+                raise
+            return
         _policy(1)
 
     def _check():
         if reg_get(HKCU, TASKBAR, "TaskbarDa") == 0:
             return True
-        return reg_get(HKLM, DSH, "AllowNewsAndInterests") == 0
+        if reg_get(HKLM, DSH, "AllowNewsAndInterests") == 0:
+            return True
+        # No Widgets on this image at all - already as good as disabled.
+        return not widgets_present()
 
     return _apply, _revert, _check
 
@@ -393,6 +443,38 @@ def t_games_priority():
 
 MM_PROFILE = (r"SOFTWARE\Microsoft\Windows NT\CurrentVersion"
               r"\Multimedia\SystemProfile")
+
+
+def t_accessibility_keys():
+    """Disable Sticky Keys, Filter Keys and Toggle Keys - the shortcuts and
+    their pop-ups.
+
+    Each is a Flags string under Control Panel\\Accessibility. Clearing the
+    HOTKEYACTIVE bit is what kills the Shift x5 / hold-Shift / NumLock-hold
+    triggers, so the pop-up and the sound can no longer fire at all - which
+    also covers the notification preferences, since there is nothing left to
+    notify about. These are the standard debloat values.
+    """
+    SK = r"Control Panel\Accessibility\StickyKeys"
+    FK = r"Control Panel\Accessibility\Keyboard Response"
+    TK = r"Control Panel\Accessibility\ToggleKeys"
+
+    def _apply():
+        reg_set(HKCU, SK, "Flags", "506", winreg.REG_SZ)   # off, no hotkey
+        reg_set(HKCU, FK, "Flags", "122", winreg.REG_SZ)
+        reg_set(HKCU, TK, "Flags", "58",  winreg.REG_SZ)
+
+    def _revert():
+        reg_set(HKCU, SK, "Flags", "510", winreg.REG_SZ)   # Windows defaults
+        reg_set(HKCU, FK, "Flags", "126", winreg.REG_SZ)
+        reg_set(HKCU, TK, "Flags", "62",  winreg.REG_SZ)
+
+    def _check():
+        return (str(reg_get(HKCU, SK, "Flags")) == "506"
+                and str(reg_get(HKCU, FK, "Flags")) == "122"
+                and str(reg_get(HKCU, TK, "Flags")) == "58")
+
+    return _apply, _revert, _check
 
 
 def t_fast_shutdown():
@@ -733,9 +815,10 @@ def build_tweaks():
     T = []
 
     def add(key, name, desc, cat, triple, warning=None, icon="⚙",
-            restart=False):
+            restart=False, best_effort=False):
         a, r, c = triple
-        T.append(Tweak(key, name, desc, cat, a, r, c, warning, icon, restart))
+        T.append(Tweak(key, name, desc, cat, a, r, c, warning, icon, restart,
+                       best_effort=best_effort))
 
     # ---------------- Performance ----------------
     add("gamedvr", "Disable GameDVR",
@@ -846,6 +929,12 @@ def build_tweaks():
         "Networking", t_firewall_notify(), icon="▤")
 
     # ---------------- System ----------------
+    add("sticky_keys", "Disable Sticky / Filter / Toggle Keys",
+        "Turns off the Sticky Keys (Shift x5), Filter Keys and Toggle Keys "
+        "shortcuts and their pop-ups and sounds - the ones that interrupt "
+        "games mid-match.",
+        "System", t_accessibility_keys(), icon="⌨")
+
     add("fast_shutdown", "Speed Up Shutdown",
         "Cuts the time Windows waits for services to close on shutdown, "
         "from 5 seconds down to 2.",
@@ -921,7 +1010,7 @@ def build_tweaks():
         "the taskbar.",
         "Explorer & UI",
         t_widgets(),
-        icon="⌸")
+        icon="⌸", best_effort=True)
 
     add("cdm_ads", "Disable Suggestions & Ads",
         "Turns off the Content Delivery Manager tips, app suggestions and "

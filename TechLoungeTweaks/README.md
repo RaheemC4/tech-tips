@@ -126,7 +126,7 @@ currently applied, and the toggle works both ways.
 | **Networking** | Nagle's algorithm, network throttling, offloads, firewall popups |
 | **Power** | Dynamic tick, timer coalescing, USB selective suspend and power management |
 | **Advanced** | Memory compression, page combining, CPU mitigations |
-| **System** | Shutdown speed, menu delay, startup delay, SysMain, telemetry service |
+| **System** | Sticky/Filter/Toggle keys (the Shift x5 pop-up), shutdown speed, menu delay, startup delay, SysMain, telemetry service |
 | **Privacy** | Telemetry, activity history, advertising ID, error reporting, typing/speech/ink collection |
 | **Explorer & UI** | Classic context menu, Bing in Start, snap layouts, lock screen, widgets, ads |
 
@@ -207,6 +207,13 @@ follows and what actually scans files. The page says as much underneath the
 component list so it is not mistaken for something that did not work.
 
 Turning Defender off leaves the PC with no antivirus until it goes back on.
+
+**Permanently remove Defender.** The toggle only switches Defender off, and
+that is reversible. If you want it gone entirely there is a separate button
+that links to **Defender Remover** by ionuttbara — a third-party open-source
+tool. It is not bundled with or run by this app; you download and run it
+yourself. It is very hard to undo (usually a Windows reinstall) and leaves the
+PC with no antivirus, so it is only for people who run another AV.
 
 ### Connection test
 
@@ -316,6 +323,8 @@ toolbox like Ghost's, without the baggage.
 
 | Group | What's in it |
 |---|---|
+| **Chat & voice** | Discord, Discord PTB |
+| **Tuning tools** | MSI Afterburner (GPU overclocking/monitoring — installed without RivaTuner/RTSS; overclocking done in the real tool, never by this app) |
 | **Runtimes** | Visual C++ Redistributables (2005–2022, x86 + x64), DirectX web installer, .NET Desktop Runtime 8 |
 | **Browsers** | Edge & WebView2, Brave, Chrome, Firefox, Opera GX, Vivaldi |
 | **Game clients** | Steam, Epic, Ubisoft Connect, EA App, GOG Galaxy, Battle.net, Rockstar, Amazon Games |
@@ -336,9 +345,11 @@ usually remove it — the page says so and falls back to direct downloads.
 
 **Microsoft Store & Xbox apps** sit at the top of the same page: one button
 removes them, another restores them by re-registering the copy Windows keeps
-on disk. On an image where they were stripped rather than uninstalled there is
-nothing left to restore from, and the app tells you that plainly instead of
-failing quietly.
+on disk. If the packages were only uninstalled, the app re-registers them from the copy
+Windows keeps on disk. If that copy is gone, it pulls the Store and Xbox app
+straight from Microsoft through winget. If even that fails (the Store framework
+itself was stripped), a **Get from Microsoft** button opens the official Store
+listing so there is always a way through.
 
 ---
 

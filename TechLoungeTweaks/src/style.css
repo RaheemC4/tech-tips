@@ -118,7 +118,7 @@ body {
 }
 .nav svg { width: 16px; height: 16px; opacity: .85; flex: 0 0 16px; }
 .nav .chip { margin-left: auto; font-size: 10.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
-.nav:hover { background: rgba(255,255,255,.05); color: var(--text); transform: translateX(2px); }
+.nav:hover { background: rgba(255,255,255,.05); color: var(--text); }
 .nav.active { background: linear-gradient(90deg, var(--glow), transparent); color: #fff; }
 .nav.active::before {
   content: ''; position: absolute; left: 0; top: 22%; height: 56%; width: 3px; border-radius: 3px;
@@ -159,8 +159,12 @@ body {
   background: radial-gradient(420px circle at var(--mx,50%) var(--my,0%), rgba(255,255,255,.08), transparent 42%);
   opacity: 0; transition: opacity .32s var(--ease);
 }
-.card:hover { transform: translateY(-3px); border-color: var(--stroke-hi); background: var(--glass-hi);
-  box-shadow: 0 18px 44px rgba(0,0,0,.42); }
+/* No transform on hover: moving the element out from under a still cursor
+   fires mouseleave/mouseenter in a loop and the whole card flickers. The
+   raised feel comes from a stronger shadow instead, which never shifts the
+   hit box. */
+.card:hover { border-color: var(--stroke-hi); background: var(--glass-hi);
+  box-shadow: 0 18px 48px rgba(0,0,0,.5); }
 .card:hover::after { opacity: 1; }
 .card.on { border-color: rgba(61,220,151,.35); }
 
@@ -213,7 +217,7 @@ body {
   font-family: inherit; color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-2));
   box-shadow: 0 8px 24px var(--glow);
   transition: transform .22s var(--ease), box-shadow .22s var(--ease), filter .22s var(--ease); }
-.btn:hover { transform: translateY(-2px); box-shadow: 0 12px 34px var(--glow); }
+.btn:hover { box-shadow: 0 10px 30px var(--glow); filter: brightness(1.06); }
 .btn:active { transform: translateY(0); }
 .btn.ghost { background: rgba(255,255,255,.06); border: 1px solid var(--stroke); box-shadow: none; color: var(--text); }
 .btn.ghost:hover { background: rgba(255,255,255,.1); box-shadow: none; }
@@ -415,7 +419,7 @@ body.dragging #spot { transition: none !important; }
   display: flex; flex-direction: column; gap: 5px;
 }
 .bulkbtn:hover { border-color: var(--accent); background: rgba(255,255,255,.06);
-  transform: translateY(-1px); }
+  box-shadow: 0 8px 26px rgba(0,0,0,.35); }
 .bulkbtn:disabled { opacity: .5; cursor: default; transform: none; }
 .bulkbtn.primary { border-color: color-mix(in srgb, var(--accent) 55%, transparent);
   background: color-mix(in srgb, var(--accent) 12%, transparent); }

@@ -222,6 +222,10 @@ function show(name) {
     document.getElementById('psub').textContent = name === 'Home'
       ? 'How tuned this machine is right now.' : '';
     document.getElementById('page-home').classList.add('show');
+    // Rebuild the score ring, the number and the by-category grid from the
+    // live tweak state every time Home opens - otherwise toggling on a
+    // category page leaves the dashboard showing stale counts.
+    if (name === 'Home') refreshCounts();
   }
   document.getElementById('scroll').scrollTop = 0;
 }
@@ -285,6 +289,10 @@ function updateCounts() {
   const pct = total ? applied / total * 100 : 0;
   const ring = H('ring');
   if (ring) ring.style.strokeDashoffset = 490 - 490 * pct / 100;
+  // The score number lives on the dashboard; keep it matching the ring so a
+  // toggle never leaves "90" frozen next to a moved ring.
+  const sn = H('scoreNum');
+  if (sn) sn.textContent = Math.round(pct);
 }
 
 /* ---------- tweak cards ---------- */
@@ -1310,6 +1318,7 @@ function storeCardHtml() {
     <div class="row" style="margin-top:13px;gap:9px;flex-wrap:wrap">
       <button class="btn" id="storeOn">Install / restore</button>
       <button class="btn ghost" id="storeOff">Remove both</button>
+      <button class="btn ghost" id="storeGet" style="display:none">Get from Microsoft</button>
       <span id="storeMsg" style="color:var(--muted);font-size:11.5px"></span>
     </div></div>`;
 }
@@ -1325,14 +1334,24 @@ async function wireStoreCard() {
   };
   paint(await api('store_status'));
 
+  const getBtn = H('storeGet');
   H('storeOn').onclick = async () => {
-    H('storeMsg').textContent = 'Restoring…'; H('storeMsg').style.color = 'var(--muted)';
+    H('storeMsg').textContent = 'Installing from Microsoft…'; H('storeMsg').style.color = 'var(--muted)';
+    if (getBtn) getBtn.style.display = 'none';
     const r = await api('store_set', 'both', true);
     paint(r && r.status);
-    if (r && r.ok) { H('storeMsg').textContent = 'Done.'; H('storeMsg').style.color = 'var(--good)'; }
-    else {
+    if (r && r.ok) {
+      H('storeMsg').textContent = (r.via === 'winget') ? 'Installed from Microsoft.' : 'Done.';
+      H('storeMsg').style.color = 'var(--good)';
+    } else {
       H('storeMsg').textContent = (r && r.message) || 'Could not restore them.';
       H('storeMsg').style.color = 'var(--warn)';
+      // Always give a working way forward when the automatic route fails.
+      if (getBtn) {
+        const url = (r && r.store_url) || 'https://apps.microsoft.com/detail/9wzdncrfjbmp';
+        getBtn.style.display = '';
+        getBtn.onclick = () => api('open_url', url);
+      }
     }
   };
   H('storeOff').onclick = () => {
@@ -1602,8 +1621,46 @@ async function pageDefender() {
          Turning Defender off leaves this PC with no antivirus until you turn it
          back on. Only do this if you run something else or accept the risk.
          Everything here is undone by the same toggle.</p>
+     </div>
+
+     <div class="card" id="defRemoveCard" style="margin-top:14px;border-color:rgba(255,93,108,.28)">
+       <b style="font-size:14px;color:var(--bad)">Permanently remove Defender</b>
+       <p style="color:var(--muted);font-size:11.5px;line-height:1.65;margin-top:7px">
+         The toggle above just switches Defender off — reversible any time. If you
+         want it gone completely, that needs <b>Defender Remover</b>, a separate
+         open-source tool. It is <b>not made by or bundled with this app</b>, it
+         is not reversible without reinstalling Windows, and it leaves the PC with
+         no antivirus at all. Only for people who run another AV and know what they
+         are doing.</p>
+       <div class="row" style="margin-top:11px">
+         <button class="btn ghost" id="defRemove"
+           style="border-color:rgba(255,93,108,.4);color:var(--bad)">Get Defender Remover</button>
+       </div>
      </div>`);
   await refreshDefender();
+  const rm = H('defRemove');
+  if (rm) rm.onclick = () => {
+    showModal(`<div class="modal-card">
+      <h2 style="margin:0 0 8px;font-size:18px;color:var(--bad)">Permanently remove Windows Defender?</h2>
+      <p style="color:var(--muted);font-size:12.5px;line-height:1.7;margin:0 0 12px">
+        This opens the download page for <b>Defender Remover</b> by ionuttbara — a
+        third-party tool, <b>not part of this app</b>. Nothing is downloaded or run
+        for you; you get it and run it yourself.</p>
+      <p style="color:var(--muted);font-size:12px;line-height:1.65;margin:0 0 14px">
+        It fully strips Windows Defender out. That is <b>very hard to undo</b> —
+        usually a Windows reinstall — and leaves you with <b>no antivirus</b>.
+        Make a restore point first, and only do this if you run another AV.</p>
+      <div class="row" style="gap:10px">
+        <button class="btn ghost" id="rmYes"
+          style="border-color:rgba(255,93,108,.4);color:var(--bad)">Open the download page</button>
+        <button class="btn" id="rmNo">Cancel</button>
+      </div></div>`);
+    H('rmYes').onclick = () => {
+      closeModal();
+      api('open_url', 'https://github.com/ionuttbara/windows-defender-remover/releases');
+    };
+    H('rmNo').onclick = closeModal;
+  };
 }
 
 async function refreshDefender() {

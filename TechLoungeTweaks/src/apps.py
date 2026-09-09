@@ -44,6 +44,7 @@ ALLOWED_HOSTS = (
     "battle.net", "downloader.battle.net", "blizzard.com",
     "rockstargames.com", "gamedownloads.rockstargames.com",
     "amazongames.com", "download.amazongames.com",
+    "discord.com", "dl.discordapp.net", "stable.dl2.discordapp.net",
     "github.com", "objects.githubusercontent.com",
 )
 
@@ -198,9 +199,33 @@ APPS = [
          url="https://download.amazongames.com/AmazonGamesSetup.exe",
          silent=["-q"],
          page="https://gaming.amazon.com/"),
+
+    # ------------------------------------------------------- chat & voice
+    dict(id="discord", name="Discord", group="Chat & voice",
+         desc="The desktop client. Installs and self-updates on first launch.",
+         winget="Discord.Discord",
+         url="https://discord.com/api/download?platform=win",
+         silent=["/S"],
+         page="https://discord.com/download"),
+    dict(id="afterburner", name="MSI Afterburner", group="Tuning tools",
+         desc="The standard GPU tuning + monitoring tool. Installed without "
+              "RivaTuner (RTSS). Overclocking is done here in the real tool - "
+              "this app never touches clocks itself.",
+         winget="Guru3D.Afterburner",
+         url=None, silent=None,
+         page="https://www.msi.com/Landing/afterburner/graphics-cards"),
+
+    dict(id="discordptb", name="Discord PTB", group="Chat & voice",
+         desc="Public Test Build - runs alongside the normal client, gets "
+              "features early.",
+         winget="Discord.Discord.PTB",
+         url="https://discord.com/api/download/ptb?platform=win",
+         silent=["/S"],
+         page="https://discord.com/download"),
 ]
 
-GROUP_ORDER = ["Runtimes", "Browsers", "Game clients"]
+GROUP_ORDER = ["Chat & voice", "Runtimes", "Browsers", "Game clients",
+               "Tuning tools"]
 
 
 def catalog():

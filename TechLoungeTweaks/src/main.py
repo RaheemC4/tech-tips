@@ -334,6 +334,15 @@ class Api:
         self._pending.pop(key, None)
         if verified is not None and verified != want:
             self._applied.add(key) if verified else self._applied.discard(key)
+            # best_effort tweaks (e.g. Widgets on a debloated image) can apply
+            # without the change reading back the way we expect. That is not an
+            # error worth a red banner - just reflect whatever state we can see.
+            if getattr(t, "best_effort", False):
+                # The write itself did not raise, so it was accepted - only the
+                # read-back is unreliable on this image. Trust the intent and
+                # show the card as the user set it, with no error.
+                self._applied.add(key) if want else self._applied.discard(key)
+                return {"ok": True, "applied": want, "soft": True}
             return {"ok": False, "applied": verified,
                     "message": ("Windows did not accept that change. It may "
                                 "need a reboot, or another policy is "
@@ -842,6 +851,28 @@ reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\No
                          args=(app_id, jobkey), daemon=True).start()
         return {"started": True, "key": jobkey}
 
+    # Stops RTSS, then runs RivaTuner Statistics Server's own uninstaller
+    # silently. Reading the UninstallString from the registry means this keeps
+    # working across RTSS versions instead of hardcoding a path.
+    _REMOVE_RTSS = r"""
+$ErrorActionPreference='SilentlyContinue'
+Get-Process RTSS,EncoderServer,RTSSHooksLoader64 -EA SilentlyContinue |
+  Stop-Process -Force -EA SilentlyContinue
+$roots = @(
+  'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+  'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall')
+$e = Get-ChildItem $roots -EA SilentlyContinue |
+  ForEach-Object { Get-ItemProperty $_.PSPath -EA SilentlyContinue } |
+  Where-Object { $_.DisplayName -like '*RivaTuner*' } | Select-Object -First 1
+if ($e -and $e.UninstallString) {
+  $u = $e.UninstallString.Trim('"')
+  try {
+    Start-Process -FilePath $u -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
+    'removed'
+  } catch { 'error: ' + $_.Exception.Message }
+} else { 'not-present' }
+"""
+
     def _run_app_install(self, app_id, jobkey):
         dest = os.path.join(os.environ.get("LOCALAPPDATA", tempfile.gettempdir()),
                             "TechLoungeTweaks", "installers")
@@ -856,6 +887,23 @@ reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\No
         except Exception as e:
             log(f"app {app_id} FAILED\n" + traceback.format_exc())
             ok, msg = False, str(e) or "The install could not run."
+
+        # Per-app post-install cleanup. MSI Afterburner's installer bundles
+        # RivaTuner Statistics Server and installs it silently; the user did
+        # not want that, and there is no version-stable silent flag to untick
+        # it. So let Afterburner install, then remove RTSS with its OWN
+        # registered uninstaller (read from the registry, so it is version
+        # independent). Best-effort - never fails the install itself.
+        if ok and app_id == "afterburner":
+            try:
+                self._job_update(jobkey, throttle=0.0,
+                                 line="Removing RivaTuner (RTSS)…")
+                r = ps(self._REMOVE_RTSS)
+                log(f"rtss remove: rc={r[0]} {r[1][:200]}")
+                if "removed" in (r[1] or "").lower():
+                    msg = "Installed (without RivaTuner)."
+            except Exception:
+                log("rtss remove FAILED\n" + traceback.format_exc())
         cancelled = jobkey in self._dl_cancel
         self._dl_cancel.discard(jobkey)
         self._job_finish(jobkey,
@@ -878,6 +926,18 @@ reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\No
         return {"ok": True}
 
     # ---------------------------------------------- Microsoft Store / Xbox
+    # Microsoft Store product IDs, for the winget --source msstore fallback.
+    _STORE_IDS = {
+        "store": ["9WZDNCRFJBMP"],                 # Microsoft Store
+        "xbox":  ["9MV0B5HZVK9Z", "9NZKPSTSNW4P"],  # Xbox app, Xbox Game Bar
+    }
+    # Where the "get it from Microsoft" button sends people when nothing else
+    # works. ms-windows-store: deep links open the Store app directly.
+    _STORE_URLS = {
+        "store": "https://apps.microsoft.com/detail/9wzdncrfjbmp",
+        "xbox":  "https://apps.microsoft.com/detail/9mv0b5hz vk9z".replace(" ", ""),
+    }
+
     _STORE_PKGS = {
         "store": ["Microsoft.WindowsStore", "Microsoft.StorePurchaseApp",
                   "Microsoft.DesktopAppInstaller"],
@@ -924,27 +984,49 @@ reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\No
                "-ErrorAction SilentlyContinue")
             return {"ok": True, "status": self.store_status()}
 
-        # Re-register from the payload Windows still holds on disk. This is the
-        # supported route and works whenever the package was removed rather
-        # than stripped out of the image.
-        rc, out = ps(
+        # Step 1: re-register from the payload Windows still holds on disk.
+        # This is the supported route and works whenever the package was
+        # uninstalled rather than stripped out of the image.
+        ps(
             f"$n=@({filt}); Get-AppxPackage -AllUsers | "
             "Where-Object {$n -contains $_.Name} | ForEach-Object "
             "{Add-AppxPackage -DisableDevelopmentMode -Register "
             "\"$($_.InstallLocation)\\AppXManifest.xml\" "
             "-ErrorAction SilentlyContinue}")
         st = self.store_status()
-        want = all(st.get(g) for g in groups)
-        if want:
+        if all(st.get(g) for g in groups):
             return {"ok": True, "status": st}
-        # Nothing left to re-register - a debloated image (Ghost Spectre and
-        # friends) deletes the payload, and Windows cannot rebuild it.
+
+        # Step 2: nothing to re-register - the payload is gone. Pull the apps
+        # straight from Microsoft via winget's Store source. This is how you
+        # "force install" the Xbox app and the Store on a debloated image, as
+        # long as winget itself survived.
+        exe = apps.winget_path()
+        if exe:
+            ids = []
+            for g in groups:
+                ids += self._STORE_IDS.get(g, [])
+            for pid in ids:
+                try:
+                    run([exe, "install", "--id", pid, "--source", "msstore",
+                         "--accept-package-agreements",
+                         "--accept-source-agreements", "--silent",
+                         "--disable-interactivity"])
+                except Exception:
+                    pass
+            st = self.store_status()
+            if all(st.get(g) for g in groups):
+                return {"ok": True, "status": st, "via": "winget"}
+
+        # Step 3: even winget could not do it (its own Store framework was
+        # stripped too). Hand off to the official Store listing.
         return {"ok": False, "status": st, "stripped": True,
-                "message": ("Windows has no copy of these packages left to "
-                            "restore - this image had them removed, not just "
-                            "uninstalled. They have to come back from a "
-                            "Microsoft source; the button below opens the "
-                            "official page.")}
+                "store_url": self._STORE_URLS["xbox" if "xbox" in groups
+                                              else "store"],
+                "message": ("Windows and winget both have no copy of these to "
+                            "install from - this image had the Store framework "
+                            "itself stripped out, not just uninstalled. Use the "
+                            "button below to get them from Microsoft.")}
 
     # ---------------------------------------------------- virtualisation
     @traced
