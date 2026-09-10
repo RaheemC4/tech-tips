@@ -433,12 +433,23 @@ body.dragging #spot { transition: none !important; }
   line-height: 1.55; background: rgba(255,255,255,.04); border: 1px solid var(--stroke);
   color: var(--text); display: flex; align-items: center; gap: 11px;
 }
-.bulkstatus .spin {
+.spin {
+  display: inline-block; vertical-align: middle;
   width: 15px; height: 15px; border-radius: 50%; flex: 0 0 auto;
   border: 2px solid rgba(255,255,255,.18); border-top-color: var(--accent-2);
   animation: spin 0.7s linear infinite;
 }
-@keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  [data-debloat-choice] { appearance:none; width:38px; height:22px; min-width:38px;
+    border-radius:20px; background:var(--faint); position:relative; cursor:pointer;
+    border:1px solid rgba(255,255,255,.18); }
+  [data-debloat-choice]::after { content:''; position:absolute; width:16px; height:16px;
+    border-radius:50%; background:#fff; top:2px; left:2px; transition:transform .15s; }
+  [data-debloat-choice]:checked { background:var(--accent); }
+  [data-debloat-choice]:checked::after { transform:translateX(16px); }
+  [data-debloat-choice]:disabled { opacity:.4; cursor:default; }
+  [data-debloat-choice]:focus-visible { outline:2px solid var(--accent-2); outline-offset:3px; }
 
 /* ---------- progress bar for long-running jobs ---------- */
 .jobbar { height: 7px; border-radius: 6px; margin: 10px 0 2px; overflow: hidden;

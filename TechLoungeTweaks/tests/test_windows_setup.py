@@ -65,6 +65,25 @@ class WindowsSetupTests(unittest.TestCase):
         popen.side_effect = OSError('launch denied')
         self.assertIn('launch denied', self.tool.launch('activate')['message'])
 
+    @patch('windows_setup.subprocess.run')
+    def test_native_edition_requires_confirmation_and_uses_hidden_helper(self, run):
+        self.assertFalse(self.tool.change_edition('Professional')['ok'])
+        self.assertFalse(self.tool.change_edition('Professional;exit', True)['ok'])
+        run.assert_not_called()
+        run.return_value = Mock(returncode=0, stdout='TL_RESULT:{"ok":true,"restart_required":true}\n')
+        self.assertTrue(self.tool.change_edition('Professional', True)['restart_required'])
+        args, kwargs = run.call_args
+        self.assertEqual(Path(args[0][6]), SRC / 'edition_bridge.ps1')
+        self.assertEqual(args[0][-4:], ['-Mode', 'apply', '-Target', 'Professional'])
+        self.assertEqual(kwargs['creationflags'], subprocess.CREATE_NO_WINDOW)
+
+    @patch('windows_setup.subprocess.run')
+    def test_native_edition_errors_are_reported(self, run):
+        run.return_value = Mock(returncode=1, stdout='TL_RESULT:{"ok":false,"message":"Unsupported target"}\n')
+        self.assertEqual(self.tool.change_edition('Professional', True)['message'], 'Unsupported target')
+        run.return_value = Mock(returncode=1, stdout='')
+        self.assertFalse(self.tool.editions()['ok'])
+
     def test_real_cmd_quoting_with_harmless_script(self):
         # Never run MAS in tests. Exercise the exact launcher with a stub that
         # only writes a marker, including spaces and shell metacharacters.

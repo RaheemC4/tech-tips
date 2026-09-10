@@ -1,7 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('web', 'web'), ('app.ico', '.'), ('vendor/mas', 'vendor/mas')]
+datas = [('web', 'web'), ('app.ico', '.'), ('vendor', 'vendor'),
+         ('debloat_catalog.json', '.'), ('debloat_bridge.ps1', '.'), ('edition_bridge.ps1', '.'), ('debloat-reg', 'debloat-reg')]
 binaries = []
 hiddenimports = ['proxy_tools', 'bottle', 'clr']
 tmp_ret = collect_all('webview')

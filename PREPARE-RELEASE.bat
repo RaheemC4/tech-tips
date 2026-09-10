@@ -1,5 +1,6 @@
 @echo off
 setlocal
+color 0B
 title Tech Lounge Tweaks - prepare personal ZIP
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\release.ps1" -Mode prepare
 set "RESULT=%ERRORLEVEL%"

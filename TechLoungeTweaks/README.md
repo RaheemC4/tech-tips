@@ -7,8 +7,8 @@ test your connection for bufferbloat, clean up junk files and check your GPU
 drivers — all from one window.
 
 Every page reads the **live** system state, so the app shows what is actually
-set on your machine rather than assuming. Every toggle reverts, and one button
-on the dashboard does the lot.
+set on your machine rather than assuming. The dashboard has a curated recommended
+preset, and individual pages explain the scope and undo options for their changes.
 
 ![Overview](docs/home.png)
 
@@ -105,7 +105,8 @@ with a yellow warning in the app, but to be explicit:
   to launch.
 - **Disable CPU Mitigations** — weakens Spectre/Meltdown protection.
 
-Everything else is safe to try and safe to undo.
+Read each option before applying it. App removal and clearing Start pins are
+not reversed by the dashboard's Revert All button.
 
 ---
 
@@ -137,14 +138,56 @@ categories by hand:
 
 | Button | What it does |
 |---|---|
-| **Apply Recommended** | Every safe tweak, plus the NVIDIA profile and Defender off. Skips the four that cause trouble: Memory Integrity and CPU Mitigations (kernel anti-cheat / security), GameDVR and Fullscreen Optimizations (Xbox app, Game Bar overlay and some controllers). |
-| **Apply All** | Everything, including the risky ones, plus the NVIDIA profile and Defender off. |
-| **Revert All** | Puts every tweak back to exactly how this PC was the moment you first opened the app. |
-| **Windows Defaults** | Turns every tweak off, restores NVIDIA settings and turns Defender back on — Windows as it ships. |
+| **Apply Recommended** | Curated privacy settings, optional bundled-app removal and the customization choices listed below. Leaves gaming tweaks, Xbox, Game Bar, NVIDIA settings, Defender and virtualization alone. |
+| **Apply All** | Asks for confirmation, then applies the legacy tweaks (including risky ones), NVIDIA profile, Defender off and the curated Debloat & Customization options. |
+| **Revert All** | Restores the legacy tweaks from the app's saved original values. Does not reinstall removed apps or restore Start pins. |
+| **Windows Defaults** | Turns legacy tweaks off, restores NVIDIA settings and enables Defender. Does not undo the new debloat actions. |
 
-Both apply buttons check for an NVIDIA GPU first and quietly skip the driver
-profile if there isn't one. Every switch flips the moment you click, with the
-registry write happening behind it, so nothing ever looks frozen mid-apply.
+Apply All checks for an NVIDIA GPU before applying its driver profile. Recommended
+uses the same preset from the dashboard and the Debloat & Customization page.
+
+### Debloat & Customization
+
+![Debloat & Customization](docs/debloat.png)
+
+This page integrates selected helpers and settings from
+[Win11Debloat](https://github.com/Raphire/Win11Debloat). It does not run the
+upstream default preset. Existing options such as Bing search remain in their
+original tabs instead of appearing twice.
+
+**Apply Recommended** selects these customization changes: show file extensions
+and hidden files, hide Home from Explorer navigation, align the taskbar left,
+hide the taskbar search icon, show clock seconds, enable dark theme, hide
+"Learn about this picture", clear existing Start pins once, use the Start All
+Apps list, hide Start recommendations, disable Bing and Copilot in search, hide
+Task View and enable the taskbar End Task option.
+
+It also applies selected privacy and advertising settings and disables Copilot,
+Recall, Click to Do and AI additions in Paint, Notepad and Edge. The optional
+packaged apps selected for removal are Clipchamp, Cortana, Bing Finance, News,
+Sports and Weather, Get Started, the Microsoft 365 promotional hub, Mixed Reality
+Portal, Skype and the packaged Copilot app. Missing apps are already satisfied.
+Xbox, Game Bar, Gaming Services, Microsoft Store, printing and Windows framework
+packages are excluded. Gaming settings are not changed by Recommended.
+
+The switches select what the next **Apply selected** action will do; the status
+beside each option reports its detected state. **Apply all** asks for confirmation.
+Hide Gallery and hide duplicate drives are optional and off in Recommended.
+Unavailable options show their minimum Windows build and are skipped. Some Start
+policies depend on edition and feature rollout: a stored policy does not guarantee
+that every Windows build will change its appearance. Sign out or restart manually
+if Windows has not refreshed the interface.
+
+**Clearing Start pins is a one-time action per existing user profile** with a
+Start layout file. It does not lock the layout or change the default profile;
+users can pin apps again. Successfully processed profiles are recorded so later
+runs preserve newly added pins. The upstream helper backs up the old layout beside
+the profile's `start2.bin` file.
+
+Registry changes have individual **Undo** actions using upstream undo settings.
+Registry backups and the last run log are kept under
+`%LOCALAPPDATA%\TechLoungeTweaks\Debloat`. Undo is not offered for removed apps or
+cleared pins; reinstall wanted apps through Microsoft Store and repin them yourself.
 
 ### NVIDIA Profile
 
@@ -238,12 +281,16 @@ opens, so switching tabs is instant.
 ### Tools
 
 - **Windows setup** — under Resources, shows your current Windows name, edition,
-  release, build and activation status. **Activate Windows** checks the live
-  licensing state first and shows an already-activated dialog when appropriate.
-  Otherwise it opens the bundled MAS HWID tool. **Change Windows Version** shows
-  your current edition before opening MAS's interactive edition chooser (Home,
-  Pro, etc.; this does not upgrade Windows 10 to 11). Use **Refresh status** after
-  finishing in MAS. Edition changes may require a restart.
+  release, build and activation status. If the displayed status is already
+  activated, **Activate Windows** immediately shows a dialog without loading MAS.
+  Otherwise it checks licensing before opening the bundled MAS HWID tool.
+  Each action clears old feedback and shows a loading indicator.
+  **Change Windows Version** opens a mouse-operated chooser inside the app,
+  shows the current edition and lists Windows-supported target editions.
+  A second confirmation names the selected target before applying it through a
+  hidden helper. This does not upgrade Windows 10 to 11 or offer unsupported
+  downgrade paths. Edition changes may need activation and a manual restart;
+  the app never restarts the PC automatically. Use **Refresh status** to recheck.
 - **Boot Optimizer** — detects your CPU and GPU, then applies startup and
   shutdown tuning that suits them. Preview shows exactly what would change
   before you commit. Secure Boot, TPM and VBS are never touched, so kernel
@@ -294,8 +341,7 @@ Two buttons, in plain English:
 | **Gaming & Normal Use** | Pick this for everyday use and playing games. Memory Integrity stays off so installers and games stay fast. VMs still run, just slower. |
 
 Whichever one is live is marked **ACTIVE NOW**, so there is never any doubt
-which state the PC is in. **Apply Recommended** on the dashboard picks Gaming &
-Normal Use automatically.
+which state the PC is in. **Apply Recommended** leaves this choice unchanged.
 
 Why this is a choice at all: VirtualBox wants the CPU's virtualisation
 directly, but Windows runs its own hypervisor for Memory Integrity, WSL2,
@@ -391,9 +437,10 @@ Change those settings in the firmware itself at POST.
 
 ## Undoing things
 
-- Everything at once — **Revert All** on the dashboard puts the machine back to
-  how it was when you first opened the app, or **Windows Defaults** puts it back
-  to stock Windows.
+- Legacy tweaks — **Revert All** uses their saved original values;
+  **Windows Defaults** switches those tweaks off.
+- Debloat registry settings — use their individual **Undo** buttons. Removed
+  apps and Start pins need manual reinstalling or repinning.
 - Any individual tweak — toggle it off.
 - A whole category — **Revert All** at the top of the page.
 - NVIDIA profile — toggle it off; your own pre-profile settings come back.
@@ -422,6 +469,12 @@ to your other PCs and extract the entire folder before opening the executable.
 **PUSH-TO-GITHUB.bat** does the same preparation, then commits and pushes the
 updated app ZIP, source, README and screenshots to GitHub. It uses the current
 `RELEASE-NOTES.md` for the commit description and stops if any step fails.
+It remains a single-step workflow: running PREPARE separately is optional.
+ZIP replacement retries temporary Windows locks and uses a backup-and-rename
+fallback for cloud-managed files. If access remains blocked, the old ZIP and
+new temporary ZIP are retained and the script explains how to retry.
+Both batch windows use cyan text. After a successful push, repository and direct
+download links are shown, with R and D shortcuts to open them in your browser.
 
 README wording is reviewed alongside app changes; the scripts synchronise the
 reviewed copy and check its source fingerprint. They do not invent documentation
@@ -434,6 +487,13 @@ Screenshots use sample system data to demonstrate the interface.
 The personal build bundles unmodified [Microsoft Activation Scripts 3.12](https://github.com/massgravel/Microsoft-Activation-Scripts)
 HWID and Change Windows Edition scripts. Their GPL-3.0 licence and pinned source
 reference are included in `_internal/vendor/mas/` beside the script source.
+The native edition adapter follows the MAS edition-change approach while limiting
+the chooser to targets reported by Windows DISM.
+
+The personal build also bundles unmodified Win11Debloat source at commit
+`32024662f3c602442e7af82bbf52c89143b31aeb`. Its MIT licence, source reference and
+integrity manifest are in `_internal/vendor/win11debloat/`. The app's adapter
+selects explicit options; clock seconds is implemented locally.
 
 Built for The Tech Lounge Discord community. Tweaks are drawn from the
 server's tech-tips archive plus documented Windows settings.

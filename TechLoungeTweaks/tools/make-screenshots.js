@@ -12,6 +12,7 @@ const { chromium } = require(process.env.PW ||
   '/home/claude/.npm-global/lib/node_modules/playwright');
 const CHROME = process.env.CHROME || '/opt/pw-browsers/chromium';
 const D = __dirname + '/../docs/';
+const DEBLOAT = require('../src/debloat_catalog.json').items.map((item, index) => ({...item, supported:true, applied:index % 3 === 0}));
 const PAGE = require('url').pathToFileURL(require('path').resolve(__dirname, '../src/web/index.html')).href;
 
 const CAT={groups:['Chat & voice','Runtimes','Browsers','Game clients','Tuning tools'],winget:true,apps:[
@@ -49,9 +50,10 @@ const TW={Performance:[['Disable GameDVR','Turns off Xbox Game Bar background re
     await p.waitForTimeout(2600);
   };
   await boot();
-   await p.evaluate(({NV,CAT})=>{document.body.classList.remove('booting','booting-slow');
+   await p.evaluate(({NV,CAT,DEBLOAT})=>{document.body.classList.remove('booting','booting-slow');
   const bl=document.getElementById('bootlayer');if(bl)bl.remove();window.__gpu='nvidia';window.__CAT=CAT;
   window.api=async(n)=>{
+    if(n==='debloat_status')return{ok:true,build:26200,items:DEBLOAT};
     if(n==='windows_status')return{ok:true,name:'Microsoft Windows 11 Pro',edition:'Professional',version:'25H2',build:'26200',activated:true};
    if(n==='nvprofile_status')return window.__gpu==='amd'
      ?{tool:true,profile:true,nvidia:false,gpu_name:'AMD Radeon RX 7900 XTX',state:'unknown',checked:true}
@@ -62,7 +64,7 @@ const TW={Performance:[['Disable GameDVR','Turns off Xbox Game Bar background re
    if(n==='app_catalog')return window.__CAT;
    if(n==='store_status')return{store:true,xbox:false,present:['Microsoft.WindowsStore']};
    if(n==='active_jobs')return[];
-   return null;};},{NV,CAT});
+   return null;};},{NV,CAT,DEBLOAT});
  await p.evaluate(({SPECS,TW})=>{const cats=['Performance','Graphics','GPU','Networking','Power','Advanced','System','Privacy','Explorer & UI'];
   const cnt={Performance:[5,8],Graphics:[3,4],GPU:[2,4],Networking:[3,4],Power:[2,4],Advanced:[1,3],System:[3,5],Privacy:[9,11],'Explorer & UI':[6,7]};
   const out=[];for(const c of cats){const[on,tot]=cnt[c];const rows=TW[c];
@@ -71,6 +73,7 @@ const TW={Performance:[['Disable GameDVR','Turns off Xbox Game Bar background re
   STATE.cats=cats;STATE.tweaks=out;STATE.snapshot=Object.fromEntries(out.map(t=>[t.key,t.applied]));
   renderSpecs(SPECS);buildNav();show('Home');refreshCounts();buildQuick();wireBulk();},{SPECS,TW});
  await p.waitForTimeout(1100);await p.screenshot({path:D+'home.png'});
+ await p.evaluate(()=>show('Debloat & Customization'));await p.waitForTimeout(500);await p.screenshot({path:D+'debloat.png'});
  await p.evaluate(()=>show('Performance'));await p.waitForTimeout(700);await p.screenshot({path:D+'tweaks.png'});
  await p.evaluate(()=>show('NVIDIA Profile'));await p.waitForTimeout(1200);await p.screenshot({path:D+'nvidia.png'});
  await p.evaluate(()=>{window.__gpu='amd';show('NVIDIA Profile');});await p.waitForTimeout(1000);await p.screenshot({path:D+'nvidia-amd.png'});

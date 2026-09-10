@@ -59,6 +59,42 @@ try {
             return {'ok': False, 'activated': None,
                     'message': f'Could not check Windows status: {exc}'}
 
+    def editions(self):
+        return self._edition_command('query')
+
+    def _edition_command(self, mode, target=None):
+        script = self.folder.parent.parent / 'edition_bridge.ps1'
+        powershell = str(Path(os.environ['SystemRoot']) / 'System32/WindowsPowerShell/v1.0/powershell.exe')
+        args = [powershell, '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+                '-File', str(script), '-Mode', mode]
+        if target is not None:
+            if not isinstance(target, str) or not target.isascii() or not target.isalnum():
+                return {'ok': False, 'message': 'Invalid Windows edition.'}
+            args += ['-Target', target]
+        try:
+            result = subprocess.run(args, capture_output=True, text=True, encoding='utf-8', errors='replace',
+                                    timeout=120 if mode == 'query' else 1800, creationflags=subprocess.CREATE_NO_WINDOW)
+            for line in reversed(result.stdout.splitlines()):
+                if line.startswith('TL_RESULT:'):
+                    parsed = json.loads(line[len('TL_RESULT:'):])
+                    if result.returncode: parsed['ok'] = False
+                    return parsed
+            return {'ok': False, 'message': 'Windows did not return an edition result. Check Windows servicing and try again.'}
+        except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
+            return {'ok': False, 'message': 'Edition operation could not finish: ' + str(exc)}
+
+    def change_edition(self, target, confirmed=False):
+        if confirmed is not True:
+            return {'ok': False, 'message': 'Confirm the target edition before changing Windows.'}
+        if not self._lock.acquire(blocking=False):
+            return {'ok': False, 'message': 'Another Windows setup operation is in progress.'}
+        try:
+            if self._process is not None and self._process.poll() is None:
+                return {'ok': False, 'message': 'Finish the open activation tool first.'}
+            return self._edition_command('apply', target)
+        finally:
+            self._lock.release()
+
     def launch(self, action):
         if action not in TOOLS:
             return {"ok": False, "message": "Unknown Windows setup action."}

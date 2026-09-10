@@ -1,5 +1,6 @@
 # Keep bundled upstream scripts byte-for-byte identical to their pinned hashes.
 TechLoungeTweaks/src/vendor/mas/*.cmd -text
+TechLoungeTweaks/src/vendor/win11debloat/** -text
 *.zip -text
 *.png -text
 *.ico -text

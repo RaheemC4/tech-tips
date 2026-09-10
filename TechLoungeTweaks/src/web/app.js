@@ -178,6 +178,7 @@ const NAV = [
   ['page','System Info','info'], ['page','Disk Cleanup','disk'],
   ['page','Drivers','driver'], ['page','NVIDIA Profile','nvidia'], ['page','Defender','shield'], ['page','Resources','wrench'],
   ['sec','TOOLS'],
+  ['page','Debloat & Customization','wrench'],
   ['page','Virtual Machines','box'],
   ['page','Install Apps','box'],
   ['page','Boot Optimizer','bolt'], ['page','BIOS Info','cpu'],
@@ -201,6 +202,7 @@ function show(name) {
     n.classList.toggle('active', n.dataset.nav === name));
   const isCat = STATE.cats.includes(name);
   const routes = {
+    'Debloat & Customization': pageDebloat,
     'System Info': pageSysInfo, 'Disk Cleanup': pageClean,
     'Drivers': pageDrivers, 'NVIDIA Profile': pageNvProfile, 'Defender': pageDefender, 'Resources': pageRes,
     'Install Apps': pageApps, 'Virtual Machines': pageVirt,
@@ -322,6 +324,7 @@ function renderTweaks(cat) {
 }
 
 async function applyAll(on) {
+  if (on && !await confirmAction('Apply all in this category?', 'This applies every option in ' + STATE.page + ', including any marked warnings.', 'Apply All')) return;
   const items = STATE.tweaks.filter(t => t.category === STATE.page);
   items.forEach(t => t.applied = on);      // flip first, write behind
   renderTweaks(STATE.page); refreshCounts();
@@ -331,7 +334,7 @@ async function applyAll(on) {
 /* ---------- dashboard one-click setup ---------- */
 // Tweaks "Apply recommended" leaves off - kept in sync with the server's
 // RECOMMENDED_SKIP: the two risky ones plus GameDVR and Fullscreen Optimizations.
-const RECOMMENDED_SKIP = ['mem_integrity', 'mitigations', 'gamedvr', 'fse'];
+const RECOMMENDED_KEYS = ['bing_search','cdm_ads','telemetry','ceip','feedback','activity_history','ad_id','typing_insights','speech_data','ink_collection'];
 
 function wireBulk() {
   document.querySelectorAll('[data-bulk]').forEach(b => {
@@ -341,7 +344,7 @@ function wireBulk() {
 
 function bulkTargets(mode) {
   if (mode === 'all') return () => true;
-  if (mode === 'recommended') return t => !RECOMMENDED_SKIP.includes(t.key);
+  if (mode === 'recommended') return t => RECOMMENDED_KEYS.includes(t.key) ? true : t.applied;
   if (mode === 'defaults') return () => false;
   if (mode === 'revert') {
     const snap = STATE.snapshot || {};
@@ -353,10 +356,12 @@ function bulkTargets(mode) {
 let BULK_BUSY = false;
 async function runBulk(mode) {
   if (BULK_BUSY) return;
+  if (mode === 'all' && !await confirmAction('Apply every tweak?', 'This includes the legacy gaming tweaks, NVIDIA profile, Defender changes and all curated Debloat & Customization options. Apps will be removed and Start pins cleared once. Use Recommended for the preset that preserves gaming and core Windows features.', 'Apply All')) return;
   BULK_BUSY = true;
+  try {
   const btns = document.querySelectorAll('[data-bulk]');
   btns.forEach(b => b.disabled = true);
-  const status = H('bulkStatus');
+  const status = H('debloatStatus') || H('bulkStatus');
 
   // 1) Flip every affected toggle immediately so the UI never looks frozen.
   const want = bulkTargets(mode);
@@ -375,7 +380,7 @@ async function runBulk(mode) {
   setStatus(LABEL + '…', true);
 
   // 2) Write the tweaks.
-  const r = await api('bulk_tweaks', mode);
+  const r = await api('bulk_tweaks', mode, mode === 'all');
   if (r && r.applied) {
     STATE.tweaks.forEach(t => {
       if (t.key in r.applied) t.applied = r.applied[t.key];
@@ -386,9 +391,16 @@ async function runBulk(mode) {
 
   // 3) Defender + NVIDIA, per mode.
   const extras = [];
-  const wantDefenderOff = (mode === 'all' || mode === 'recommended');
+  if (!r || r.ok === false) extras.push('Some existing tweaks failed; check TL-api.log');
+  if (mode === 'all' || mode === 'recommended') {
+    setStatus('Applying debloat and customization…', true);
+    const started = await api('debloat_apply', mode, [], mode === 'all');
+    const dr = started?.ok ? await waitForDebloat() : started;
+    extras.push(dr?.message || 'Debloat could not start. Check its tab.');
+  }
+  const wantDefenderOff = (mode === 'all');
   const wantDefenderOn  = (mode === 'defaults');
-  const wantNvidiaOn    = (mode === 'all' || mode === 'recommended');
+  const wantNvidiaOn    = (mode === 'all');
   const wantNvidiaOff   = (mode === 'defaults' || mode === 'revert');
 
   // Only touch NVIDIA when this PC actually has an NVIDIA GPU + the tool.
@@ -421,7 +433,7 @@ async function runBulk(mode) {
   // Virtualisation: the apply modes and Windows Defaults are all gaming-facing,
   // so put the machine in the gaming/protected state. Revert All is left alone
   // because we did not record which mode the PC was in beforehand.
-  if (mode === 'all' || mode === 'recommended' || mode === 'defaults') {
+  if (mode === 'all' || mode === 'defaults') {
     try {
       const vs = await api('virt_status');
       if (vs && vs.mode !== 'gaming') {
@@ -436,8 +448,13 @@ async function runBulk(mode) {
                 revert: 'Reverted to your original setup.', defaults: 'Windows defaults restored.'}[mode];
   setStatus(done + (extras.length ? '  •  ' + extras.join('  •  ') : ''), false);
 
-  btns.forEach(b => b.disabled = false);
-  BULK_BUSY = false;
+  } catch (error) {
+    const target = H('debloatStatus') || H('bulkStatus');
+    if (target) { target.hidden = false; target.textContent = 'Could not finish: ' + error.message; }
+  } finally {
+    document.querySelectorAll('[data-bulk]').forEach(b => b.disabled = false);
+    BULK_BUSY = false;
+  }
 }
 
 async function rescan() {
@@ -1004,7 +1021,7 @@ function pageRes() {
       <p style="color:var(--muted);font-size:12px;margin-top:6px;line-height:1.6">
         Set up Windows after a reset using Microsoft Activation Scripts (MAS 3.12).
         Activation starts the HWID tool in a separate window and needs internet access.
-        Change Windows Version opens the edition chooser (Home, Pro, etc.); it does not
+        Change Windows Version opens an in-app chooser for supported editions; it does not
         upgrade Windows 10 to 11. An edition change may require a restart.</p>
       <div class="row" style="margin-top:12px;flex-wrap:wrap">
         <button class="btn" data-windows-setup="activate">Activate Windows</button>
@@ -1025,83 +1042,7 @@ function pageRes() {
         <button class="btn" data-res="${k}">Run</button>
         <button class="btn ghost" data-cancel="${k}" style="display:none">Cancel</button></div></div>`).join(''));
 
-  function paintWindowsStatus(status) {
-    const edition = H('windowsCurrentEdition');
-    const activation = H('windowsActivationStatus');
-    if (!edition || !activation) return;
-    if (!status?.ok) {
-      edition.textContent = 'Current Windows version unavailable.';
-      activation.textContent = status?.message || 'Could not read Windows status. Try Refresh status.';
-      return;
-    }
-    edition.textContent = 'Currently installed: ' + status.name +
-      (status.edition ? ' · ' + status.edition : '') +
-      (status.version ? ' · ' + status.version : '') +
-      (status.build ? ' · Build ' + status.build : '');
-    activation.textContent = status.activated === true ? 'Activation: Windows is activated.'
-      : status.activated === false ? 'Activation: Windows is not activated.'
-      : 'Activation: status unavailable. Refresh to try again.';
-    activation.style.color = status.activated === true ? 'var(--good)' : 'var(--muted)';
-  }
-  async function refreshWindowsStatus() {
-    const result = await api('windows_status');
-    paintWindowsStatus(result);
-    return result;
-  }
-  H('refreshWindowsStatus').onclick = refreshWindowsStatus;
-  refreshWindowsStatus();
-
-  async function launchWindowsSetup(action) {
-      const buttons = [...document.querySelectorAll('[data-windows-setup]')];
-      const message = H('windowsSetupMessage');
-      buttons.forEach(b => { b.disabled = true; });
-      message.textContent = 'Opening MAS…';
-      try {
-        const result = await api('windows_setup', action);
-        if (result?.status) paintWindowsStatus(result.status);
-        message.textContent = result?.message || 'Could not open MAS. Check TL-api.log for details.';
-        message.style.color = result?.ok ? 'var(--good)' : 'var(--bad)';
-        if (result?.already_activated) {
-          showModal(`<div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="activatedTitle">
-            <h2 id="activatedTitle">Windows is already activated</h2>
-            <p id="activatedWindowsName" style="margin-top:12px"></p>
-            <p style="color:var(--muted);margin-top:10px">No activation is needed. You can keep using Windows as it is.</p>
-            <button class="btn" id="activatedOkay" style="margin-top:20px">OK</button></div>`);
-          H('activatedWindowsName').textContent = result.status?.name || 'Your Windows installation';
-          H('activatedOkay').onclick = closeModal;
-          H('activatedOkay').focus();
-        }
-      } catch (error) {
-        message.textContent = 'Could not open MAS: ' + error.message;
-        message.style.color = 'var(--bad)';
-      } finally {
-        buttons.forEach(b => { b.disabled = false; });
-      }
-  }
-  document.querySelectorAll('[data-windows-setup]').forEach(button => {
-    button.onclick = async () => {
-      const action = button.dataset.windowsSetup;
-      if (action === 'activate') return launchWindowsSetup(action);
-      button.disabled = true;
-      const status = await refreshWindowsStatus();
-      button.disabled = false;
-      if (!status?.ok) return;
-      showModal(`<div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="editionTitle">
-        <h2 id="editionTitle">Change Windows Version</h2>
-        <p id="editionCurrentName" style="margin-top:12px;font-weight:600"></p>
-        <p style="color:var(--muted);margin-top:10px;line-height:1.6">
-          Choose a different edition, such as Home or Pro, in the MAS window.
-          This does not upgrade Windows 10 to 11. Save your work first; changing editions may require a restart.</p>
-        <div class="row" style="margin-top:20px">
-          <button class="btn" id="editionContinue">Open edition chooser</button>
-          <button class="btn ghost" id="editionCancel">Cancel</button></div></div>`);
-      H('editionCurrentName').textContent = 'You are currently running ' + status.name +
-        (status.edition ? ' (' + status.edition + ')' : '') + '.';
-      H('editionCancel').onclick = closeModal;
-      H('editionContinue').onclick = () => { closeModal(); launchWindowsSetup('edition'); };
-      H('editionContinue').focus();
-    };
-  });
+  wireWindowsSetup();
 
   RES.forEach(([k]) => {
     const jobkey = 'res:' + k;

@@ -13,6 +13,42 @@ spec.loader.exec_module(release)
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_archive_retries_temporary_lock(self):
+        with tempfile.TemporaryDirectory() as temp:
+            old, new = Path(temp) / 'app.zip', Path(temp) / 'app.zip.tmp'
+            old.write_bytes(b'old'); new.write_bytes(b'new')
+            replace = release.os.replace
+            with patch.object(release.os, 'replace', side_effect=[PermissionError('locked'), None]) as mocked, patch.object(release.time, 'sleep'):
+                # Delegate the second attempt so the test checks actual bytes.
+                count = 0
+                def action(src, dst):
+                    nonlocal count
+                    count += 1
+                    if count == 1: raise PermissionError('locked')
+                    return replace(src, dst)
+                mocked.side_effect = action
+                release.replace_archive(new, old)
+            self.assertEqual(old.read_bytes(), b'new')
+
+    def test_archive_cloud_fallback_and_rollback(self):
+        for fail_install in (False, True):
+            with self.subTest(fail_install=fail_install), tempfile.TemporaryDirectory() as temp:
+                old, new = Path(temp) / 'app.zip', Path(temp) / 'app.zip.tmp'
+                old.write_bytes(b'old'); new.write_bytes(b'new')
+                replace = release.os.replace
+                def cloud_replace(src, dst):
+                    if src == new and (dst.exists() or fail_install):
+                        raise PermissionError('cloud replacement blocked')
+                    return replace(src, dst)
+                with patch.object(release.os, 'replace', side_effect=cloud_replace), patch.object(release.time, 'sleep'):
+                    if fail_install:
+                        with self.assertRaises(RuntimeError): release.replace_archive(new, old)
+                        self.assertEqual(old.read_bytes(), b'old')
+                        self.assertEqual(new.read_bytes(), b'new')
+                    else:
+                        release.replace_archive(new, old)
+                        self.assertEqual(old.read_bytes(), b'new')
+
     def test_hashes_tolerate_text_newlines_but_preserve_cmd_bytes(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / 'file.py'
@@ -57,6 +93,10 @@ class ReleaseTests(unittest.TestCase):
             with zipfile.ZipFile(archive, 'w') as z:
                 for name in ['TechLoungeTweaks/TechLoungeTweaks.exe',
                              'TechLoungeTweaks/_internal/vendor/mas/LICENSE',
+                             'TechLoungeTweaks/_internal/vendor/win11debloat/LICENSE',
+                             'TechLoungeTweaks/_internal/debloat_bridge.ps1',
+                             'TechLoungeTweaks/_internal/edition_bridge.ps1',
+                             'TechLoungeTweaks/_internal/debloat_catalog.json',
                              'TechLoungeTweaks/resources/TechLoungeProfile.nip']:
                     z.writestr(name, 'test')
             manifest.write_text(json.dumps({'files': {p.name: release.digest(p) for p in [archive, readme]}}))

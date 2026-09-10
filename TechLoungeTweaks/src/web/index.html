@@ -28,7 +28,7 @@
         stroke="none"/><circle cx="17.5" cy="12" r="1.1" fill="currentColor" stroke="none"/></svg></button>
       <button onclick="api('minimize')">&#8212;</button>
       <button onclick="api('maximize')">&#9633;</button>
-      <button class="close" onclick="api('close')">&#10005;</button>
+      <button class="close" id="closeWindow" aria-label="Close app" onclick="closeAppWindow(this)">&#10005;</button>
     </div>
   </div>
 
@@ -88,7 +88,7 @@
           <div id="bulkRow" class="bulkgrid">
             <button class="bulkbtn primary" data-bulk="recommended">
               <span class="bt">Apply Recommended</span>
-              <span class="bd">Every safe tweak + Defender off. Skips the anti-cheat and Xbox/controller ones.</span></button>
+                <span class="bd">Debloat, privacy and your chosen customization. Keeps gaming, Store, printing and Defender intact.</span></button>
             <button class="bulkbtn" data-bulk="all">
               <span class="bt">Apply All</span>
               <span class="bd">Every tweak, the NVIDIA profile and Defender off. Includes the risky ones.</span></button>
@@ -124,5 +124,7 @@
   </div>
 </div>
 <script src="app.js"></script>
+<script src="debloat.js"></script>
+<script src="windows-setup.js"></script>
 </body>
 </html>

@@ -1,0 +1,389 @@
+{
+  "upstream": "32024662f3c602442e7af82bbf52c89143b31aeb",
+  "items": [
+    {
+      "id": "ShowKnownFileExt",
+      "title": "Show file extensions for known file types",
+      "description": "This will show file extensions for known file types. By default, Windows hides file extensions for known file types which can lead to confusion and security risks.",
+      "group": "Customization",
+      "recommended": true,
+      "kind": "registry",
+      "registry": "Show_Extensions_For_Known_File_Types.reg",
+      "undo": "Hide_Extensions_For_Known_File_Types.reg",
+      "min_build": 22000
+    },
+    {
+      "id": "HideHome",
+      "title": "Hide 'Home' from navigation pane",
+      "description": "Hides the 'Home' section from the File Explorer navigation pane.",
+      "group": "Customization",
+      "recommended": true,
+      "kind": "registry",
+      "registry": "Hide_Home_from_Explorer.reg",
+      "undo": "Show_Home_in_Explorer.reg",
+      "min_build": 22000
+    },
+    {
+      "id": "TaskbarAlignLeft",
+      "title": "Align taskbar to the left",
+      "description": "By default, Windows 11 has the taskbar buttons centered. Enabling this setting will move the taskbar buttons to the left, similar to previous versions of Windows.",
+      "group": "Customization",
+      "recommended": true,
+      "kind": "registry",
+      "registry": "Align_Taskbar_Left.reg",
+      "undo": "Align_Taskbar_Center.reg",
+      "min_build": 22000
+    },
+    {
+      "id": "HideSearchTb",
+      "title": "Hide search icon from the taskbar",
+      "description": "Hiding the search icon from the taskbar",
+      "group": "Customization",
+      "recommended": true,
+      "kind": "registry",
+      "registry": "Hide_Search_Taskbar.reg",
+      "undo": "Show_Search_Box.reg",
+      "min_build": 22000
+    },
+    {
+      "id": "EnableDarkMode",
+      "title": "Enable dark theme for system and apps",
+      "description": "This will set the app and system theme to dark mode.",
+      "group": "Customization",
+      "recommended": true,
+      "kind": "registry",
+      "registry": "Enable_Dark_Mode.reg",
+      "undo": "Enable_Light_Mode.reg",
+      "min_build": 22000
+    },
+    {
+      "id": "HideDesktopSpotlightIcon",
+      "title": "Hide the 'Learn about this picture' desktop shortcut",
+      "description": "Hides the 'Learn about this picture' desktop shortcut while keeping Windows spotlight wallpaper rotation enabled. It does not disable Windows spotlight.",
+      "group": "Customization",
+      "recommended": true,
+      "kind": "registry",
+      "registry": "Hide_Desktop_Spotlight_Icon.reg",
+      "undo": "Show_Desktop_Spotlight_Icon.reg",
+      "min_build": 22000
+    },
+    {
+      "id": "StartAllAppsList",
+      "title": "Show All Apps in List view",
+      "description": "This will set the All Apps section in the start menu to show apps in an alphabetical list layout. Requires the newer Windows 11 Start menu (build 26200+).",
+      "group": "Customization",
+      "recommended": true,
+      "kind": "registry",
+      "registry": "Start_AllApps_List.reg",
+      "undo": "Start_AllApps_Category.reg",
+      "min_build": 26200
+    },
+    {
+      "id": "DisableStartRecommended",
+      "title": "Hide recommended section in the start menu",
+      "description": "This will hide the recommended section in the start menu, which shows recently added apps, recently opened files and app recommendations. This feature uses policies, which will lock down certain settings. Windows edition and Start-menu rollout can affect whether the section disappears; a stored policy is not proof of the visual result.",
+      "group": "Customization",
+      "recommended": true,
+      "kind": "registry",
+      "registry": "Disable_Start_Recommended.reg",
+      "undo": "Enable_Start_Recommended.reg",
+      "min_build": 22621
+    },
+    {
+      "id": "HideTaskview",
+      "title": "Hide 'Task view' button on the taskbar",
+      "description": "This will disable the 'Task view' button on the taskbar, which allows you to see all your open windows and virtual desktops.",
+      "group": "Customization",
+      "recommended": true,
+      "kind": "registry",
+      "registry": "Hide_Taskview_Taskbar.reg",
+      "undo": "Show_Taskview_Taskbar.reg",
+      "min_build": 22000
+    },
+    {
+      "id": "EnableEndTask",
+      "title": "Show 'End Task' option in taskbar context menu",
+      "description": "When enabled, adds an 'End Task' option to the right-click context menu for apps in the taskbar, allowing you to quickly force close apps.",
+      "group": "Customization",
+      "recommended": true,
+      "kind": "registry",
+      "registry": "Enable_End_Task.reg",
+      "undo": "Disable_End_Task.reg",
+      "min_build": 22631
+    },
+    {
+      "id": "ShowHiddenFolders",
+      "title": "Show hidden files, folders and drives",
+      "description": "By default, Windows hides certain files, folders and drives to prevent accidental modification or deletion. Turn this on to show all files in File Explorer.",
+      "group": "Customization",
+      "recommended": true,
+      "kind": "registry",
+      "registry": "Show_Hidden_Folders.reg",
+      "undo": "Hide_Hidden_Folders.reg",
+      "min_build": 22000
+    },
+    {
+      "id": "DisableEdgeAds",
+      "title": "Disable ads, suggestions and newsfeed in Edge",
+      "description": "This will turn off various distractions from Microsoft Edge such as ads, suggestions and the MSN news feed. This feature uses policies, which will lock down certain settings.",
+      "group": "Debloat",
+      "recommended": true,
+      "kind": "registry",
+      "registry": "Disable_Edge_Ads_And_Suggestions.reg",
+      "undo": "Enable_Edge_Ads_And_Suggestions.reg",
+      "min_build": 22000
+    },
+    {
+      "id": "DisableLockscreenTips",
+      "title": "Disable tips & tricks on the lock screen",
+      "description": "This will turn off the lockscreen spotlight option and disable the tips, tricks and fun facts that appear on the lock screen.",
+      "group": "Debloat",
+      "recommended": true,
+      "kind": "registry",
+      "registry": "Disable_Lockscreen_Tips.reg",
+      "undo": "Enable_Lockscreen_Tips.reg",
+      "min_build": 22000
+    },
+    {
+      "id": "DisableSettings365Ads",
+      "title": "Hide Microsoft 365 Copilot ads in Settings Home",
+      "description": "This will turn off the Microsoft 365 Copilot ads that appear in the Settings Home page.",
+      "group": "Debloat",
+      "recommended": true,
+      "kind": "registry",
+      "registry": "Disable_Settings_365_Ads.reg",
+      "undo": "Enable_Settings_365_Ads.reg",
+      "min_build": 22000
+    },
+    {
+      "id": "DisableCopilot",
+      "title": "Disable Microsoft Copilot",
+      "description": "This will disable and uninstall Microsoft Copilot, Windows' built-in AI assistant.",
+      "group": "Debloat",
+      "recommended": true,
+      "kind": "registry",
+      "registry": "Disable_Copilot.reg",
+      "undo": "Enable_Copilot.reg",
+      "min_build": 22621
+    },
+    {
+      "id": "DisableRecall",
+      "title": "Disable Windows Recall",
+      "description": "This will disable Windows Recall, an AI-powered feature that provides quick access to recently used files, apps and activities. This feature uses policies, which will lock down certain settings.",
+      "group": "Debloat",
+      "recommended": true,
+      "kind": "registry",
+      "registry": "Disable_AI_Recall.reg",
+      "undo": "Enable_AI_Recall.reg",
+      "min_build": 22621
+    },
+    {
+      "id": "DisableClickToDo",
+      "title": "Disable Click To Do, AI text & image analysis",
+      "description": "This will disable Click To Do, which provides AI-powered text and image analysis features in Windows. This feature uses policies, which will lock down certain settings.",
+      "group": "Debloat",
+      "recommended": true,
+      "kind": "registry",
+      "registry": "Disable_Click_to_Do.reg",
+      "undo": "Enable_Click_to_Do.reg",
+      "min_build": 22621
+    },
+    {
+      "id": "DisablePaintAI",
+      "title": "Disable AI features in Paint",
+      "description": "This will turn off AI features in Paint, such as the AI-powered image generation and editing tools. This feature uses policies, which will lock down certain settings.",
+      "group": "Debloat",
+      "recommended": true,
+      "kind": "registry",
+      "registry": "Disable_Paint_AI_Features.reg",
+      "undo": "Enable_Paint_AI_Features.reg",
+      "min_build": 22621
+    },
+    {
+      "id": "DisableNotepadAI",
+      "title": "Disable AI features in Notepad",
+      "description": "This will turn off AI features in Notepad, such as the AI-powered writing suggestions. This feature uses policies, which will lock down certain settings.",
+      "group": "Debloat",
+      "recommended": true,
+      "kind": "registry",
+      "registry": "Disable_Notepad_AI_Features.reg",
+      "undo": "Enable_Notepad_AI_Features.reg",
+      "min_build": 22621
+    },
+    {
+      "id": "DisableEdgeAI",
+      "title": "Disable AI features in Microsoft Edge",
+      "description": "This will turn off AI features in Microsoft Edge, such as the AI-powered sidebar and Copilot features. This feature uses policies, which will lock down certain settings.",
+      "group": "Debloat",
+      "recommended": true,
+      "kind": "registry",
+      "registry": "Disable_Edge_AI_Features.reg",
+      "undo": "Enable_Edge_AI_Features.reg",
+      "min_build": 22621
+    },
+    {
+      "id": "HideGallery",
+      "title": "Hide 'Gallery' from navigation pane",
+      "description": "Hides the 'Gallery' section from the File Explorer navigation pane.",
+      "group": "Customization",
+      "recommended": false,
+      "kind": "registry",
+      "registry": "Hide_Gallery_from_Explorer.reg",
+      "undo": "Show_Gallery_in_Explorer.reg",
+      "min_build": 22000
+    },
+    {
+      "id": "HideDupliDrive",
+      "title": "Hide duplicate removable drive entries",
+      "description": "By default, Windows shows removable drives both under 'This PC' and in the navigation pane with its own entry. Enable this setting to only show removable drives under 'This PC'.",
+      "group": "Customization",
+      "recommended": false,
+      "kind": "registry",
+      "registry": "Hide_duplicate_removable_drives_from_navigation_pane_of_File_Explorer.reg",
+      "undo": "Show_duplicate_removable_drives_in_navigation_pane_of_File_Explorer.reg",
+      "min_build": 22000
+    },
+    {
+      "id": "ShowSecondsClock",
+      "title": "Show seconds in the taskbar clock",
+      "description": "Show hours, minutes and seconds. May use slightly more power.",
+      "group": "Customization",
+      "recommended": true,
+      "kind": "registry",
+      "min_build": 22631,
+      "registry": "../../../debloat-reg/ShowSeconds.reg",
+      "undo": "../../../debloat-reg/HideSeconds.reg"
+    },
+    {
+      "id": "ClearStartOnce",
+      "title": "Clear pinned Start apps once for all users",
+      "description": "Clear the current pinned list for existing profiles once. You can pin apps afterwards; later Recommended runs keep those pins. Existing layouts are backed up beside start2.bin.",
+      "group": "Customization",
+      "recommended": true,
+      "kind": "pins",
+      "min_build": 22621
+    },
+    {
+      "id": "app:Clipchamp.Clipchamp",
+      "title": "Remove Clipchamp",
+      "description": "Video editor from Microsoft. Removes this app for all users and from provisioning; reinstall from Microsoft Store if wanted.",
+      "group": "Optional apps",
+      "recommended": true,
+      "kind": "app",
+      "package": "Clipchamp.Clipchamp",
+      "min_build": 22000
+    },
+    {
+      "id": "app:Microsoft.549981C3F5F10",
+      "title": "Remove Cortana",
+      "description": "Microsoft Cortana voice assistant (Discontinued). Removes this app for all users and from provisioning; reinstall from Microsoft Store if wanted.",
+      "group": "Optional apps",
+      "recommended": true,
+      "kind": "app",
+      "package": "Microsoft.549981C3F5F10",
+      "min_build": 22000
+    },
+    {
+      "id": "app:Microsoft.BingFinance",
+      "title": "Remove Bing Finance",
+      "description": "Finance news and tracking via Bing (Discontinued). Removes this app for all users and from provisioning; reinstall from Microsoft Store if wanted.",
+      "group": "Optional apps",
+      "recommended": true,
+      "kind": "app",
+      "package": "Microsoft.BingFinance",
+      "min_build": 22000
+    },
+    {
+      "id": "app:Microsoft.BingNews",
+      "title": "Remove Bing News",
+      "description": "News aggregator via Bing (Replaced by Microsoft News/Start). Removes this app for all users and from provisioning; reinstall from Microsoft Store if wanted.",
+      "group": "Optional apps",
+      "recommended": true,
+      "kind": "app",
+      "package": "Microsoft.BingNews",
+      "min_build": 22000
+    },
+    {
+      "id": "app:Microsoft.BingSports",
+      "title": "Remove Bing Sports",
+      "description": "Sports news and scores via Bing (Discontinued). Removes this app for all users and from provisioning; reinstall from Microsoft Store if wanted.",
+      "group": "Optional apps",
+      "recommended": true,
+      "kind": "app",
+      "package": "Microsoft.BingSports",
+      "min_build": 22000
+    },
+    {
+      "id": "app:Microsoft.BingWeather",
+      "title": "Remove Bing Weather",
+      "description": "Weather forecast via Bing. Removes this app for all users and from provisioning; reinstall from Microsoft Store if wanted.",
+      "group": "Optional apps",
+      "recommended": true,
+      "kind": "app",
+      "package": "Microsoft.BingWeather",
+      "min_build": 22000
+    },
+    {
+      "id": "app:Microsoft.Getstarted",
+      "title": "Remove Get Started",
+      "description": "Tips and introductory guide for Windows (Cannot be uninstalled in Windows 11). Removes this app for all users and from provisioning; reinstall from Microsoft Store if wanted.",
+      "group": "Optional apps",
+      "recommended": true,
+      "kind": "app",
+      "package": "Microsoft.Getstarted",
+      "min_build": 22000
+    },
+    {
+      "id": "app:Microsoft.MicrosoftOfficeHub",
+      "title": "Remove Office Hub",
+      "description": "Hub to access Microsoft Office apps and documents (Precursor to Microsoft 365 app). Removes this app for all users and from provisioning; reinstall from Microsoft Store if wanted.",
+      "group": "Optional apps",
+      "recommended": true,
+      "kind": "app",
+      "package": "Microsoft.MicrosoftOfficeHub",
+      "min_build": 22000
+    },
+    {
+      "id": "app:Microsoft.MixedReality.Portal",
+      "title": "Remove Mixed Reality Portal",
+      "description": "Portal for Windows Mixed Reality headsets. Removes this app for all users and from provisioning; reinstall from Microsoft Store if wanted.",
+      "group": "Optional apps",
+      "recommended": true,
+      "kind": "app",
+      "package": "Microsoft.MixedReality.Portal",
+      "min_build": 22000
+    },
+    {
+      "id": "app:Microsoft.SkypeApp",
+      "title": "Remove Skype (UWP)",
+      "description": "Skype communication app, Universal Windows Platform version (Discontinued). Removes this app for all users and from provisioning; reinstall from Microsoft Store if wanted.",
+      "group": "Optional apps",
+      "recommended": true,
+      "kind": "app",
+      "package": "Microsoft.SkypeApp",
+      "min_build": 22000
+    },
+    {
+      "id": "app:Microsoft.Copilot",
+      "title": "Remove packaged Microsoft Copilot",
+      "description": "The Microsoft.Copilot Appx package, if installed. Removes this app for all users and from provisioning; reinstall from Microsoft Store if wanted.",
+      "group": "Optional apps",
+      "recommended": true,
+      "kind": "app",
+      "package": "Microsoft.Copilot",
+      "min_build": 22000
+    }
+  ],
+  "existing_recommended": [
+    "bing_search",
+    "cdm_ads",
+    "telemetry",
+    "ceip",
+    "feedback",
+    "activity_history",
+    "ad_id",
+    "typing_insights",
+    "speech_data",
+    "ink_collection"
+  ]
+}

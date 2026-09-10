@@ -6,6 +6,9 @@ Double-click PUSH-TO-GITHUB.bat to do the same, then commit and push to:
   https://github.com/RaheemC4/tech-tips (main)
 
 The scripts work from their own folder, regardless of the current directory.
+PUSH-TO-GITHUB remains one step; PREPARE is optional for local packaging only.
+The console uses cyan text. After a successful push, use the displayed links
+or press R for the repository or D for the direct download in your browser.
 Git authentication may open a sign-in window. No force-push is used. A failed
 build, test, screenshot, documentation check or push stops with an error.
 
@@ -26,7 +29,7 @@ review screenshot fixtures, then run these commands from this folder:
   TechLoungeTweaks\.build-venv\Scripts\python.exe tools\release.py --prepare
 
 The scripts regenerate screenshots, sync the top-level README, build the app,
-package the NVIDIA resources and MAS scripts/licence, and record SHA-256 hashes.
+package NVIDIA resources, MAS and Win11Debloat source/licences, and record SHA-256 hashes.
 A BAT file cannot decide whether prose accurately describes new behaviour, so
 source changes invalidate the review until the docs have been checked again.
 Do not record a review merely to bypass a failed check.

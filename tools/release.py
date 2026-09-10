@@ -10,6 +10,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
+import uuid
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -130,10 +132,49 @@ def verify_release():
             raise RuntimeError('ZIP integrity check failed.')
         for name in ['TechLoungeTweaks/TechLoungeTweaks.exe',
                      'TechLoungeTweaks/_internal/vendor/mas/LICENSE',
+                     'TechLoungeTweaks/_internal/vendor/win11debloat/LICENSE',
+                     'TechLoungeTweaks/_internal/debloat_bridge.ps1',
+                     'TechLoungeTweaks/_internal/edition_bridge.ps1',
+                     'TechLoungeTweaks/_internal/debloat_catalog.json',
                      'TechLoungeTweaks/resources/TechLoungeProfile.nip']:
             if name not in archive.namelist():
                 raise RuntimeError(f'ZIP is missing {name}')
     print('Release hashes and ZIP integrity verified.')
+
+
+def replace_archive(pending, destination):
+    """Keep the previous ZIP intact when Windows/cloud sync blocks replacement."""
+    for attempt in range(5):
+        try:
+            os.replace(pending, destination)
+            return
+        except PermissionError:
+            if attempt < 4:
+                print('Windows is holding the ZIP; retrying shortly...', flush=True)
+                time.sleep(attempt + 1)
+    # Some cloud placeholders allow renaming but reject replacing in place.
+    # Never truncate the existing ZIP or remove it before the new one is ready.
+    backup = destination.with_name(destination.name + '.' + uuid.uuid4().hex + '.backup.tmp')
+    moved = False
+    try:
+        if destination.exists():
+            os.rename(destination, backup)
+            moved = True
+        os.replace(pending, destination)
+    except OSError as exc:
+        if moved:
+            try:
+                os.replace(backup, destination)
+            except OSError:
+                raise RuntimeError(f'ZIP replacement blocked. Previous ZIP is safe at {backup}; '
+                                   f'new ZIP is at {pending}. Close ZIP viewers or pause folder sync and retry.') from exc
+        raise RuntimeError(f'Windows blocked ZIP replacement. Previous ZIP retained; new ZIP is at {pending}. '
+                           'Close ZIP viewers or pause folder sync and run the BAT again.') from exc
+    if moved:
+        try:
+            backup.unlink()
+        except OSError:
+            print(f'Updated ZIP saved. Windows still holds the old backup: {backup}')
 
 
 def prepare():
@@ -143,6 +184,8 @@ def prepare():
     run([sys.executable, '-m', 'unittest', 'discover', '-s', ROOT / 'tools/tests', '-v'])
     run([node, '--check', APP / 'src/web/app.js'])
     run([node, APP / 'tools/test-windows-setup-ui.js'], env=env)
+    run([node, APP / 'tools/test-debloat-ui.js'], env=env)
+    run([sys.executable, APP / 'tools/smoke-close.py'])
     run([node, APP / 'tools/make-screenshots.js'], env=env)
     readme = APP / 'README.md'
     for relative in re.findall(r'!\[[^\]]*\]\((docs/[^)]+)\)', readme.read_text(encoding='utf-8')):
@@ -159,7 +202,7 @@ def prepare():
     with zipfile.ZipFile(temporary) as archive:
         if archive.testzip():
             raise RuntimeError('New ZIP failed validation; previous archive retained.')
-    os.replace(temporary, ARCHIVE)
+    replace_archive(temporary, ARCHIVE)
     manifest = {'built_utc': datetime.now(timezone.utc).isoformat(),
                 'notes': (ROOT / 'RELEASE-NOTES.md').read_text(encoding='utf-8').strip(),
                 'files': {p.relative_to(ROOT).as_posix(): digest(p)
@@ -167,7 +210,10 @@ def prepare():
     MANIFEST.write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
     verify_release()
     if (ROOT.parent / 'TechLoungeTweaks').is_dir():
-        shutil.copy2(ARCHIVE, ROOT.parent / 'TechLoungeTweaks-Personal.zip')
+        personal = ROOT.parent / 'TechLoungeTweaks-Personal.zip'
+        pending_personal = personal.with_suffix('.zip.tmp')
+        shutil.copyfile(ARCHIVE, pending_personal)
+        replace_archive(pending_personal, personal)
     print(f'READY: {ARCHIVE}\nExtract the whole folder on each personal PC.')
 
 

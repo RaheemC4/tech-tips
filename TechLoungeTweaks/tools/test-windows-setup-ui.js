@@ -2,49 +2,61 @@ const { chromium } = require(process.env.PW || 'playwright');
 const { pathToFileURL } = require('url');
 const path = require('path');
 const assert = require('assert');
-
 (async () => {
-  const browser = await chromium.launch({ executablePath: process.env.CHROME });
-  try {
-    const page = await browser.newPage({ viewport: { width: 1380, height: 900 } });
-    await page.goto(pathToFileURL(path.resolve(__dirname, '../src/web/index.html')).href);
-    await page.evaluate(() => {
-      document.body.classList.remove('booting');
-      document.getElementById('bootlayer')?.remove();
-      window.testCalls = [];
-      window.api = async (name, action) => {
-        const status = { ok: true, name: 'Microsoft Windows 11 Pro', edition: 'Professional', version: '25H2', build: '26200', activated: !!window.testActivated };
-        if (name === 'windows_status') return status;
-        if (name !== 'windows_setup') return [];
-        window.testCalls.push(action);
-        if (action === 'activate' && window.testActivated) return { ok: true, already_activated: true, status, message: 'Windows is already activated.' };
-        if (window.testFailure) return { ok: false, message: 'A Windows setup tool is already open.' };
-        return { ok: true, message: 'MAS opened in a separate window.' };
-      };
-      pageRes();
-    });
-    await page.getByRole('button', { name: 'Activate Windows', exact: true }).click();
-    await page.waitForFunction(() => document.getElementById('windowsSetupMessage').textContent.includes('MAS opened'));
-    await page.getByRole('button', { name: 'Change Windows Version', exact: true }).click();
-    assert((await page.locator('#editionCurrentName').textContent()).includes('Windows 11 Pro'));
-    assert.deepStrictEqual(await page.evaluate(() => window.testCalls), ['activate']);
-    await page.getByRole('button', { name: 'Open edition chooser', exact: true }).click();
-    assert.deepStrictEqual(await page.evaluate(() => window.testCalls), ['activate', 'edition']);
-    await page.evaluate(() => { window.testFailure = true; });
-    await page.getByRole('button', { name: 'Activate Windows', exact: true }).click();
-    await page.waitForFunction(() => document.getElementById('windowsSetupMessage').textContent.includes('already open'));
-    assert(await page.getByRole('button', { name: 'Activate Windows', exact: true }).isEnabled());
-    assert.strictEqual(await page.locator('[data-res]').count(), 3);
-    await page.evaluate(() => { window.testActivated = true; window.testFailure = false; });
-    await page.getByRole('button', { name: 'Activate Windows', exact: true }).click();
-    await page.getByRole('heading', { name: 'Windows is already activated', exact: true }).waitFor();
-    await page.getByRole('button', { name: 'OK', exact: true }).click();
-    await page.getByRole('button', { name: 'Change Windows Version', exact: true }).click();
-    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-    await page.evaluate(() => { const message = document.getElementById('windowsSetupMessage'); message.textContent = 'Bundled from massgravel/Microsoft-Activation-Scripts · GPL-3.0'; message.style.color = 'var(--muted)'; });
-    await page.screenshot({ path: path.resolve(__dirname, '../docs/windows-setup.png') });
-    await page.setViewportSize({ width: 940, height: 640 });
-    assert(await page.getByRole('button', { name: 'Change Windows Version', exact: true }).isVisible());
-    console.log('PASS: both button routes, error feedback, retry, repair tools and minimum viewport.');
-  } finally { await browser.close(); }
-})().catch(error => { console.error(error); process.exit(1); });
+ const browser = await chromium.launch({ executablePath: process.env.CHROME });
+ try {
+  const page = await browser.newPage({viewport:{width:1380,height:900}});
+  const errors=[]; page.on('pageerror',e=>errors.push(e.message));
+  await page.goto(pathToFileURL(path.resolve(__dirname,'../src/web/index.html')).href);
+  await page.evaluate(()=>{
+   document.body.classList.remove('booting'); H('bootlayer')?.remove();
+   window.calls=[];
+   window.api=async(name,...args)=>{
+    window.calls.push([name,...args]);
+    if(name==='windows_status')return{ok:true,name:'Microsoft Windows 11 Pro',edition:'Professional',version:'25H2',build:'26200',activated:true};
+    if(name==='windows_editions')return await new Promise(r=>window.finishEditions=r);
+    if(name==='windows_change_edition')return await new Promise(r=>window.finishChange=r);
+    if(name==='close')return{ok:true};
+    if(name==='windows_setup')return await new Promise(r=>window.finishActivation=r);
+    return [];
+   };
+   pageRes();
+  });
+  await page.waitForFunction(()=>WINDOWS_STATUS?.activated===true);
+  await page.getByRole('button',{name:'Activate Windows',exact:true}).click();
+  await page.getByRole('heading',{name:'Windows is already activated'}).waitFor();
+  assert.strictEqual(await page.evaluate(()=>window.calls.filter(c=>c[0]==='windows_setup').length),0);
+  await page.getByRole('button',{name:'OK',exact:true}).click();
+  await page.evaluate(()=>setupMessage('Old success',false,true));
+  await page.getByRole('button',{name:'Change Windows Version',exact:true}).click();
+  assert((await page.locator('#windowsSetupMessage').textContent()).includes('Loading'));
+  assert(await page.locator('#windowsSetupMessage .spin').isVisible());
+  await page.evaluate(()=>window.finishEditions({ok:true,current:'Professional',name:'Microsoft Windows 11 Pro',targets:['Education','Enterprise']}));
+  await page.locator('[data-edition-target="Education"]').click();
+  assert.strictEqual(await page.evaluate(()=>window.calls.filter(c=>c[0]==='windows_change_edition').length),0);
+  await page.getByRole('button',{name:'Cancel',exact:true}).click();
+  await page.getByRole('button',{name:'Change Windows Version',exact:true}).click();
+  await page.evaluate(()=>window.finishEditions({ok:true,current:'Professional',name:'Microsoft Windows 11 Pro',targets:['Education']}));
+  await page.locator('[data-edition-target="Education"]').click();
+  await page.getByRole('button',{name:'Change edition',exact:true}).click();
+  assert(await page.getByRole('heading',{name:'Changing Windows edition',exact:true}).isVisible());
+  assert(await page.locator('#modal .spin').isVisible());
+  await page.evaluate(()=>window.finishChange({ok:true,message:'Restart Windows to finish.',restart_required:true}));
+  await page.getByRole('heading',{name:'Restart needed',exact:true}).waitFor();
+  await page.getByRole('button',{name:'OK',exact:true}).click();
+  await page.evaluate(()=>{WINDOWS_STATUS={ok:true,activated:false};});
+  await page.getByRole('button',{name:'Activate Windows',exact:true}).click();
+  assert((await page.locator('#windowsSetupMessage').textContent()).includes('Checking activation'));
+  await page.evaluate(()=>window.finishActivation({ok:false,message:'A Windows setup tool is already open.'}));
+  await page.waitForFunction(()=>!WINDOWS_BUSY);
+  assert((await page.locator('#windowsSetupMessage').textContent()).includes('already open'));
+  await page.evaluate(()=>{paintWindowsStatus({ok:true,name:'Microsoft Windows 11 Pro',version:'25H2',build:'26200',activated:true});setupMessage();});
+  await page.screenshot({path:path.resolve(__dirname,'../docs/windows-setup.png')});
+  await page.setViewportSize({width:940,height:640});
+  assert(await page.getByRole('button',{name:'Change Windows Version',exact:true}).isVisible());
+  await page.getByRole('button',{name:'Close app',exact:true}).click();
+  assert.strictEqual(await page.evaluate(()=>window.calls.filter(c=>c[0]==='close').length),1);
+  assert.deepStrictEqual(errors,[]);
+  console.log('PASS: immediate activation feedback, loading states, native edition selection/confirmation, errors and close button.');
+ }finally{await browser.close();}
+})().catch(e=>{console.error(e);process.exit(1);});

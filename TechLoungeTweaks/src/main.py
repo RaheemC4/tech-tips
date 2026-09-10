@@ -27,6 +27,7 @@ import drivers
 import nettest
 import sysinfo
 import virt
+import debloat
 from windows_setup import WindowsSetup
 from tweaks_engine import (build_tweaks, CATEGORY_ORDER, CATEGORY_ICONS, run, ps)
 
@@ -102,6 +103,7 @@ def traced(fn):
 
 class Api:
     def __init__(self):
+        self._debloat_run_lock = threading.Lock()
         self._windows_setup = WindowsSetup(here("vendor", "mas"))
         self._tweaks_cache = None
         self._tlock = threading.Lock()
@@ -206,15 +208,17 @@ class Api:
 
     @traced
     def close(self):
-        h = self._hwnd()
-        if h:
-            ctypes.windll.user32.PostMessageW(h, 0x0010, 0, 0)   # WM_CLOSE
-            return True
-        try:
-            self._window.destroy()
-        except Exception:
-            pass
-        return True
+        # Target this webview instance, not the first window sharing its title.
+        # Return to the JS bridge before destroying its owning WebView2 control.
+        if not self._window:
+            return {'ok': False, 'message': 'Window is not ready.'}
+        def destroy():
+            try:
+                self._window.destroy()
+            except Exception:
+                log('close failed\n' + traceback.format_exc())
+        threading.Timer(0.1, destroy).start()
+        return {'ok': True}
 
     # ---------------------------------------------------------- tweaks
     def _payload(self, t):
@@ -354,10 +358,10 @@ class Api:
     # Tweaks excluded from "Apply recommended": the two that break kernel
     # anti-cheat / weaken security, plus GameDVR and Fullscreen Optimizations
     # (they interfere with the Xbox app, Game Bar overlay and some controllers).
-    RECOMMENDED_SKIP = {"mem_integrity", "mitigations", "gamedvr", "fse"}
+    RECOMMENDED_KEYS = debloat.RECOMMENDED_EXISTING
 
     @traced
-    def bulk_tweaks(self, mode):
+    def bulk_tweaks(self, mode, confirmed=False):
         """Apply/revert many tweaks at once. mode:
              all         - apply every tweak
              recommended - apply every tweak except the risky/compat ones
@@ -366,10 +370,12 @@ class Api:
         Returns the resulting applied-state map so the UI can repaint at once.
         """
         tweaks = self._tweaks()
+        if mode == 'all' and confirmed is not True:
+            return {'ok': False, 'message': 'Confirm Apply All before continuing.'}
         targets = {}
         if mode in ("all", "recommended"):
             for key, t in tweaks.items():
-                if mode == "recommended" and key in self.RECOMMENDED_SKIP:
+                if mode == "recommended" and key not in self.RECOMMENDED_KEYS:
                     continue
                 targets[key] = True
         elif mode == "revert":
@@ -382,6 +388,7 @@ class Api:
         else:
             return {"ok": False, "message": "Unknown bulk mode."}
 
+        failures = []
         for key, want in targets.items():
             t = tweaks.get(key)
             if not t:
@@ -392,6 +399,7 @@ class Api:
                 else:
                     t.revert(); self._applied.discard(key)
             except Exception:
+                failures.append(key)
                 log(f"bulk {mode}: {key} failed\n" + traceback.format_exc())
 
         applied = {}
@@ -400,8 +408,8 @@ class Api:
                 applied[key] = bool(t.check())
             except Exception:
                 applied[key] = key in self._applied
-        return {"ok": True, "mode": mode, "applied": applied,
-                "skipped": sorted(self.RECOMMENDED_SKIP)
+        return {"ok": not failures, "mode": mode, "applied": applied, 'failed': failures,
+                "skipped": sorted(set(tweaks) - self.RECOMMENDED_KEYS)
                            if mode == "recommended" else []}
 
     @traced
@@ -1139,8 +1147,43 @@ if ($e -and $e.UninstallString) {
 
     # ----------------------------------------------------------- tools
     @traced
+    def debloat_status(self):
+        return debloat.status()
+
+    @traced
+    def debloat_apply(self, mode, selected=None, confirmed=False):
+        if mode == 'all' and confirmed is not True:
+            return {'ok': False, 'message': 'Confirm Apply All before continuing.'}
+        try:
+            debloat.selection(mode, selected)
+        except ValueError as exc:
+            return {'ok': False, 'message': str(exc)}
+        if not self._debloat_run_lock.acquire(blocking=False):
+            return {'ok': False, 'message': 'Debloat is already running. Check its progress in the tab.'}
+        self._job_new('debloat', 'debloat', 'Debloat & Customization')
+        self._job_update('debloat', cancellable=False, line='Preparing Win11Debloat…')
+        def work():
+            try:
+                result = debloat.apply(mode, selected, lambda p: self._job_update('debloat', **p))
+                self._job_finish('debloat', 'done' if result.get('ok') else 'error', result)
+            except Exception as exc:
+                self._job_finish('debloat', 'error', {'ok': False, 'message': str(exc)})
+            finally:
+                self._debloat_run_lock.release()
+        threading.Thread(target=work, daemon=True).start()
+        return {'ok': True, 'key': 'debloat'}
+
+    @traced
     def windows_status(self):
         return self._windows_setup.status()
+
+    @traced
+    def windows_editions(self):
+        return self._windows_setup.editions()
+
+    @traced
+    def windows_change_edition(self, target, confirmed=False):
+        return self._windows_setup.change_edition(target, confirmed)
 
     @traced
     def windows_setup(self, action):
