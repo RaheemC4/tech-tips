@@ -20,6 +20,7 @@
   <div id="titlebar" class="pywebview-drag-region">
     <div class="brand pywebview-drag-region"><i></i> Tech Lounge Tweaks</div>
     <div id="winbtns">
+      <button id="updatesButton" aria-haspopup="dialog" aria-expanded="false" onclick="openUpdates()"><svg class="update-sync" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 6.1a8 8 0 0 1 13.2 3.1M4.7 14.8a8 8 0 0 0 13.2 3.1"/></svg><span id="updatesButtonLabel">Updates</span><span id="updatesButtonCount" hidden></span></button>
       <button id="themebtn" title="Switch theme"><svg viewBox="0 0 24 24" fill="none"
         stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path
         d="M12 3a9 9 0 1 0 0 18c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1a1.5 1.5 0 0 1 1.11-2.5H16a5 5 0 0 0 5-5c0-4.42-4.03-8-9-8Z"/><circle
@@ -88,10 +89,10 @@
           <div id="bulkRow" class="bulkgrid">
             <button class="bulkbtn primary" data-bulk="recommended">
               <span class="bt">Apply Recommended</span>
-                <span class="bd">Debloat, privacy and your chosen customization. Keeps gaming, Store, printing and Defender intact.</span></button>
+                <span class="bd">Debloat, privacy, customization and Windows Updates paused until 2051. Keeps gaming, Store, printing and Defender intact.</span></button>
             <button class="bulkbtn" data-bulk="all">
               <span class="bt">Apply All</span>
-              <span class="bd">Every tweak, the NVIDIA profile and Defender off. Includes the risky ones.</span></button>
+              <span class="bd">Every tweak, Windows Updates paused until 2051, the NVIDIA profile and Defender off.</span></button>
             <button class="bulkbtn" data-bulk="revert">
               <span class="bt">Revert All</span>
               <span class="bd">Back to exactly how this PC was when you opened the app.</span></button>
@@ -126,5 +127,7 @@
 <script src="app.js"></script>
 <script src="debloat.js"></script>
 <script src="windows-setup.js"></script>
+<script src="updates.js"></script>
+<script src="defender-removal.js"></script>
 </body>
 </html>

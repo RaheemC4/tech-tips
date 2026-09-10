@@ -77,7 +77,7 @@ async function chooseWindowsEdition() {
   showModal(`<div class="modal-card" role="dialog" aria-modal="true"><h2>Change Windows Version</h2>
     <p id="editionCurrentName" style="margin:12px 0;font-weight:600">Currently running: ${textEscape(result.name || editionLabel(result.current))}</p>
     <p style="color:var(--muted);line-height:1.6">Choose an edition supported by this installation. This does not upgrade Windows 10 to 11. A restart and activation may be needed.</p>
-    <div id="editionOptions" style="display:grid;gap:8px;max-height:260px;overflow:auto;margin:16px 0">
+    <div id="editionOptions" class="edition-options" tabindex="0" role="group" aria-label="Available Windows editions">
       ${targets.map(target => `<button class="btn ghost" data-edition-target="${textEscape(target)}">${textEscape(editionLabel(target))}</button>`).join('') || '<p>No supported edition changes were reported by Windows.</p>'}
     </div><button class="btn ghost" id="editionCancel">Cancel</button></div>`);
   H('editionCancel').onclick = closeModal;

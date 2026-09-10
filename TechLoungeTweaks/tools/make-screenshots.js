@@ -42,7 +42,7 @@ const NV=[['Power Management Mode','Prefer maximum performance','Prefer maximum 
 const TW={Performance:[['Disable GameDVR','Turns off Xbox Game Bar background recording. One of the biggest free FPS wins on Windows 11.',1,null],['Enable Game Mode','Tells Windows to prioritise the running game and hold back background work.',1,null],['Disable Fullscreen Optimizations','Forces true exclusive fullscreen instead of the borderless compositor path.',1,null],['Disable Power Throttling','Stops Windows quietly downclocking background threads.',1,null],['Ultimate Performance Power Plan','Unlocks and activates the hidden Ultimate Performance plan.',1,null],['Foreground Priority Boost','Sets Win32PrioritySeparation so the focused app gets a longer CPU time slice.',0,null],['Gaming Task Priority','Raises the GPU and scheduling priority for the Games multimedia profile.',0,null],['Disable Memory Integrity','Turns off HVCI core isolation for 5-15% more CPU performance.',0,'Breaks Valorant, Vanguard and some anti-cheats']]};
 
 (async () => {
-  const b = await chromium.launch({ executablePath: CHROME });
+  const b = await chromium.launch({ executablePath: CHROME, ignoreDefaultArgs: ['--hide-scrollbars'] });
   const p = await b.newPage({ viewport: { width: 1440, height: 1050 },
                               deviceScaleFactor: 2 });
   const boot = async () => {
@@ -55,11 +55,15 @@ const TW={Performance:[['Disable GameDVR','Turns off Xbox Game Bar background re
   window.api=async(n)=>{
     if(n==='debloat_status')return{ok:true,build:26200,items:DEBLOAT};
     if(n==='windows_status')return{ok:true,name:'Microsoft Windows 11 Pro',edition:'Professional',version:'25H2',build:'26200',activated:true};
+    if(n==='windows_editions')return{ok:true,name:'Microsoft Windows 11 Pro',current:'Professional',targets:['Education','ProfessionalCountrySpecific','ProfessionalEducation','ProfessionalSingleLanguage','ProfessionalWorkstation','Enterprise','EducationN','EnterpriseN']};
+    if(n==='defender_remover_machine')return{antivirus:false,security_app:false,security_registration_only:true,files:true,engine_running:false,recommended:'files',guidance:'Defender antivirus is absent. Remove its remaining folders next. Windows Security is checked separately.'};
+    if(n==='defender_remover_status')return{running:false,phase:'idle',progress:0};
    if(n==='nvprofile_status')return window.__gpu==='amd'
      ?{tool:true,profile:true,nvidia:false,gpu_name:'AMD Radeon RX 7900 XTX',state:'unknown',checked:true}
      :{tool:true,profile:true,defaults:true,backup:true,applied:false,state:'off',matched:0,total:39,checked:true,nvidia:true,releases_url:'#',tool_names:['x'],profile_name:'p'};
    if(n==='nvprofile_settings')return NV.map(r=>({name:r[0],current:r[1],target:r[2]}));
    if(n==='nvprofile_ready')return true;
+   if(n==='defender_status' && window.removalPreview)return{present:false,active:false,tamper:false,items:[]};
    if(n==='defender_status')return{present:true,active:true,tamper:true,items:[['Real-time protection',1],['Behaviour monitoring',1],['On-access scanning',1],['Downloaded-file & web scanning',1],['Network inspection',1],['Tamper Protection',1]].map(i=>({label:i[0],on:!!i[1]}))};
    if(n==='app_catalog')return window.__CAT;
    if(n==='store_status')return{store:true,xbox:false,present:['Microsoft.WindowsStore']};
@@ -70,18 +74,28 @@ const TW={Performance:[['Disable GameDVR','Turns off Xbox Game Bar background re
   const out=[];for(const c of cats){const[on,tot]=cnt[c];const rows=TW[c];
    for(let i=0;i<tot;i++){const r=rows&&rows[i];
     out.push({key:c+i,name:r?r[0]:c+' tweak '+(i+1),desc:r?r[1]:'Adjusts a Windows setting in the '+c+' group.',category:c,applied:r?!!r[2]:i<on,icon:{Performance:'bolt',Graphics:'gpu',GPU:'gpu',Networking:'net',Power:'bolt',Advanced:'cpu',System:'wrench',Privacy:'shield','Explorer & UI':'folder'}[c],warning:r?r[3]:null});}}
+  out.unshift({key:'pause_windows_updates',name:'Pause Windows Updates',desc:'Pause feature and security updates until 31 December 2051. Included in Apply All and Apply Recommended. Turn off to resume updates.',category:'System',applied:true,icon:'wrench',warning:'Security fixes are paused too. Resume updates here or in Windows Settings when you want to install them.'});
   STATE.cats=cats;STATE.tweaks=out;STATE.snapshot=Object.fromEntries(out.map(t=>[t.key,t.applied]));
   renderSpecs(SPECS);buildNav();show('Home');refreshCounts();buildQuick();wireBulk();},{SPECS,TW});
  await p.waitForTimeout(1100);await p.screenshot({path:D+'home.png'});
  await p.evaluate(()=>show('Debloat & Customization'));await p.waitForTimeout(500);await p.screenshot({path:D+'debloat.png'});
+ await p.evaluate(()=>show('System'));await p.waitForTimeout(300);await p.locator('.card.tweak[data-key="pause_windows_updates"]').screenshot({path:D+'pause-windows-updates.png'});
  await p.evaluate(()=>show('Performance'));await p.waitForTimeout(700);await p.screenshot({path:D+'tweaks.png'});
  await p.evaluate(()=>show('NVIDIA Profile'));await p.waitForTimeout(1200);await p.screenshot({path:D+'nvidia.png'});
  await p.evaluate(()=>{window.__gpu='amd';show('NVIDIA Profile');});await p.waitForTimeout(1000);await p.screenshot({path:D+'nvidia-amd.png'});
  await p.evaluate(()=>{window.__gpu='nvidia';show('Defender');});await p.waitForTimeout(900);await p.screenshot({path:D+'defender.png'});
+ await p.evaluate(async()=>{window.removalPreview=true;await refreshDefender();await openDefenderRemoval();});await p.waitForTimeout(300);await p.screenshot({path:D+'defender-removal.png'});
+ await p.evaluate(async()=>{const previous=window.api;window.api=async(n,...args)=>n==='defender_remover_status'?{running:false,phase:'failed',progress:100,message:'Windows refused Windows Security removal. Review the operation log for the deployment error.',log_path:'C:\\Users\\Example\\AppData\\Local\\Temp\\TechLounge-removal-example\\operation.log'}:previous(n,...args);await pollRemoval();document.querySelector('.removal-log').open=true;});
+ await p.screenshot({path:D+'defender-removal-log.png'});
+
+ await p.evaluate(()=>closeModal());
  // Resources mid-scan, with a real percentage
  await p.evaluate(()=>show('Resources'));await p.waitForTimeout(700);
  await p.evaluate(()=>{window.py_job({key:'res:sfc',kind:'resource',label:'System File Checker',state:'running',progress:0.42,line:'Verification 42% complete.',result:null});});
  await p.waitForTimeout(600);await p.screenshot({path:D+'resources.png'});
+ await p.evaluate(()=>chooseWindowsEdition());await p.waitForTimeout(300);
+ await p.screenshot({path:D+'windows-editions.png'});
+ await p.evaluate(()=>closeModal());
  await p.evaluate(()=>show('Install Apps'));await p.waitForTimeout(1400);
  await p.screenshot({path:D+'apps.png'});
  await p.evaluate(()=>window.py_job({key:'app:chrome',kind:'app',label:'Google Chrome',state:'running',progress:0.63,line:'Downloading from the vendor…',elapsed:12,result:null}));
@@ -95,6 +109,7 @@ const TW={Performance:[['Disable GameDVR','Turns off Xbox Game Bar background re
     virtualbox:true,virtualbox_version:'7.1.4',mode:'gaming',blockers:[],reboot_required:false};
    if(n==='active_jobs')return[];return null;};
   const cats=['Performance','Graphics'];const out=[];for(const c of cats)for(let i=0;i<4;i++)out.push({key:c+i,name:c+i,desc:'x',category:c,applied:i<2,icon:'cpu'});
+  out.unshift({key:'pause_windows_updates',name:'Pause Windows Updates',desc:'Pause feature and security updates until 31 December 2051. Included in Apply All and Apply Recommended. Turn off to resume updates.',category:'System',applied:true,icon:'wrench',warning:'Security fixes are paused too. Resume updates here or in Windows Settings when you want to install them.'});
   STATE.cats=cats;STATE.tweaks=out;buildNav();show('Home');refreshCounts();});
  await p.waitForTimeout(400);
  await p.evaluate(()=>show('Virtual Machines'));await p.waitForTimeout(1200);
@@ -108,6 +123,7 @@ const TW={Performance:[['Disable GameDVR','Turns off Xbox Game Bar background re
   const cnt={Performance:[5,8],Graphics:[3,4],GPU:[2,4],Networking:[3,4],Power:[2,4],Advanced:[1,3],System:[3,5],Privacy:[9,11],'Explorer & UI':[6,7]};
   const out=[];for(const c of cats){const[on,tot]=cnt[c];for(let i=0;i<tot;i++)
     out.push({key:c+i,name:c+' tweak '+(i+1),desc:'Adjusts a Windows setting in the '+c+' group.',category:c,applied:i<on,icon:'cpu'});}
+  out.unshift({key:'pause_windows_updates',name:'Pause Windows Updates',desc:'Pause feature and security updates until 31 December 2051. Included in Apply All and Apply Recommended. Turn off to resume updates.',category:'System',applied:true,icon:'wrench',warning:'Security fixes are paused too. Resume updates here or in Windows Settings when you want to install them.'});
   STATE.cats=cats;STATE.tweaks=out;renderSpecs(SPECS);buildNav();show('Home');refreshCounts();buildQuick();wireBulk();wireTheme();},{SPECS});
  await p.waitForTimeout(700);
 
@@ -141,6 +157,19 @@ const TW={Performance:[['Disable GameDVR','Turns off Xbox Game Bar background re
  await p.waitForTimeout(900);await p.screenshot({path:D+'theme-purple.png'});
  await p.evaluate(()=>applyTheme('blue'));
  
+ // Representative update status; no live downloads in screenshots.
+ await p.evaluate(()=>{
+   updateLast={checking:false,busy:false,checked:Date.now()/1000,message:'Checks finished. Downloads start only when you choose Install or Update.',items:[
+     {id:'openmouse',name:'OpenMouse',installed:'Live web panel',message:'Opens in your default browser. Mouse controls require WebHID support, such as Edge or Chrome.'},
+     {id:'dlss',name:'DLSS Swapper',installed:'v1.2.6.1',available:'v1.2.6.1',launch:true,message:'Official stable release. Opens as a floating window above TechLoungeTweaks.'},
+     {id:'bcu',name:'Bulk Crap Uninstaller',installed:'v6.2',available:'v6.3',action:'Update',launch:true,message:'Official stable release. Includes the .NET runtime.'},
+     {id:'nvpi',name:'NVIDIA Profile Inspector',installed:'v7.2.1.0',available:'v7.2.1.0',launch:true},
+     {id:'app',name:'TechLoungeTweaks',installed:'2026.09.10.194504',available:'2026.09.10.194504',status:'current'}
+   ]};show('Extra Tools');
+ });
+ await p.waitForTimeout(500);await p.screenshot({path:D+'tools.png'});
+ await p.evaluate(()=>{paintUpdates(updateLast);openUpdates();});
+ await p.waitForTimeout(300);await p.screenshot({path:D+'updates.png'});
   await b.close();
   console.log('screenshots written to docs/');
 })();

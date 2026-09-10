@@ -4,10 +4,9 @@ NVIDIA Profile applier.
 Applies a bundled NVIDIA Profile Inspector .nip (Raheem's exported global
 settings) using NVPI / NVPI-Revamped, which the app finds sitting next to it.
 
-The app does NOT download or ship the Inspector itself - it uses whatever the
-distributor (Raheem) has placed in the app folder. That keeps a third-party
-binary out of anything Claude fetches, and byte-accurate settings out of a
-hand-written file.
+The bundled Inspector is the fallback. Tools & Updates can download a verified
+new official release into a separate managed folder. The curated .nip and
+this machine's original-settings backup are never replaced by tool updates.
 """
 
 import os
@@ -64,6 +63,10 @@ def _find(names):
 
 
 def find_tool():
+    from updates import managed_inspector
+    managed = managed_inspector()
+    if managed:
+        return str(managed)
     return _find(TOOL_NAMES)
 
 

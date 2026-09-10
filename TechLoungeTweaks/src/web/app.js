@@ -38,6 +38,7 @@ function wireTheme() {
       `<div class="tsw" data-theme="${t[0]}" title="${t[0]}"
         style="background:linear-gradient(135deg,${t[1]},${t[2]})"></div>`).join('');
     document.body.appendChild(pop);
+    watchShellOverlay(pop);
     pop.querySelectorAll('.tsw').forEach(sw =>
       sw.onclick = () => { applyTheme(sw.dataset.theme); pop.classList.remove('show');
                            btn.classList.remove('open'); });
@@ -178,6 +179,7 @@ const NAV = [
   ['page','System Info','info'], ['page','Disk Cleanup','disk'],
   ['page','Drivers','driver'], ['page','NVIDIA Profile','nvidia'], ['page','Defender','shield'], ['page','Resources','wrench'],
   ['sec','TOOLS'],
+  ['page','Extra Tools','box'],
   ['page','Debloat & Customization','wrench'],
   ['page','Virtual Machines','box'],
   ['page','Install Apps','box'],
@@ -196,12 +198,34 @@ function buildNav() {
     n.onclick = () => show(n.dataset.nav));
 }
 
-function show(name) {
+let pageHistoryStarted = false;
+function navigateHistory(direction) {
+  if (!H('modal')?.classList.contains('show')) history.go(direction);
+}
+window.addEventListener('popstate', e => { if (e.state?.tlPage) show(e.state.tlPage, false); });
+document.addEventListener('mouseup', e => {
+  if (e.button === 3 || e.button === 4) { e.preventDefault(); navigateHistory(e.button === 3 ? -1 : 1); }
+});
+for (const type of ['mousedown','auxclick']) document.addEventListener(type, e => {
+  if (e.button === 3 || e.button === 4) e.preventDefault();
+});
+document.addEventListener('keydown', e => {
+  if (e.altKey && ['ArrowLeft','ArrowRight'].includes(e.key)) {
+    e.preventDefault(); navigateHistory(e.key === 'ArrowLeft' ? -1 : 1);
+  }
+});
+function show(name, recordHistory = true) {
+  if (recordHistory) {
+    if (!pageHistoryStarted) { history.replaceState({tlPage:name}, ''); pageHistoryStarted = true; }
+    else if (history.state?.tlPage !== name) history.pushState({tlPage:name}, '');
+  }
+  if (typeof closeUpdates === 'function') closeUpdates();
   STATE.page = name;
   document.querySelectorAll('[data-nav]').forEach(n =>
     n.classList.toggle('active', n.dataset.nav === name));
   const isCat = STATE.cats.includes(name);
   const routes = {
+    'Extra Tools': pageUpdates,
     'Debloat & Customization': pageDebloat,
     'System Info': pageSysInfo, 'Disk Cleanup': pageClean,
     'Drivers': pageDrivers, 'NVIDIA Profile': pageNvProfile, 'Defender': pageDefender, 'Resources': pageRes,
@@ -334,7 +358,7 @@ async function applyAll(on) {
 /* ---------- dashboard one-click setup ---------- */
 // Tweaks "Apply recommended" leaves off - kept in sync with the server's
 // RECOMMENDED_SKIP: the two risky ones plus GameDVR and Fullscreen Optimizations.
-const RECOMMENDED_KEYS = ['bing_search','cdm_ads','telemetry','ceip','feedback','activity_history','ad_id','typing_insights','speech_data','ink_collection'];
+const RECOMMENDED_KEYS = ['bing_search','cdm_ads','telemetry','ceip','feedback','activity_history','ad_id','typing_insights','speech_data','ink_collection','pause_windows_updates'];
 
 function wireBulk() {
   document.querySelectorAll('[data-bulk]').forEach(b => {
@@ -356,7 +380,7 @@ function bulkTargets(mode) {
 let BULK_BUSY = false;
 async function runBulk(mode) {
   if (BULK_BUSY) return;
-  if (mode === 'all' && !await confirmAction('Apply every tweak?', 'This includes the legacy gaming tweaks, NVIDIA profile, Defender changes and all curated Debloat & Customization options. Apps will be removed and Start pins cleared once. Use Recommended for the preset that preserves gaming and core Windows features.', 'Apply All')) return;
+  if (mode === 'all' && !await confirmAction('Apply every tweak?', 'This includes the legacy gaming tweaks, NVIDIA profile, Defender changes, a Windows Update pause until 31 December 2051 and all curated Debloat & Customization options. Apps will be removed and Start pins cleared once. Use Recommended for the preset that preserves gaming and core Windows features.', 'Apply All')) return;
   BULK_BUSY = true;
   try {
   const btns = document.querySelectorAll('[data-bulk]');
@@ -579,6 +603,7 @@ let boot = async function boot() {
   }
   buildNav(); show('Home'); refreshCounts(); wireTips(); wireTheme();
   buildQuick(); wireBulk();
+  if (typeof startUpdateMonitor === 'function') startUpdateMonitor();
   if (info && info.scanning) {
     H('scoreNote').textContent = 'Checking what is already applied…';
     renderSpecs({ Status: 'Reading hardware…' });
@@ -1663,41 +1688,18 @@ async function pageDefender() {
      <div class="card" id="defRemoveCard" style="margin-top:14px;border-color:rgba(255,93,108,.28)">
        <b style="font-size:14px;color:var(--bad)">Permanently remove Defender</b>
        <p style="color:var(--muted);font-size:11.5px;line-height:1.65;margin-top:7px">
-         The toggle above just switches Defender off — reversible any time. If you
-         want it gone completely, that needs <b>Defender Remover</b>, a separate
-         open-source tool. It is <b>not made by or bundled with this app</b>, it
-         is not reversible without reinstalling Windows, and it leaves the PC with
-         no antivirus at all. Only for people who run another AV and know what they
-         are doing.</p>
+         Use the integrated <b>Defender Remover</b> controls to remove Defender
+         and Windows Security. Its removal also disables other Windows protections,
+         including SmartScreen, UAC and security mitigations. Recovery may require
+         reinstalling Windows. Choose a removal option and review its scope before proceeding.</p>
        <div class="row" style="margin-top:11px">
          <button class="btn ghost" id="defRemove"
-           style="border-color:rgba(255,93,108,.4);color:var(--bad)">Get Defender Remover</button>
+           style="border-color:rgba(255,93,108,.4);color:var(--bad)">Removal options</button>
        </div>
      </div>`);
   await refreshDefender();
   const rm = H('defRemove');
-  if (rm) rm.onclick = () => {
-    showModal(`<div class="modal-card">
-      <h2 style="margin:0 0 8px;font-size:18px;color:var(--bad)">Permanently remove Windows Defender?</h2>
-      <p style="color:var(--muted);font-size:12.5px;line-height:1.7;margin:0 0 12px">
-        This opens the download page for <b>Defender Remover</b> by ionuttbara — a
-        third-party tool, <b>not part of this app</b>. Nothing is downloaded or run
-        for you; you get it and run it yourself.</p>
-      <p style="color:var(--muted);font-size:12px;line-height:1.65;margin:0 0 14px">
-        It fully strips Windows Defender out. That is <b>very hard to undo</b> —
-        usually a Windows reinstall — and leaves you with <b>no antivirus</b>.
-        Make a restore point first, and only do this if you run another AV.</p>
-      <div class="row" style="gap:10px">
-        <button class="btn ghost" id="rmYes"
-          style="border-color:rgba(255,93,108,.4);color:var(--bad)">Open the download page</button>
-        <button class="btn" id="rmNo">Cancel</button>
-      </div></div>`);
-    H('rmYes').onclick = () => {
-      closeModal();
-      api('open_url', 'https://github.com/ionuttbara/windows-defender-remover/releases');
-    };
-    H('rmNo').onclick = closeModal;
-  };
+  if (rm) rm.onclick = openDefenderRemoval;
 }
 
 async function refreshDefender() {
@@ -1709,7 +1711,7 @@ async function refreshDefender() {
   const state = H('defState');
   if (state) {
     state.textContent = !st.present
-      ? 'Defender is not installed on this PC — nothing to turn off.'
+      ? 'Defender antivirus is not detected. Windows Security and leftover files are checked separately in Removal options.'
       : (st.active ? 'Defender is ON and protecting this PC.' : 'Defender is OFF.');
     state.style.color = st.active ? 'var(--good)' : 'var(--warn)';
   }

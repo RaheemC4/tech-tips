@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 try {
     try { $Host.UI.RawUI.ForegroundColor = 'Cyan' } catch { }
     Write-Host 'Tech Lounge Tweaks - preparing your personal release' -ForegroundColor Cyan
-    foreach ($releaseLink in @('https://github.com/RaheemC4/tech-tips', 'https://github.com/RaheemC4/tech-tips/raw/main/TechLoungeTweaks/TechLoungeTweaks.zip')) {
+    foreach ($releaseLink in @('https://github.com/RaheemC4/tech-tips', 'https://github.com/RaheemC4/tech-tips/releases/latest/download/TechLoungeTweaks.zip')) {
         if ($env:WT_SESSION) {
             $escape = [char]27
             Write-Host "$escape]8;;$releaseLink$escape\$releaseLink$escape]8;;$escape\" -ForegroundColor Cyan

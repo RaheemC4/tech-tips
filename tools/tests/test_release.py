@@ -13,6 +13,20 @@ spec.loader.exec_module(release)
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_push_reuses_only_verified_release(self):
+        with patch.object(release,'verify_release') as verify, patch.object(release,'prepare') as prepare:
+            release.prepare_for_push()
+            verify.assert_called_once()
+            prepare.assert_not_called()
+
+    def test_push_rebuilds_changed_release_and_propagates_failures(self):
+        with patch.object(release,'verify_release',side_effect=RuntimeError('changed')), patch.object(release,'prepare') as prepare:
+            release.prepare_for_push()
+            prepare.assert_called_once()
+        with patch.object(release,'verify_release',side_effect=RuntimeError('changed')), patch.object(release,'prepare',side_effect=RuntimeError('test failed')):
+            with self.assertRaisesRegex(RuntimeError,'test failed'):
+                release.prepare_for_push()
+
     def test_archive_retries_temporary_lock(self):
         with tempfile.TemporaryDirectory() as temp:
             old, new = Path(temp) / 'app.zip', Path(temp) / 'app.zip.tmp'
@@ -77,11 +91,26 @@ class ReleaseTests(unittest.TestCase):
             with patch.object(release, 'REVIEW', Path(temp) / 'review.json'):
                 with self.assertRaises(RuntimeError):
                     release.check_review()
+
                 release.record_review()
                 release.check_review()
                 inputs.return_value = {'src': 'b'}
                 with self.assertRaises(RuntimeError):
                     release.check_review()
+
+    def test_same_app_review_keeps_version_and_content_changes_advance_identity(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);app=root/'App';(app/'src').mkdir(parents=True)
+            (app/'src/main.py').write_text('print(1)')
+            (app/'requirements-build.txt').write_text('test')
+            with patch.multiple(release,ROOT=root,APP=app,ARCHIVE=app/'app.zip',REVIEW=app/'review.json'), patch.object(release,'doc_inputs',return_value={}):
+                release.record_review(update_build=True)
+                before=(app/'src/build-info.json').read_bytes()
+                release.record_review(update_build=True)
+                self.assertEqual(before,(app/'src/build-info.json').read_bytes())
+                (app/'src/main.py').write_text('print(2)')
+                release.record_review(update_build=True)
+                self.assertNotEqual(before,(app/'src/build-info.json').read_bytes())
 
     def test_release_verification_rejects_changed_or_added_files(self):
         with tempfile.TemporaryDirectory() as temp:

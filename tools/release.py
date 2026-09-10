@@ -49,7 +49,37 @@ def doc_inputs():
     return {p.relative_to(ROOT).as_posix(): digest(p) for p in paths}
 
 
-def record_review():
+def app_revision():
+    inputs = {p.relative_to(APP).as_posix(): digest(p) for p in files(APP / 'src')
+              if p.name != 'build-info.json'}
+    inputs['requirements-build.txt'] = digest(APP / 'requirements-build.txt')
+    sources = [APP / 'resources', ROOT.parent / 'TechLoungeTweaks/resources']
+    resource_dir = next((p for p in sources if p.is_dir()), None)
+    if resource_dir:
+        inputs.update({'resources/' + p.relative_to(resource_dir).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+                       for p in files(resource_dir)})
+    elif ARCHIVE.exists():
+        with zipfile.ZipFile(ARCHIVE) as archive:
+            prefix = 'TechLoungeTweaks/resources/'
+            inputs.update({n.removeprefix('TechLoungeTweaks/'): hashlib.sha256(archive.read(n)).hexdigest()
+                           for n in archive.namelist() if n.startswith(prefix) and not n.endswith('/')})
+    return hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
+
+
+def record_review(update_build=False):
+    if update_build:
+        path = APP / 'src/build-info.json'
+        revision = app_revision()
+        try:
+            current = json.loads(path.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            current = {}
+        # Reviewing docs or republishing identical software is not a new app.
+        if current.get('app_revision') != revision:
+            stamp = datetime.now(timezone.utc)
+            path.write_text(json.dumps({'schema': 2, 'app_revision': revision,
+                'version': stamp.strftime('%Y.%m.%d.%H%M%S'),
+                'built_utc': stamp.isoformat()}, indent=2) + '\n', encoding='utf-8')
     REVIEW.write_text(json.dumps({'reviewed_utc': datetime.now(timezone.utc).isoformat(),
                                   'inputs': doc_inputs()}, indent=2) + '\n', encoding='utf-8')
     print('Recorded documentation review for the current source and README.')
@@ -110,7 +140,7 @@ def publish_files():
     paths = []
     for folder in ('src', 'tools', 'tests', 'docs'):
         paths += files(APP / folder)
-    paths += [APP / name for name in ('README.md', 'TechLoungeTweaks.zip', 'docs-review.json', 'release.json', 'requirements-build.txt')]
+    paths += [APP / name for name in ('README.md', 'docs-review.json', 'release.json', 'requirements-build.txt')]
     paths += [ROOT / name for name in ('AGENTS.md', 'README.md', 'RELEASE-NOTES.md', 'HOW-TO-UPLOAD.txt',
                                       'PUSH-TO-GITHUB.bat', 'PREPARE-RELEASE.bat', '.gitignore', '.gitattributes')]
     paths += files(ROOT / 'tools')
@@ -125,11 +155,21 @@ def verify_release():
         if not path.is_file() or digest(path) != expected:
             raise RuntimeError(f'Release file changed: {relative}. Run --prepare again.')
     paths = {p.relative_to(ROOT).as_posix() for p in publish_files() if p != MANIFEST}
+    if manifest.get('schema') == 2:
+        paths.add(ARCHIVE.relative_to(ROOT).as_posix())
     if paths != set(manifest['files']):
         raise RuntimeError('Release file list changed. Run --prepare again.')
     with zipfile.ZipFile(ARCHIVE) as archive:
         if archive.testzip():
             raise RuntimeError('ZIP integrity check failed.')
+        if manifest.get('schema') == 2:
+            build = json.loads(archive.read('TechLoungeTweaks/_internal/build-info.json'))
+            if any(build.get(k) != manifest.get(k) for k in ('version', 'built_utc', 'app_revision')):
+                raise RuntimeError('Packaged app identity does not match the release manifest.')
+            bundles = json.loads(archive.read('TechLoungeTweaks/_internal/bundled-tools.json'))
+            for key, bundle in bundles.items():
+                if 'TechLoungeTweaks/resources/tools/' + key + '/' + bundle['exe'] not in archive.namelist():
+                    raise RuntimeError(f'Bundled {key} executable is missing.')
         for name in ['TechLoungeTweaks/TechLoungeTweaks.exe',
                      'TechLoungeTweaks/_internal/vendor/mas/LICENSE',
                      'TechLoungeTweaks/_internal/vendor/win11debloat/LICENSE',
@@ -179,13 +219,20 @@ def replace_archive(pending, destination):
 
 def prepare():
     check_review()
+    if app_revision() != json.loads((APP / 'src/build-info.json').read_text())['app_revision']:
+        raise RuntimeError('App or bundled resources changed since review. Review and record the updated release before preparing.')
     node, env = browser_env()
     run([sys.executable, '-m', 'unittest', 'discover', '-s', APP / 'tests', '-v'])
     run([sys.executable, '-m', 'unittest', 'discover', '-s', ROOT / 'tools/tests', '-v'])
     run([node, '--check', APP / 'src/web/app.js'])
+    run([node, '--check', APP / 'src/web/updates.js'])
+    run([node, APP / 'tools/test-updates-ui.js'], env=env)
     run([node, APP / 'tools/test-windows-setup-ui.js'], env=env)
+    run([node, APP / 'tools/test-defender-removal-ui.js'], env=env)
     run([node, APP / 'tools/test-debloat-ui.js'], env=env)
     run([sys.executable, APP / 'tools/smoke-close.py'])
+    run([sys.executable, APP / 'tools/smoke-floating-tools.py'])
+    run([sys.executable, APP / 'tools/smoke-nvpi-startup.py'])
     run([node, APP / 'tools/make-screenshots.js'], env=env)
     readme = APP / 'README.md'
     for relative in re.findall(r'!\[[^\]]*\]\((docs/[^)]+)\)', readme.read_text(encoding='utf-8')):
@@ -203,10 +250,14 @@ def prepare():
         if archive.testzip():
             raise RuntimeError('New ZIP failed validation; previous archive retained.')
     replace_archive(temporary, ARCHIVE)
-    manifest = {'built_utc': datetime.now(timezone.utc).isoformat(),
+    manifest = {**json.loads((APP / 'src/build-info.json').read_text()),
                 'notes': (ROOT / 'RELEASE-NOTES.md').read_text(encoding='utf-8').strip(),
                 'files': {p.relative_to(ROOT).as_posix(): digest(p)
                           for p in publish_files() if p != MANIFEST}}
+    zip_hash = digest(ARCHIVE)
+    manifest['files'][ARCHIVE.relative_to(ROOT).as_posix()] = zip_hash
+    manifest['release_tag'] = 'app-' + manifest['version'] + '-' + zip_hash[:12]
+    manifest['download_url'] = 'https://github.com/RaheemC4/tech-tips/releases/download/' + manifest['release_tag'] + '/TechLoungeTweaks.zip'
     MANIFEST.write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
     verify_release()
     if (ROOT.parent / 'TechLoungeTweaks').is_dir():
@@ -215,6 +266,17 @@ def prepare():
         shutil.copyfile(ARCHIVE, pending_personal)
         replace_archive(pending_personal, personal)
     print(f'READY: {ARCHIVE}\nExtract the whole folder on each personal PC.')
+
+
+def prepare_for_push():
+    """Reuse only a byte-verified prepared release; changed inputs rebuild fully."""
+    try:
+        verify_release()
+    except (OSError, ValueError, RuntimeError, KeyError, zipfile.BadZipFile):
+        print('Prepared release is missing or changed; running full preparation.')
+        prepare()
+    else:
+        print('Using the verified prepared release; no rebuild is needed.')
 
 
 def push(remote=REMOTE):
@@ -236,7 +298,10 @@ def push(remote=REMOTE):
          'HOW-TO-UPLOAD.txt', 'PUSH-TO-GITHUB.bat', 'PREPARE-RELEASE.bat', '.gitignore', '.gitattributes', 'tools'], repo)
     diff = subprocess.run(['git', 'diff', '--cached', '--quiet'], cwd=repo)
     if diff.returncode == 0:
-        print('Repository already matches this release. Nothing to push.')
+        print('Repository already matches this release.')
+        if remote == REMOTE:
+            from publish_asset import publish
+            publish(repo, json.loads(MANIFEST.read_text(encoding='utf-8')), ARCHIVE)
         return
     if diff.returncode != 1:
         raise RuntimeError('Could not inspect staged changes.')
@@ -249,6 +314,9 @@ def push(remote=REMOTE):
                     '\n\n' + (ROOT / 'RELEASE-NOTES.md').read_text(encoding='utf-8'), encoding='utf-8')
     run(['git', 'commit', '--file', body], repo)
     run(['git', 'push', 'origin', 'HEAD:main'], repo)
+    if remote == REMOTE:
+        from publish_asset import publish
+        publish(repo, json.loads(MANIFEST.read_text(encoding='utf-8')), ARCHIVE)
     print('Push completed successfully.')
 
 
@@ -261,11 +329,13 @@ if __name__ == '__main__':
     args = parser.parse_args()
     try:
         if args.record_doc_review:
-            record_review()
+            record_review(update_build=True)
         elif args.verify:
             verify_release()
         else:
-            if not args.push_prepared:
+            if args.push:
+                prepare_for_push()
+            elif not args.push_prepared:
                 prepare()
             if args.push or args.push_prepared:
                 push(args.remote)

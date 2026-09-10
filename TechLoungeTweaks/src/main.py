@@ -28,6 +28,9 @@ import nettest
 import sysinfo
 import virt
 import debloat
+import defender_remover
+from updates import UpdateManager, open_mouse
+from tool_windows import FloatingTools
 from windows_setup import WindowsSetup
 from tweaks_engine import (build_tweaks, CATEGORY_ORDER, CATEGORY_ICONS, run, ps)
 
@@ -103,6 +106,9 @@ def traced(fn):
 
 class Api:
     def __init__(self):
+        self._updates = UpdateManager()
+        self._tool_launch_lock = threading.Lock()
+        self._floating_tools = FloatingTools(self._tool_visibility, self._return_tool_focus)
         self._debloat_run_lock = threading.Lock()
         self._windows_setup = WindowsSetup(here("vendor", "mas"))
         self._tweaks_cache = None
@@ -156,67 +162,94 @@ class Api:
     # Driven through Win32 rather than pywebview's own helpers: those run on
     # pywebview's thread and were not reliably reaching the native window.
     def _hwnd(self):
+        # The actual instance handle; title searches can target another build.
         try:
-            h = ctypes.windll.user32.FindWindowW(None, "Tech Lounge Tweaks")
-            return h or None
+            return self._window.native.Handle.ToInt64() or None
         except Exception:
             return None
 
+    def _begin_native_drag(self):
+        from ctypes import wintypes
+        user=ctypes.WinDLL('user32',use_last_error=True)
+        user.GetAsyncKeyState.argtypes=[ctypes.c_int]
+        user.GetAsyncKeyState.restype=ctypes.c_short
+        user.GetCursorPos.argtypes=[ctypes.POINTER(wintypes.POINT)]
+        user.SendMessageW.argtypes=[wintypes.HWND,wintypes.UINT,wintypes.WPARAM,wintypes.LPARAM]
+        user.SendMessageW.restype=ctypes.c_ssize_t
+        hwnd=self._hwnd()
+        # A quick click/release must not leave Windows in a sticky move loop.
+        if not hwnd or not user.GetAsyncKeyState(1)&0x8000:
+            return
+        point=wintypes.POINT()
+        if not user.GetCursorPos(ctypes.byref(point)):
+            return
+        position=(point.x&0xffff)|((point.y&0xffff)<<16)
+        # This runs on the owning WinForms UI thread, so ReleaseCapture releases
+        # the WebView's mouse capture before starting Windows' native move loop.
+        user.ReleaseCapture()
+        user.SendMessageW(hwnd,0x00A1,2,position)  # WM_NCLBUTTONDOWN / HTCAPTION
+
     @traced
     def start_drag(self):
-        """Hand the window drag to Windows itself.
-
-        pywebview's built-in drag region round-trips JS -> Python -> Win32 on
-        EVERY mousemove event. On a high-refresh screen with a high-polling
-        mouse that is hundreds of IPC calls a second, and the window visibly
-        lags behind the cursor.
-
-        WM_SYSCOMMAND / SC_MOVE hands the whole gesture to the OS: one single
-        message, then Windows runs its own move loop and the compositor draws
-        it at the monitor's full refresh rate. No further JS or Python.
-        """
-        h = self._hwnd()
-        if not h:
+        if not self._hwnd():
             return False
-        WM_SYSCOMMAND = 0x0112
-        SC_MOVE_BY_MOUSE = 0xF012      # SC_MOVE | HTCAPTION
-        user32 = ctypes.windll.user32
-        user32.ReleaseCapture()
-        user32.PostMessageW(h, WM_SYSCOMMAND, SC_MOVE_BY_MOUSE, 0)
+        from System import Action
+        # Never run the modal native move loop on a pywebview API worker thread.
+        self._window.native.BeginInvoke(Action(self._begin_native_drag))
+        return True
+
+    def _set_window_state(self, action):
+        from System import Action
+        from System.Windows.Forms import FormWindowState
+        native=self._window.native
+        def apply():
+            if action=='minimize':
+                native.WindowState=FormWindowState.Minimized
+            else:
+                native.WindowState=(FormWindowState.Normal if native.WindowState==FormWindowState.Maximized
+                                    else FormWindowState.Maximized)
+        native.BeginInvoke(Action(apply))
         return True
 
     @traced
     def minimize(self):
-        h = self._hwnd()
-        if h:
-            ctypes.windll.user32.ShowWindow(h, 6)          # SW_MINIMIZE
-            return True
-        try:
-            self._window.minimize()
-        except Exception:
-            pass
-        return True
+        return self._set_window_state('minimize')
 
     @traced
     def maximize(self):
-        h = self._hwnd()
-        if h:
-            zoomed = ctypes.windll.user32.IsZoomed(h)
-            ctypes.windll.user32.ShowWindow(h, 9 if zoomed else 3)
+        return self._set_window_state('maximize')
+
+    def _on_closing(self):
+        if getattr(self, '_shutdown_complete', False):
             return True
-        return False
+        self.close()
+        return False  # Native X / Alt+F4 must use the same asynchronous shutdown.
 
     @traced
     def close(self):
-        # Target this webview instance, not the first window sharing its title.
-        # Return to the JS bridge before destroying its owning WebView2 control.
+        if defender_remover.is_running():
+            return {'ok': False, 'message': 'Wait for the Defender removal to finish before closing the app.'}
         if not self._window:
             return {'ok': False, 'message': 'Window is not ready.'}
+        if getattr(self, '_close_in_progress', False):
+            return {'ok': True}
+        self._close_in_progress = True
         def destroy():
             try:
+                tools=getattr(self,'_floating_tools',None)
+                with getattr(self,'_tool_launch_lock',threading.Lock()):
+                    closed = not tools or tools.shutdown()
+                if not closed:
+                    self._window.evaluate_js("banner('A tool is waiting to close. Finish its save or busy prompt, then close TechLoungeTweaks again.')")
+                    return
+                self._shutdown_complete=True
                 self._window.destroy()
             except Exception:
+                self._shutdown_complete=False
                 log('close failed\n' + traceback.format_exc())
+            finally:
+                self._close_in_progress=False
+        # Release the JS bridge before any tool/save dialog or native shutdown.
         threading.Timer(0.1, destroy).start()
         return {'ok': True}
 
@@ -277,7 +310,118 @@ class Api:
             "scanning": True,
         }
         threading.Thread(target=self._background_start, daemon=True).start()
+        self._updates.start()
         return payload
+
+    def _return_tool_focus(self):
+        # Foreground activation must run on the host's WinForms UI thread.
+        if not self._window or getattr(self,'_close_in_progress',False): return
+        def activate():
+            native=self._window.native
+            from System.Windows.Forms import FormWindowState
+            if native.IsDisposed or native.WindowState == FormWindowState.Minimized: return
+            native.BringToFront()
+            native.Activate()
+        try:
+            from System import Action
+            native=self._window.native
+            if native.InvokeRequired:
+                native.Invoke(Action(activate))
+            else:
+                activate()
+        except Exception:
+            pass
+
+    @traced
+    def defender_remover_log_folder(self):
+        return defender_remover.open_log_folder()
+
+    def _tool_visibility(self, key, visible):
+        if self._window:
+            try:
+                self._window.evaluate_js('toolVisibility(' + json.dumps(key) + ',' + json.dumps(visible) + ')')
+            except Exception:
+                pass
+
+    @traced
+    def tools_overlay_regions(self, regions):
+        import math
+        if not isinstance(regions,list) or len(regions)>2:
+            return {'ok': False}
+        checked=[]
+        for region in regions:
+            if not isinstance(region,list) or len(region)!=5:
+                return {'ok': False}
+            if not all(isinstance(v,(int,float)) and math.isfinite(v) for v in region):
+                return {'ok': False}
+            x,y,w,h,scale=region
+            if w<0 or h<0 or not 0<scale<=8:
+                return {'ok': False}
+            checked.append(tuple(region))
+        self._floating_tools.overlay_regions=tuple(checked)
+        return {'ok': True}
+
+    @traced
+    def tools_close(self, key):
+        return self._floating_tools.close_tool(key)
+
+    @traced
+    def tools_hide(self, key):
+        return {'ok': self._floating_tools.hide(key)}
+
+    @traced
+    def updates_status(self):
+        return self._updates.status()
+
+    @traced
+    def updates_check(self):
+        return self._updates.start(manual=True)
+
+    @traced
+    def updates_apply(self, key):
+        return self._updates.apply(key)
+
+    @traced
+    def updates_cancel(self):
+        self._updates.cancel.set()
+        return {'ok': True}
+
+    @traced
+    def updates_launch(self, key):
+        with self._tool_launch_lock:
+            if getattr(self,'_close_in_progress',False):
+                return {'ok': False, 'message': 'TechLoungeTweaks is closing.'}
+            return self._launch_tool(key)
+
+    def _launch_tool(self, key):
+        if key == 'openmouse':
+            return open_mouse()
+        self._floating_tools.hide_others(key)
+        if self._floating_tools.focus(key):
+            return {'ok': True}
+        result = self._updates.launch(key)
+        if result.get('ok') and key in ('dlss', 'bcu', 'nvpi'):
+            try:
+                owner = self._window.native.Handle.ToInt64()
+            except Exception:
+                owner = self._hwnd()
+            self._floating_tools.attach(key, result['pid'], owner, result.get('folder'), self._updates.startup_guards.pop(key,None))
+        return result
+
+    @traced
+    def updates_rollback(self, key):
+        return self._updates.rollback(key)
+
+    @traced
+    def updates_restart(self):
+        if defender_remover.is_running() or self._floating_tools.has_open_windows() or any(p.poll() is None for p in self._updates.processes.values()):
+            return {'ok': False, 'message': 'Close the open tool windows before restarting to apply the app update.'}
+        if self._updates.status()['busy'] or any(j.get('state') == 'running' for j in self.active_jobs()):
+            return {'ok': False, 'message': 'Finish or cancel active jobs before restarting.'}
+        result = self._updates.restart()
+        if result.get('ok'):
+            self.close()
+        return result
 
     def _background_start(self):
         # The NVIDIA read shells out to Profile Inspector and is the slowest
@@ -697,6 +841,18 @@ class Api:
     def cancel_download(self, jobkey):
         self._dl_cancel.add(jobkey)
         return {"ok": True}
+
+    @traced
+    def defender_remover_open(self, mode=None, confirmed=False):
+        return defender_remover.launch(mode,confirmed)
+
+    @traced
+    def defender_remover_status(self):
+        return defender_remover.status()
+
+    @traced
+    def defender_remover_machine(self):
+        return defender_remover.machine_state()
 
     # ---------------------------------------------------------- defender
     _DEF_READ = r"""
@@ -1646,6 +1802,16 @@ def _close_splash():
         pass
 
 
+def centre_window(window):
+    """Use actual native pixel dimensions and the pointer monitor work area."""
+    from System.Drawing import Point
+    from System.Windows.Forms import Screen, Cursor
+    native = window.native
+    work = Screen.FromPoint(Cursor.Position).WorkingArea
+    native.Location = Point(work.Left + max(0,(work.Width-native.Width)//2),
+                            work.Top + max(0,(work.Height-native.Height)//2))
+
+
 def main():
     if not is_admin():
         relaunch_as_admin()
@@ -1667,6 +1833,8 @@ def main():
         background_color="#0a0b12",
     )
     api._window = window
+    window.events.before_show += lambda: centre_window(window)
+    window.events.closing += api._on_closing
     log("window created")
 
     # THE fix for "hangs on first launch, works on reopen": the app runs as

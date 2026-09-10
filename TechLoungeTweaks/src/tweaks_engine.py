@@ -811,6 +811,37 @@ def t_nv_telemetry():
 # Registry of all tweaks
 # --------------------------------------------------------------------------
 
+# Pause-date subset of Aetherinox/pause-windows-updates (MIT).
+# Deliberately leave services, active hours, WSUS and driver policy unchanged.
+WU_PAUSE_SETTINGS = r"SOFTWARE\Microsoft\WindowsUpdate\UX\Settings"
+WU_PAUSE_POLICY = r"SOFTWARE\Microsoft\WindowsUpdate\UpdatePolicy\Settings"
+WU_PAUSE_END = "2051-12-31T00:00:00Z"
+WU_PAUSE_STARTS = ('PauseFeatureUpdatesStartTime','PauseQualityUpdatesStartTime','PauseUpdatesStartTime')
+WU_PAUSE_ENDS = ('PauseFeatureUpdatesEndTime','PauseQualityUpdatesEndTime','PauseUpdatesExpiryTime')
+
+
+def t_pause_windows_updates():
+    def check():
+        return (all(reg_get(HKLM,WU_PAUSE_SETTINGS,name)==WU_PAUSE_END for name in WU_PAUSE_ENDS)
+                and all(reg_get(HKLM,WU_PAUSE_POLICY,name)==1 for name in ('PausedFeatureStatus','PausedQualityStatus')))
+    def apply():
+        from datetime import datetime, timezone
+        start=datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+        for name in WU_PAUSE_STARTS: reg_set(HKLM,WU_PAUSE_SETTINGS,name,start,winreg.REG_SZ)
+        for name in WU_PAUSE_ENDS: reg_set(HKLM,WU_PAUSE_SETTINGS,name,WU_PAUSE_END,winreg.REG_SZ)
+        reg_set(HKLM,WU_PAUSE_SETTINGS,'FlightSettingsMaxPauseDays',9999)
+        for name in ('PausedFeatureStatus','PausedQualityStatus'):reg_set(HKLM,WU_PAUSE_POLICY,name,1)
+        for name in ('PausedFeatureDate','PausedQualityDate'):reg_set(HKLM,WU_PAUSE_POLICY,name,start,winreg.REG_SZ)
+        if not check():raise OSError('Windows did not retain the update pause settings.')
+    def revert():
+        for name in (*WU_PAUSE_STARTS,*WU_PAUSE_ENDS,'FlightSettingsMaxPauseDays'):reg_del_value(HKLM,WU_PAUSE_SETTINGS,name)
+        for name in ('PausedFeatureStatus','PausedQualityStatus'):reg_set(HKLM,WU_PAUSE_POLICY,name,0)
+        for name in ('PausedFeatureDate','PausedQualityDate'):reg_del_value(HKLM,WU_PAUSE_POLICY,name)
+        if any(reg_get(HKLM,WU_PAUSE_SETTINGS,name) is not None for name in (*WU_PAUSE_STARTS,*WU_PAUSE_ENDS)):
+            raise OSError('Windows did not clear all update pause dates.')
+    return apply,revert,check
+
+
 def build_tweaks():
     T = []
 
@@ -819,6 +850,11 @@ def build_tweaks():
         a, r, c = triple
         T.append(Tweak(key, name, desc, cat, a, r, c, warning, icon, restart,
                        best_effort=best_effort))
+
+    add("pause_windows_updates", "Pause Windows Updates",
+        "Pause feature and security updates until 31 December 2051. Included in Apply All and Apply Recommended. Turn off to resume updates.",
+        "System", t_pause_windows_updates(),
+        warning="Security fixes are paused too. Resume updates here or in Windows Settings when you want to install them.", icon="Ⅱ")
 
     # ---------------- Performance ----------------
     add("gamedvr", "Disable GameDVR",

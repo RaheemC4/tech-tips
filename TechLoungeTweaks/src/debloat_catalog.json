@@ -384,6 +384,7 @@
     "ad_id",
     "typing_insights",
     "speech_data",
-    "ink_collection"
+    "ink_collection",
+    "pause_windows_updates"
   ]
 }

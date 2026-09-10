@@ -2,7 +2,7 @@ PERSONAL RELEASES
 ================
 
 Double-click PREPARE-RELEASE.bat to rebuild and create the personal PC ZIP.
-Double-click PUSH-TO-GITHUB.bat to do the same, then commit and push to:
+Double-click PUSH-TO-GITHUB.bat to verify and upload the prepared release. If any release files changed, it rebuilds and runs all checks first. It then commits source/docs, pushes, and uploads the bundled ZIP as a GitHub Release to:
   https://github.com/RaheemC4/tech-tips (main)
 
 The scripts work from their own folder, regardless of the current directory.
@@ -50,11 +50,23 @@ and CHROME (Edge/Chromium executable).
 
 PUBLISH CONTENTS
 ----------------
-Only app source, tests, tools, docs, release metadata and the app ZIP are copied.
+Only app source, tests, tools, docs and release metadata are committed. The ZIP is uploaded as a GitHub Release asset, avoiding the Git file-size limit.
 Virtual environments, build/dist directories, logs, caches and _to_delete are
 excluded. The root README screenshots are copied to the repository docs folder.
 Each push uses a fresh temporary clone; a failed clone/commit/push is preserved
 for troubleshooting at the path printed on screen.
 
 Download after publishing:
-https://github.com/RaheemC4/tech-tips/raw/main/TechLoungeTweaks/TechLoungeTweaks.zip
+https://github.com/RaheemC4/tech-tips/releases/latest/download/TechLoungeTweaks.zip
+
+BUNDLED TOOLS AND RELEASE UPLOADS
+--------------------------------
+Before reviewing a release that refreshes upstream tools, run:
+  TechLoungeTweaks\.build-venv\Scripts\python.exe TechLoungeTweaks\tools\bundle-tools.py
+This downloads and verifies official portable releases and licences into local resources.
+The current release ZIP can also restore these resources on a new development PC.
+App identity remains stable when only rebuilding or republishing unchanged software.
+The push workflow uses Git Credential Manager credentials or GH_TOKEN/GITHUB_TOKEN
+with repository Contents write permission for release uploads. Tokens are not logged.
+Uploads are verified before the draft release is published. If uploading fails after
+the source push, rerun the BAT; the error identifies the failed release step.

@@ -6,6 +6,32 @@ turn Defender on or off, install runtimes, browsers and game clients silently,
 test your connection for bufferbloat, clean up junk files and check your GPU
 drivers — all from one window.
 
+Tool closure hands input back to the host before hiding the tool, and slow shutdown
+no longer triggers an automatic reopen. NVPI caption covers are host-owned windows,
+clipped to its rounded frame without cross-process child-window parenting.
+The NVPI covers use the selected publisher theme's original header colour.
+NVPI starts under a hidden host-owned staging window, then transfers to the main
+host once fitted. This keeps startup rendering hidden without repeatedly emptying
+its window region; the extra fixed settling delay is skipped when staging succeeds.
+Its Open button shows **Opening…** until the subwindow is ready. Driver/profile
+initialization still takes time. BCU and DLSS keep their existing launch paths.
+Saved maximization, splash and backdrop settings are normalized before launch;
+the startup guard also handles late titles and restored bounds. NVPI retains
+control of its WPF nonclient rendering rather than forcing a DWM frame reset.
+NVPI settings tolerate the publisher file's mismatched UTF-8/UTF-16 declaration
+and are saved with a matching encoding. BCU's native caption and system buttons
+are removed, including if loading restores them, so its red X cannot cover the
+host's themed close button. The tool is hidden before the host UI is activated.
+Native fixtures exercise slow closure against a competing foreground window;
+live compatibility with each publisher still requires verification.
+
+The Defender chooser distinguishes installed app files from leftover Windows Security
+package registrations. With the antivirus absent, remaining folders are recommended
+for cleanup; Security-only removal skips antivirus and broader security changes.
+
+Mouse back/forward buttons and Alt+Left/Right navigate between visited pages.
+The main window opens centred in the usable area of the monitor containing the mouse pointer.
+
 Every page reads the **live** system state, so the app shows what is actually
 set on your machine rather than assuming. The dashboard has a curated recommended
 preset, and individual pages explain the scope and undo options for their changes.
@@ -16,7 +42,7 @@ preset, and individual pages explain the scope and undo options for their change
 
 ## Download
 
-**[⬇ Download TechLoungeTweaks.zip](https://github.com/RaheemC4/tech-tips/raw/main/TechLoungeTweaks/TechLoungeTweaks.zip)**
+**[⬇ Download TechLoungeTweaks.zip](https://github.com/RaheemC4/tech-tips/releases/latest/download/TechLoungeTweaks.zip)**
 
 1. Download the zip
 2. **Extract it** somewhere you keep programs — `C:\Tools\` is a good spot.
@@ -138,13 +164,31 @@ categories by hand:
 
 | Button | What it does |
 |---|---|
-| **Apply Recommended** | Curated privacy settings, optional bundled-app removal and the customization choices listed below. Leaves gaming tweaks, Xbox, Game Bar, NVIDIA settings, Defender and virtualization alone. |
-| **Apply All** | Asks for confirmation, then applies the legacy tweaks (including risky ones), NVIDIA profile, Defender off and the curated Debloat & Customization options. |
+| **Apply Recommended** | Curated privacy settings, Windows Updates paused until 31 December 2051, optional bundled-app removal and the customization choices listed below. Leaves gaming tweaks, Xbox, Game Bar, NVIDIA settings, Defender and virtualization alone. |
+| **Apply All** | Asks for confirmation, then applies the legacy tweaks (including Windows Updates paused until 2051 and risky ones), NVIDIA profile, Defender off and the curated Debloat & Customization options. |
 | **Revert All** | Restores the legacy tweaks from the app's saved original values. Does not reinstall removed apps or restore Start pins. |
 | **Windows Defaults** | Turns legacy tweaks off, restores NVIDIA settings and enables Defender. Does not undo the new debloat actions. |
 
 Apply All checks for an NVIDIA GPU before applying its driver profile. Recommended
 uses the same preset from the dashboard and the Debloat & Customization page.
+
+### Pause Windows Updates
+
+**System → Pause Windows Updates** pauses feature and security updates until
+31 December 2051 using the pause-date settings from
+[Aetherinox/pause-windows-updates](https://github.com/Aetherinox/pause-windows-updates#registry-scripts).
+Both **Apply Recommended** and **Apply All** include it. The toggle reads the
+current registry pause dates/status; Windows can override them after servicing
+or organization policy changes. Turn the toggle off, use Windows Defaults or
+choose Resume updates in Windows Settings to resume updates.
+
+This integration changes the pause dates and pause-duration limit; it does not
+change update services, active hours, WSUS or driver-update policy. Security
+fixes are paused too, so resume updates when you want to install them. The
+reviewed source revision and MIT licence are bundled; no script is downloaded
+or run from the internet when applying a preset.
+
+![Pause Windows Updates](docs/pause-windows-updates.png)
 
 ### Debloat & Customization
 
@@ -197,7 +241,7 @@ One toggle applies a tuned set of global NVIDIA driver settings — the same
 profile for everyone, so there is no "what did you set yours to" in chat.
 
 **NVIDIA Profile Inspector (Revamped) ships inside the zip**, in the
-`resources` folder. Nothing to download.
+`resources` folder. Tools & Updates can install newer official Inspector releases.
 
 The table lists every setting the profile touches: what your driver holds
 **right now** on the left, what it becomes on the right, with the changed ones
@@ -251,12 +295,46 @@ component list so it is not mistaken for something that did not work.
 
 Turning Defender off leaves the PC with no antivirus until it goes back on.
 
-**Permanently remove Defender.** The toggle only switches Defender off, and
-that is reversible. If you want it gone entirely there is a separate button
-that links to **Defender Remover** by ionuttbara — a third-party open-source
-tool. It is not bundled with or run by this app; you download and run it
-yourself. It is very hard to undo (usually a Windows reinstall) and leaves the
-PC with no antivirus, so it is only for people who run another AV.
+**Permanently remove Defender.** The button opens a themed, mouse-operated chooser
+inside the app, using a reviewed adapter for the bundled
+[Defender Remover](https://github.com/ionuttbara/windows-defender-remover)
+(release13-rev1). Choose Defender plus Windows Security, antivirus removal while
+keeping the Security app, or remaining files after removal and restart. Each
+choice requires confirmation. Antivirus removal choices also disable SmartScreen,
+UAC, VBS and other protections; recovery may require reinstalling Windows.
+Save work and make a system backup first.
+
+The chooser reads this PC when opened: antivirus service, Windows Security package
+registrations and manifests, remaining Defender folders and loaded engine/filter.
+A package record without app files is labelled **Not installed**. When the antivirus is absent and no components remain loaded,
+**Remaining Defender files** is recommended if folders remain. The combined option
+is recommended only when both apps are installed. When Defender is absent, that
+option becomes **Windows Security only** and runs an explicitly limited worker mode,
+without antivirus registry changes or SmartScreen removal. Unknown checks stay **Unknown**.
+
+The SHA-256-verified payload runs without a separate console. Progress and errors
+appear inside the app; an operation log is retained. Returning to the Defender
+page preserves progress, and the app waits for removal to finish before closing.
+The Security adapter derives a validated family name even when only a provisioning
+record remains, and checks the DISM removal-policy operation before attempting removal.
+A failed policy step stops that package's removal attempt. There is no blind retry.
+When antivirus removal is selected and its service exists, the original registry
+payloads still run through `regedit /s`. Warnings remain visible rather than being
+reported as a clean removal. AppX diagnostics are limited to the current operation's
+time window, so earlier logon errors are not presented as this attempt's cause.
+Expand **Log location** and choose **Open log folder** to inspect the operation and
+servicing logs. A missing manifest or a remaining policy restriction can still
+prevent Windows from removing a damaged package; this release does not claim
+successful removal on the affected PC without a real post-operation check.
+Restart Windows manually after completion and refresh Defender status. There is
+no forced restart or scheduled logon console. The upstream CC BY-NC 4.0 licence
+and attribution are included. This adapter updates through reviewed app releases.
+Validation uses fixtures and mocked removal calls; actual removal is not run on
+the development PC.
+
+![Defender removal chooser](docs/defender-removal.png)
+
+![Removal log folder](docs/defender-removal-log.png)
 
 ### Connection test
 
@@ -286,7 +364,9 @@ opens, so switching tabs is instant.
   Otherwise it checks licensing before opening the bundled MAS HWID tool.
   Each action clears old feedback and shows a loading indicator.
   **Change Windows Version** opens a mouse-operated chooser inside the app,
-  shows the current edition and lists Windows-supported target editions.
+  shows the current edition and lists Windows-supported target editions. The
+  scrollable list has a slim, rounded theme-accent scrollbar with room beside
+  the buttons; mouse-wheel and keyboard scrolling remain available.
   A second confirmation names the selected target before applying it through a
   hidden helper. This does not upgrade Windows 10 to 11 or offer unsupported
   downgrade paths. Edition changes may need activation and a manual restart;
@@ -309,6 +389,101 @@ opens, so switching tabs is instant.
   from the vendor. See below.
 - **Virtual Machines** — switch the CPU between VirtualBox and Windows'
   hypervisor-backed security. See below.
+
+### Extra Tools and updates
+
+![Extra Tools](docs/tools.png)
+
+**DLSS Swapper, Bulk Crap Uninstaller (BCU) and NVIDIA Profile Inspector Revamped
+come bundled and ready to open.** No separate installation or first-run download
+is needed. BCU includes its .NET runtime and both supported architectures. Its
+welcome wizard is skipped through its portable first-run setting; other existing
+preferences are preserved. The integrated frame targets BCU's main window rather
+than its welcome, news or legend dialogs.
+Startup window events suppress the initial surface before the integrated frame
+is ready, including BCU's child-process startup.
+Choose **Open** to use each complete official app in an integrated frame inside
+TechLoungeTweaks. Native title bars, app-name captions and window buttons are hidden;
+BCU's standard caption is removed rather than cropped using an estimated height.
+the tool has no separate taskbar or Alt-Tab entry and cannot be resized independently.
+Press and hold the empty frame strip above the tool, then drag to move the entire
+TechLoungeTweaks window. The gesture is handed to Windows on the window UI thread
+so mouse capture is released correctly. Minimize and maximize/restore also run
+on that UI thread and target the current app instance. Native
+movement events keep the pair together without the old position-reset loop.
+Only an actual drag moves the host: programmatic tool layout, maximization and
+shutdown movements do not. NVPI attaches by its main-window title and restores
+saved maximized state to Normal before launch, then fits it inside the frame. Positioning uses native
+monitor DPI coordinates.
+
+Click the blurred backdrop to **hide** the tool while its work continues. Open
+restores the same session. The themed **X closes only the tool**, using its normal
+close request so save/busy prompts can still appear. Publisher menus and client
+controls retain their own styling. Closing a tool returns focus to the host;
+the close icon is a centred SVG. NVPI keeps its profile selector header visible
+while its native caption and custom window buttons are hidden. The frame follows
+your selected theme. Minimizing TechLoungeTweaks minimizes its visible tool without ending the session;
+restoring it brings that tool back. Tools hidden using the backdrop stay hidden
+until Open is pressed. Closing TechLoungeTweaks requests closure of all hosted
+tools, including hidden ones. If a tool needs a save/busy prompt handled, the main
+app stays open until it can close, so no tool is left orphaned on the desktop.
+
+Each tool shows **Current** and **Latest** versions. An older current version is
+yellow with an **Update available** label; the latest release is green. **Update**
+is shown when a newer official release is available. Open remains available during
+checks. Updated Inspector binaries are used by the existing NVIDIA Profile page;
+your curated profile and original-settings backup stay separate.
+
+**OpenMouse** opens the [official live panel](https://control.openmouse.app/) in your default
+browser. Newly published mouse support comes from that panel without an app rebuild.
+Mouse access needs WebHID support, such as Edge or Chrome. If your default browser
+lacks it, use a compatible browser and select your mouse in the device picker.
+Remote pages never receive the local administrator API bridge.
+
+![Update panel](docs/updates.png)
+
+**Updates and the theme picker remain above open tools.** Their panels take
+priority for both display and clicks while the rest of the tool stays visible
+and running. Dismissing a panel restores the covered part of the tool.
+
+The title-bar **Updates** button opens a compact floating panel available from any
+page. It is separate from the tool modules. **App update** and **tool update** labels
+identify what needs updating; an Inspector release never claims that the main app
+is outdated. There is no introductory update card or automatic popup. The panel
+also offers Open and Update, separate Current/Latest version tiles, and a prominent
+Check for updates button. Its accent follows your selected theme. Unavailable
+checks show a neutral label, never a raw release timestamp or false green version.
+
+Checks run in the background without blocking startup or navigation. Bundled tools
+remain available offline; failed checks do not claim that an update exists. Clicking
+Update starts a verified background download with progress and cancellation. App
+updates require an explicit **Restart & apply** after tracked jobs finish and tool
+windows close. The old
+app folder is retained beside the installation and restored if replacement fails.
+The last replacement result is in `%LOCALAPPDATA%\TechLoungeTweaks\Updates\last-update.txt`.
+Completed app downloads remain ready after closing the app.
+
+Official stable tool downloads verify publisher SHA-256 checksums and archive paths
+and sizes before activating a complete staged version. Unsupported packaging or
+missing checksums leave the previous version intact. Cancellation during unpacking
+takes effect after extraction. Close an open tool and reopen it to use its update.
+Previous managed versions and their files remain under
+`%LOCALAPPDATA%\TechLoungeTweaks\Updates`; a Previous version action appears beside a tool
+only when a previous version exists. There is no empty More options section. Publisher-specific portable settings are retained
+with their original version; automatic settings migration is not guaranteed.
+
+Win11Debloat and Microsoft Activation Scripts are hidden from the user-facing
+update list. Their reviewed adapters still change through tested full app releases.
+Windows policies and upstream interfaces can change, so future compatibility still
+requires maintenance. Install Apps entries remain vendor-installed software with
+their own update mechanisms.
+
+App update identity is based on shipped contents, not a fresh packaging timestamp.
+Rebuilding or republishing the same software does not count as a new app version.
+A complete release ZIP is uploaded to **GitHub Releases**, with its source, README,
+release notes and screenshots committed to the repository. The larger bundled ZIP
+is not committed as a Git file. PUSH-TO-GITHUB.bat handles both steps; preparing a
+release alone does not publish it.
 
 ### While something is running
 
@@ -390,8 +565,7 @@ available and the vendor page is the way in.
 
 Downloads are checked against an allowlist of vendor domains before anything
 is fetched, so a link that is not on the vendor's own domain is refused.
-Installers run with their official silent switches. Nothing is bundled with
-this app, and nothing is repacked or modified.
+Installers run with their official silent switches. These installers are downloaded on demand, and nothing is repacked or modified.
 
 If the Windows Package Manager has been stripped out — debloated images
 usually remove it — the page says so and falls back to direct downloads.
@@ -418,6 +592,8 @@ between launches.
 ![Purple theme](docs/theme-purple.png)
 
 The window is fully resizable, and drags at your monitor's refresh rate.
+The sidebar menu scrolls independently, keeping the tweak count and administrator
+status visible in a separate footer with clear spacing, even in smaller windows.
 
 ---
 
@@ -466,8 +642,9 @@ In the source checkout, run **PREPARE-RELEASE.bat** to run checks, regenerate
 screenshots and rebuild `TechLoungeTweaks/TechLoungeTweaks.zip`. Copy this ZIP
 to your other PCs and extract the entire folder before opening the executable.
 
-**PUSH-TO-GITHUB.bat** does the same preparation, then commits and pushes the
-updated app ZIP, source, README and screenshots to GitHub. It uses the current
+**PUSH-TO-GITHUB.bat** verifies and reuses an unchanged prepared release, or runs
+the full preparation above if release files changed. It then commits and pushes the
+source, README and screenshots and uploads the app ZIP to GitHub Releases. It uses the current
 `RELEASE-NOTES.md` for the commit description and stops if any step fails.
 It remains a single-step workflow: running PREPARE separately is optional.
 ZIP replacement retries temporary Windows locks and uses a backup-and-rename
@@ -502,8 +679,8 @@ Bundles [NVIDIA Profile Inspector Revamped](https://github.com/xHybred/NVIDIAPro
 by xHybred for the NVIDIA Profile page.
 
 The Install Apps page installs software from each vendor's own servers, or
-through the Windows Package Manager. No third-party installer is bundled with
-this app, and nothing is repacked, patched or modified. If an app is not on the
+through the Windows Package Manager. No third-party installer is bundled. The three portable tools ship with their
+licences and upstream source references; they are not patched or modified. If an app is not on the
 list it is because there is no legitimate automated source for it.
 
 Use at your own risk — read what a tweak does before applying it.

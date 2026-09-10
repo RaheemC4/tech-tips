@@ -7,7 +7,7 @@ set "RESULT=%ERRORLEVEL%"
 echo.
 if not "%RESULT%"=="0" goto failed
 echo Repo: https://github.com/RaheemC4/tech-tips
-echo Download: https://github.com/RaheemC4/tech-tips/raw/main/TechLoungeTweaks/TechLoungeTweaks.zip
+echo Download: https://github.com/RaheemC4/tech-tips/releases/latest/download/TechLoungeTweaks.zip
 echo.
 choice /c RDC /n /m "[R] Open repository  [D] Download ZIP  [C] Close: "
 if errorlevel 3 exit /b 0
@@ -15,7 +15,7 @@ if errorlevel 2 goto download
 start "" "https://github.com/RaheemC4/tech-tips"
 exit /b 0
 :download
-start "" "https://github.com/RaheemC4/tech-tips/raw/main/TechLoungeTweaks/TechLoungeTweaks.zip"
+start "" "https://github.com/RaheemC4/tech-tips/releases/latest/download/TechLoungeTweaks.zip"
 exit /b 0
 :failed
 echo Release failed. See the error above. Nothing is force-pushed.
