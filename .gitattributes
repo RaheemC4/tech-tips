@@ -1,0 +1,5 @@
+# Keep bundled upstream scripts byte-for-byte identical to their pinned hashes.
+TechLoungeTweaks/src/vendor/mas/*.cmd -text
+*.zip -text
+*.png -text
+*.ico -text

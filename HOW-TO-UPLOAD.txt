@@ -1,0 +1,57 @@
+PERSONAL RELEASES
+================
+
+Double-click PREPARE-RELEASE.bat to rebuild and create the personal PC ZIP.
+Double-click PUSH-TO-GITHUB.bat to do the same, then commit and push to:
+  https://github.com/RaheemC4/tech-tips (main)
+
+The scripts work from their own folder, regardless of the current directory.
+Git authentication may open a sign-in window. No force-push is used. A failed
+build, test, screenshot, documentation check or push stops with an error.
+
+Output: TechLoungeTweaks\TechLoungeTweaks.zip
+Copy this ZIP to your other PCs. Extract the whole folder and run the EXE inside.
+No Python or Node is needed on PCs that only run the packaged app.
+
+The local TechLoungeTweaks-Personal.zip one folder above is also refreshed when
+the local installed app folder exists. Existing extracted app folders are not
+overwritten by packaging; extract the new ZIP to use the new build.
+
+FOR FUTURE APP CHANGES
+---------------------
+Codex should review/update TechLoungeTweaks\README.md and RELEASE-NOTES.md,
+review screenshot fixtures, then run these commands from this folder:
+
+  TechLoungeTweaks\.build-venv\Scripts\python.exe tools\release.py --record-doc-review
+  TechLoungeTweaks\.build-venv\Scripts\python.exe tools\release.py --prepare
+
+The scripts regenerate screenshots, sync the top-level README, build the app,
+package the NVIDIA resources and MAS scripts/licence, and record SHA-256 hashes.
+A BAT file cannot decide whether prose accurately describes new behaviour, so
+source changes invalidate the review until the docs have been checked again.
+Do not record a review merely to bypass a failed check.
+
+BUILD SETUP ON A NEW DEVELOPMENT PC
+----------------------------------
+Install Python 3.12, Node.js, Git for Windows and Edge or Chrome. In this folder:
+
+  py -3.12 -m venv TechLoungeTweaks\.build-venv
+  TechLoungeTweaks\.build-venv\Scripts\python.exe -m pip install -r TechLoungeTweaks\requirements-build.txt
+  npm install --prefix TechLoungeTweaks --no-save playwright
+
+Keep the existing TechLoungeTweaks\TechLoungeTweaks.zip: NVIDIA resources are
+recovered from it if an extracted app/resources folder is unavailable.
+The current Codex machine also detects its bundled Node/Playwright runtime.
+Optional environment overrides: NODE (node.exe), PW (Playwright module path),
+and CHROME (Edge/Chromium executable).
+
+PUBLISH CONTENTS
+----------------
+Only app source, tests, tools, docs, release metadata and the app ZIP are copied.
+Virtual environments, build/dist directories, logs, caches and _to_delete are
+excluded. The root README screenshots are copied to the repository docs folder.
+Each push uses a fresh temporary clone; a failed clone/commit/push is preserved
+for troubleshooting at the path printed on screen.
+
+Download after publishing:
+https://github.com/RaheemC4/tech-tips/raw/main/TechLoungeTweaks/TechLoungeTweaks.zip

@@ -996,7 +996,25 @@ const RES = [
 ];
 function pageRes() {
   pageShell('Resources', {crumb:'System › Resources',
-    text:'Repair tools for a misbehaving Windows.'},
+    text:'Windows setup and repair tools.'},
+    `<div class="card" style="margin-bottom:11px">
+      <b style="font-size:15px">Windows setup</b>
+      <p id="windowsCurrentEdition" style="font-size:13px;margin-top:10px">Checking your Windows version…</p>
+      <p id="windowsActivationStatus" style="color:var(--muted);font-size:12px;margin-top:5px" aria-live="polite"></p>
+      <p style="color:var(--muted);font-size:12px;margin-top:6px;line-height:1.6">
+        Set up Windows after a reset using Microsoft Activation Scripts (MAS 3.12).
+        Activation starts the HWID tool in a separate window and needs internet access.
+        Change Windows Version opens the edition chooser (Home, Pro, etc.); it does not
+        upgrade Windows 10 to 11. An edition change may require a restart.</p>
+      <div class="row" style="margin-top:12px;flex-wrap:wrap">
+        <button class="btn" data-windows-setup="activate">Activate Windows</button>
+        <button class="btn" data-windows-setup="edition">Change Windows Version</button>
+        <button class="btn ghost" id="refreshWindowsStatus">Refresh status</button>
+      </div>
+      <p id="windowsSetupMessage" role="status" aria-live="polite"
+        style="color:var(--muted);font-size:12px;margin-top:10px">
+        Bundled from massgravel/Microsoft-Activation-Scripts · GPL-3.0</p>
+    </div>` +
     RES.map(([k, t, d]) => `<div class="card" style="margin-bottom:11px">
       <b style="font-size:15px">${t}</b>
       <p style="color:var(--muted);font-size:12px;margin-top:6px;line-height:1.6">${d}</p>
@@ -1006,6 +1024,84 @@ function pageRes() {
       <div class="row" style="margin-top:12px">
         <button class="btn" data-res="${k}">Run</button>
         <button class="btn ghost" data-cancel="${k}" style="display:none">Cancel</button></div></div>`).join(''));
+
+  function paintWindowsStatus(status) {
+    const edition = H('windowsCurrentEdition');
+    const activation = H('windowsActivationStatus');
+    if (!edition || !activation) return;
+    if (!status?.ok) {
+      edition.textContent = 'Current Windows version unavailable.';
+      activation.textContent = status?.message || 'Could not read Windows status. Try Refresh status.';
+      return;
+    }
+    edition.textContent = 'Currently installed: ' + status.name +
+      (status.edition ? ' · ' + status.edition : '') +
+      (status.version ? ' · ' + status.version : '') +
+      (status.build ? ' · Build ' + status.build : '');
+    activation.textContent = status.activated === true ? 'Activation: Windows is activated.'
+      : status.activated === false ? 'Activation: Windows is not activated.'
+      : 'Activation: status unavailable. Refresh to try again.';
+    activation.style.color = status.activated === true ? 'var(--good)' : 'var(--muted)';
+  }
+  async function refreshWindowsStatus() {
+    const result = await api('windows_status');
+    paintWindowsStatus(result);
+    return result;
+  }
+  H('refreshWindowsStatus').onclick = refreshWindowsStatus;
+  refreshWindowsStatus();
+
+  async function launchWindowsSetup(action) {
+      const buttons = [...document.querySelectorAll('[data-windows-setup]')];
+      const message = H('windowsSetupMessage');
+      buttons.forEach(b => { b.disabled = true; });
+      message.textContent = 'Opening MAS…';
+      try {
+        const result = await api('windows_setup', action);
+        if (result?.status) paintWindowsStatus(result.status);
+        message.textContent = result?.message || 'Could not open MAS. Check TL-api.log for details.';
+        message.style.color = result?.ok ? 'var(--good)' : 'var(--bad)';
+        if (result?.already_activated) {
+          showModal(`<div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="activatedTitle">
+            <h2 id="activatedTitle">Windows is already activated</h2>
+            <p id="activatedWindowsName" style="margin-top:12px"></p>
+            <p style="color:var(--muted);margin-top:10px">No activation is needed. You can keep using Windows as it is.</p>
+            <button class="btn" id="activatedOkay" style="margin-top:20px">OK</button></div>`);
+          H('activatedWindowsName').textContent = result.status?.name || 'Your Windows installation';
+          H('activatedOkay').onclick = closeModal;
+          H('activatedOkay').focus();
+        }
+      } catch (error) {
+        message.textContent = 'Could not open MAS: ' + error.message;
+        message.style.color = 'var(--bad)';
+      } finally {
+        buttons.forEach(b => { b.disabled = false; });
+      }
+  }
+  document.querySelectorAll('[data-windows-setup]').forEach(button => {
+    button.onclick = async () => {
+      const action = button.dataset.windowsSetup;
+      if (action === 'activate') return launchWindowsSetup(action);
+      button.disabled = true;
+      const status = await refreshWindowsStatus();
+      button.disabled = false;
+      if (!status?.ok) return;
+      showModal(`<div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="editionTitle">
+        <h2 id="editionTitle">Change Windows Version</h2>
+        <p id="editionCurrentName" style="margin-top:12px;font-weight:600"></p>
+        <p style="color:var(--muted);margin-top:10px;line-height:1.6">
+          Choose a different edition, such as Home or Pro, in the MAS window.
+          This does not upgrade Windows 10 to 11. Save your work first; changing editions may require a restart.</p>
+        <div class="row" style="margin-top:20px">
+          <button class="btn" id="editionContinue">Open edition chooser</button>
+          <button class="btn ghost" id="editionCancel">Cancel</button></div></div>`);
+      H('editionCurrentName').textContent = 'You are currently running ' + status.name +
+        (status.edition ? ' (' + status.edition + ')' : '') + '.';
+      H('editionCancel').onclick = closeModal;
+      H('editionContinue').onclick = () => { closeModal(); launchWindowsSetup('edition'); };
+      H('editionContinue').focus();
+    };
+  });
 
   RES.forEach(([k]) => {
     const jobkey = 'res:' + k;

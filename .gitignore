@@ -1,0 +1,10 @@
+.build-venv/
+.venv/
+node_modules/
+__pycache__/
+*.pyc
+build/
+dist/
+_to_delete/
+*.log
+*.tmp

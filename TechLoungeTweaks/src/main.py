@@ -27,6 +27,7 @@ import drivers
 import nettest
 import sysinfo
 import virt
+from windows_setup import WindowsSetup
 from tweaks_engine import (build_tweaks, CATEGORY_ORDER, CATEGORY_ICONS, run, ps)
 
 ICON_FOR = {
@@ -101,6 +102,7 @@ def traced(fn):
 
 class Api:
     def __init__(self):
+        self._windows_setup = WindowsSetup(here("vendor", "mas"))
         self._tweaks_cache = None
         self._tlock = threading.Lock()
         # build_tweaks() shells out to PowerShell for GPU detection and takes
@@ -1136,6 +1138,14 @@ if ($e -and $e.UninstallString) {
         return True
 
     # ----------------------------------------------------------- tools
+    @traced
+    def windows_status(self):
+        return self._windows_setup.status()
+
+    @traced
+    def windows_setup(self, action):
+        return self._windows_setup.launch(action)
+
     @traced
     def restore_point(self):
         if "restore" in self._busy:

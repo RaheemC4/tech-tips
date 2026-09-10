@@ -16,7 +16,7 @@ on the dashboard does the lot.
 
 ## Download
 
-**[⬇ Download TechLoungeTweaks.zip](https://github.com/RaheemC4/tech-tips/raw/main/TechLoungeTweaks/TechLoungeTweaks.zip)** (15 MB)
+**[⬇ Download TechLoungeTweaks.zip](https://github.com/RaheemC4/tech-tips/raw/main/TechLoungeTweaks/TechLoungeTweaks.zip)**
 
 1. Download the zip
 2. **Extract it** somewhere you keep programs — `C:\Tools\` is a good spot.
@@ -237,6 +237,13 @@ opens, so switching tabs is instant.
 
 ### Tools
 
+- **Windows setup** — under Resources, shows your current Windows name, edition,
+  release, build and activation status. **Activate Windows** checks the live
+  licensing state first and shows an already-activated dialog when appropriate.
+  Otherwise it opens the bundled MAS HWID tool. **Change Windows Version** shows
+  your current edition before opening MAS's interactive edition chooser (Home,
+  Pro, etc.; this does not upgrade Windows 10 to 11). Use **Refresh status** after
+  finishing in MAS. Edition changes may require a restart.
 - **Boot Optimizer** — detects your CPU and GPU, then applies startup and
   shutdown tuning that suits them. Preview shows exactly what would change
   before you commit. Secure Boot, TPM and VBS are never touched, so kernel
@@ -406,7 +413,27 @@ If something misbehaves, that file says why — send it over.
 
 ---
 
+## Preparing updates for personal PCs
+
+In the source checkout, run **PREPARE-RELEASE.bat** to run checks, regenerate
+screenshots and rebuild `TechLoungeTweaks/TechLoungeTweaks.zip`. Copy this ZIP
+to your other PCs and extract the entire folder before opening the executable.
+
+**PUSH-TO-GITHUB.bat** does the same preparation, then commits and pushes the
+updated app ZIP, source, README and screenshots to GitHub. It uses the current
+`RELEASE-NOTES.md` for the commit description and stops if any step fails.
+
+README wording is reviewed alongside app changes; the scripts synchronise the
+reviewed copy and check its source fingerprint. They do not invent documentation
+from code. See `HOW-TO-UPLOAD.txt` for setup and the developer review command.
+
+Screenshots use sample system data to demonstrate the interface.
+
 ## Credits
+
+The personal build bundles unmodified [Microsoft Activation Scripts 3.12](https://github.com/massgravel/Microsoft-Activation-Scripts)
+HWID and Change Windows Edition scripts. Their GPL-3.0 licence and pinned source
+reference are included in `_internal/vendor/mas/` beside the script source.
 
 Built for The Tech Lounge Discord community. Tweaks are drawn from the
 server's tech-tips archive plus documented Windows settings.

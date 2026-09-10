@@ -12,7 +12,7 @@ const { chromium } = require(process.env.PW ||
   '/home/claude/.npm-global/lib/node_modules/playwright');
 const CHROME = process.env.CHROME || '/opt/pw-browsers/chromium';
 const D = __dirname + '/../docs/';
-const PAGE = 'file://' + __dirname + '/../web/index.html';
+const PAGE = require('url').pathToFileURL(require('path').resolve(__dirname, '../src/web/index.html')).href;
 
 const CAT={groups:['Chat & voice','Runtimes','Browsers','Game clients','Tuning tools'],winget:true,apps:[
  {id:'afterburner',name:'MSI Afterburner',group:'Tuning tools',desc:'The standard GPU tuning + monitoring tool. Installed without RivaTuner (RTSS). Overclocking is done here in the real tool - this app never touches clocks itself.',page:'#',route:'winget',installable:true},
@@ -52,6 +52,7 @@ const TW={Performance:[['Disable GameDVR','Turns off Xbox Game Bar background re
    await p.evaluate(({NV,CAT})=>{document.body.classList.remove('booting','booting-slow');
   const bl=document.getElementById('bootlayer');if(bl)bl.remove();window.__gpu='nvidia';window.__CAT=CAT;
   window.api=async(n)=>{
+    if(n==='windows_status')return{ok:true,name:'Microsoft Windows 11 Pro',edition:'Professional',version:'25H2',build:'26200',activated:true};
    if(n==='nvprofile_status')return window.__gpu==='amd'
      ?{tool:true,profile:true,nvidia:false,gpu_name:'AMD Radeon RX 7900 XTX',state:'unknown',checked:true}
      :{tool:true,profile:true,defaults:true,backup:true,applied:false,state:'off',matched:0,total:39,checked:true,nvidia:true,releases_url:'#',tool_names:['x'],profile_name:'p'};
