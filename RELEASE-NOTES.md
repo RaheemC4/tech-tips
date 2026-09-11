@@ -1,3 +1,13 @@
+Prevent nested update folders.
+
+- Prepare replacement contents in a separate staging directory and use exact directory renames to install it. Keep the previous installation for rollback.
+- Verify the actual PowerShell helper with disposable folders and a marker-only executable: replacement launches at the intended root and the previous installation remains intact.
+
+Fix Restart and apply shutdown handoff.
+
+- Post the native close on the WinForms UI thread instead of synchronously closing from a worker. Return close failures and stop starting update-status requests during shutdown.
+- Exercise the Restart and apply API through a real WebView window in the native smoke test, with the disk-update operation mocked for safety.
+
 Fix hosted-tool layout handling and retire the Nuitka experiment.
 
 - Defer window fitting until native layout notifications return, avoiding re-entrant resizing during maximize/restore and scaling changes. Extend native smoke coverage with repeated NVPI maximize/restore and resize cycles.
@@ -179,5 +189,7 @@ Bundled tools, a simpler update panel and clearer version status.
 - App and tool update notifications are distinct. Content-based app identity prevents unchanged rebuilds from appearing as new software.
 - Fixed sidebar crowding with independent menu scrolling and a spaced, fixed-height status footer.
 - The push batch publishes the larger bundled ZIP as a verified GitHub Release asset and commits updated source, README, release notes and screenshots together.
+
+
 
 

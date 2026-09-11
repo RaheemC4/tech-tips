@@ -666,3 +666,9 @@ System Information reads dedicated VRAM through DXGI instead of the old 32-bit W
 
 Hosted tool windows defer native layout updates until Windows layout callbacks return, keeping resizing and maximize/restore handling out of re-entrant callbacks.
 
+
+Restart and apply posts shutdown to the native Windows UI thread after the updater helper starts. The update dialog stops polling during this handoff; active tools and jobs must still be closed first.
+
+
+Updates stage the complete replacement beside the installed folder before swapping directories. Open the regular TechLoungeTweaks folder after updating; folders named TechLoungeTweaks.previous-* are retained backups, not the current installation.
+

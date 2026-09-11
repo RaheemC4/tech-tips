@@ -243,7 +243,10 @@ class Api:
                     self._window.evaluate_js("banner('A tool is waiting to close. Finish its save or busy prompt, then close TechLoungeTweaks again.')")
                     return
                 self._shutdown_complete=True
-                self._window.destroy()
+                # Post the close to WinForms instead of synchronously invoking
+                # it from a timer while the WebView bridge is still unwinding.
+                from System import Action
+                self._window.native.BeginInvoke(Action(self._window.native.Close))
             except Exception:
                 self._shutdown_complete=False
                 log('close failed\n' + traceback.format_exc())
@@ -420,7 +423,9 @@ class Api:
             return {'ok': False, 'message': 'Finish or cancel active jobs before restarting.'}
         result = self._updates.restart()
         if result.get('ok'):
-            self.close()
+            closing = self.close()
+            if not closing.get('ok'):
+                return closing
         return result
 
     def _background_start(self):

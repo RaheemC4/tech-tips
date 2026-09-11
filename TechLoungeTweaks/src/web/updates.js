@@ -93,6 +93,10 @@ async function updateAction(method, key) {
   if (method === 'updates_restart' && !await confirmAction('Restart and apply?', 'TechLoungeTweaks will close, apply the downloaded update and reopen.', 'Restart')) return;
   const result = await api(method, ...(key === undefined ? [] : [key]));
   if (result?.ok === false) banner(result.message);
+  if (method === 'updates_restart' && result?.ok) {
+    banner('Restarting TechLoungeTweaks to apply the update…');
+    return; // Do not start another bridge request during native shutdown.
+  }
   if (openingNvpi && (!result || result.ok === false)) setNvpiOpening(false);
   const state = await api('updates_status');
   if (state?.items) { updateLast = state; paintUpdates(state); }

@@ -3,6 +3,7 @@ from pathlib import Path
 import os
 import sys
 import threading
+from unittest.mock import Mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 import webview
 from main import Api, centre_window
@@ -10,6 +11,7 @@ from main import Api, centre_window
 api = Api.__new__(Api)
 class CloseOnly:
     def close(self): return api.close()
+    def updates_restart(self): return api.updates_restart()
 window = webview.create_window('Tech Lounge close test', html='<html><body>Close test</body></html>',
                                js_api=CloseOnly(), hidden=True)
 api._window = window
@@ -41,8 +43,19 @@ def test():
     api.start_drag()
     assert dispatched.wait(3) and on_ui==[True],'Drag did not reach the window UI thread'
     assert api._hwnd()==window.native.Handle.ToInt64(),'Window controls targeted another instance'
-    window.evaluate_js('window.pywebview.api.close()')
+    # Exercise the exact Restart and apply bridge; substitute only the disk
+    # updater so this fixture never replaces or launches an installed app.
+    api._floating_tools=Mock()
+    api._floating_tools.has_open_windows.return_value=False
+    api._floating_tools.shutdown.return_value=True
+    api._updates=Mock()
+    api._updates.processes={}
+    api._updates.status.return_value={'busy':False}
+    api._updates.restart.return_value={'ok':True}
+    api._jobslock=threading.Lock();api._jobs={}
+    window.evaluate_js('window.pywebview.api.updates_restart()')
 webview.start(test, gui='edgechromium', debug=False)
 watchdog.cancel()
 assert closed.is_set(), 'Native window did not close'
+api._updates.restart.assert_called_once()
 print('PASS: native maximize/minimize/restore, drag UI-thread dispatch, instance handle and close.')
