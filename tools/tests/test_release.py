@@ -13,6 +13,26 @@ spec.loader.exec_module(release)
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_x64_resource_trim_preserves_supported_tool_and_licence(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            bcu = root / 'resources/tools/bcu'
+            for name in ('win-x64/BCUninstaller.exe', 'win-x64/runtime.dll', 'win-arm64/runtime.dll', 'Licence.txt'):
+                path = bcu / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(name.encode())
+            release.trim_x64_resources(root)
+            self.assertFalse((bcu / 'win-arm64').exists())
+            for name in ('win-x64/BCUninstaller.exe', 'win-x64/runtime.dll', 'Licence.txt'):
+                self.assertEqual((bcu / name).read_bytes(), name.encode())
+
+    def test_resource_trim_rejects_missing_x64_payload(self):
+        with tempfile.TemporaryDirectory() as temp:
+            other = Path(temp) / 'resources/tools/bcu/win-arm64'
+            other.mkdir(parents=True)
+            with self.assertRaises(RuntimeError): release.trim_x64_resources(temp)
+            self.assertTrue(other.exists())
+
     def test_push_reuses_only_verified_release(self):
         with patch.object(release,'verify_release') as verify, patch.object(release,'prepare') as prepare:
             release.prepare_for_push()

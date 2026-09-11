@@ -223,7 +223,7 @@ try:
     assert focus_returns==[True],'Host activation callback did not run successfully'
     settle(.95)
     assert native.IsWindow(owner) and not native.IsIconic(owner),'Tool close minimized its host'
-    assert native.GetForegroundWindow()==owner,'Tool close sent its host behind another window'
+    assert native.GetForegroundWindow()==owner, f'Tool close sent its host behind another window: current={native.GetForegroundWindow()}, host={owner}, tool={hwnd}, competitor={competitor}, input={initial_input}->{input_tick()}'
     assert not native.IsWindowVisible(hwnd),'Slow shutdown reactivated the closing tool'
     settle(.7)
     assert native.GetForegroundWindow()==owner, f'Tool destruction lost host foreground: current={native.GetForegroundWindow()}, host={owner}, tool={hwnd}, competitor={competitor}, input={initial_input}->{input_tick()}'

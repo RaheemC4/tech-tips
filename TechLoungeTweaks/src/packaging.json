@@ -1,0 +1,5 @@
+{
+  "architecture": "x64",
+  "resource_layout": "portable-x64-v2",
+  "description": "Retain complete offline x64 tools; omit BCU's separate win-arm64 payload."
+}

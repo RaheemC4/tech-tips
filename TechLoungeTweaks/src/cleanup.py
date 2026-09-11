@@ -15,6 +15,8 @@ def _self_dirs():
     reclaimable and then cannot delete a single one of them.
     """
     out = set()
+    if getattr(sys, '_tl_app_root', None):
+        out.add(os.path.normcase(os.path.abspath(sys._tl_app_root)))
     mei = getattr(sys, "_MEIPASS", None)
     if mei:
         out.add(os.path.normcase(os.path.abspath(mei)))

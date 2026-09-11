@@ -38,7 +38,7 @@ def _app_dir():
     import sys
     if getattr(sys, "frozen", False):
         # onedir: exe sits beside _internal; onefile: sys.executable dir
-        return os.path.dirname(sys.executable)
+        return getattr(sys, '_tl_app_root', os.path.dirname(sys.executable))
     return os.path.dirname(os.path.abspath(__file__))
 
 

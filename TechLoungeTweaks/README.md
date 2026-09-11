@@ -44,10 +44,13 @@ preset, and individual pages explain the scope and undo options for their change
 
 **[⬇ Download TechLoungeTweaks.zip](https://github.com/RaheemC4/tech-tips/releases/latest/download/TechLoungeTweaks.zip)**
 
+Also available: **[Nuitka test build](https://github.com/RaheemC4/tech-tips/releases/tag/nuitka-test-2026.09.11.125807-4be74f5f66af)**,
+with a clean folder layout and a dedicated Nuitka app-update channel. This remains
+a separate test version; fresh-Windows antivirus acceptance is not yet verified.
+
 1. Download the zip
 2. **Extract it** somewhere you keep programs — `C:\Tools\` is a good spot.
-   Do not run it from inside the zip, and avoid leaving it in Downloads
-   (Windows cleans that folder out and scans it hard)
+   Do not run it from inside the zip.
 3. Open the extracted folder and run **TechLoungeTweaks.exe**
 
 Keep the whole folder together. What you will see inside it:
@@ -63,49 +66,51 @@ TechLoungeTweaks\
 Only the exe and the log sit at the top level, so there is nothing to click on
 by mistake. Moving the exe out on its own will not work.
 
-### Why a folder and not one .exe
+### Packaging and first launch
 
-An earlier version was a single self-extracting exe. It unpacked ~46 MB to
-your temp folder on *every* launch, which made startup slow and unpredictable,
-and the self-extracting behaviour is exactly what antivirus heuristics look
-for — Defender was flagging it as a false positive. The folder build starts
-almost instantly and does not trip those scanners.
+The standard release uses a PyInstaller folder build for Intel/AMD x64 Windows.
+It includes BCU's complete x64 runtime and omits its separate ARM64 payload to
+reduce the download and extracted size. Bundled tools remain available offline. Keep the entire extracted
+folder together. Folder packaging avoids extracting the runtime on every launch,
+but does not guarantee acceptance by antivirus or Windows reputation checks.
 
-### First run
+A separate **TechLoungeTweaks-Nuitka.zip** candidate is built with Nuitka 4.2.1
+standalone mode. It uses the existing backend and interface, includes its Python
+dependencies, and needs no separate Python installation. The top level contains `TechLoungeTweaks.exe`, `_internal`, and `resources`.
+The small launcher opens the compiled app inside `_internal`; keep both folders.
+This package targets Intel/AMD x64 Windows. BCU includes its complete x64 runtime
+but omits the separate ARM64 payload. DLSS Swapper and the other bundled tools
+remain available offline with their existing runtimes. The
+candidate does not replace the standard download or its publishing workflow.
 
-Windows will show a blue **"Windows protected your PC"** box, because the app
-is not code-signed (a signing certificate costs a few hundred pounds a year,
-which is not worth it for a free tool).
+Nuitka app updates stay on the **Nuitka channel**. They only discover releases
+with Nuitka update metadata, check the package channel before staging and restart,
+and keep pending updates in a separate cache. Offline or missing channel releases
+do not fall back to the standard package. Official updates for bundled tools
+continue to work. Users of the first candidate must download the channel-enabled
+ZIP once; that older build cannot discover this fix automatically.
 
-> Click **More info** → **Run anyway**
+The build writes `nuitka-update.json` alongside the ZIP. After preparing and
+verifying the candidate, publish both with the build environment's Python and
+`../tools/publish_nuitka.py --publish` from this app directory. Publication creates
+a separate prerelease and preserves the stable latest release. Publishing remains
+an explicit action; the standard push BAT continues serving the stable channel.
+Build it with the build environment's Python and `tools/build-nuitka.py` after
+installing `Nuitka==4.2.1`. The first build downloads the required compiler tools.
 
-If your browser blocks the download itself with **"Virus detected"**, that is
-the same false positive — use *Downloads → Keep* in the browser, or extract
-with 7-Zip, which avoids Windows tagging the extracted files as
-web-downloaded.
+The candidate is an alternative packaging experiment, not a verified fix for
+Defender. Fresh-Windows browser download, extraction and first-launch acceptance
+must be checked separately. No security exclusions or protection changes are
+performed by the build or launcher.
 
-#### "Smart App Control blocked an app that may be unsafe"
+The app is unsigned. SmartScreen reputation warnings, Smart App Control blocks,
+and antivirus quarantine are different outcomes. If a file is quarantined,
+record the detection name and affected file for investigation; do not assume
+that every detection is a false positive. Changing ZIP extraction software or
+removing a downloaded-file marker does not resolve antivirus detections.
 
-This is a **different** dialog — it only has **Okay** and **Get apps from the
-Store**, with no way to run the app anyway. That is Smart App Control, not
-SmartScreen, and it blocks every unsigned program with no per-app override.
-
-Only clean Windows 11 installs have it switched on. To check:
-
-> Windows Security → App & browser control → Smart App Control
-
-If it says **On**, the only ways round it are to turn it off or not run the app.
-
-⚠️ **Turning Smart App Control off is permanent.** Microsoft does not allow it
-to be switched back on afterwards — the only way to re-enable it is a clean
-reinstall of Windows. Do not turn it off casually, and never on someone else's
-machine without telling them that first.
-
-If it says **Evaluation** or **Off**, this dialog is not what is stopping you —
-see the SmartScreen steps above.
-
-**It needs to run as administrator** and will prompt for that automatically,
-because most of these settings live in `HKEY_LOCAL_MACHINE`.
+The app requests administrator access for system-wide settings. WebView2 is
+also required, as described below.
 
 ### Requirements
 

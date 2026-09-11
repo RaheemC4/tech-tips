@@ -134,6 +134,20 @@ def copy_resources(destination):
                 target.write_bytes(archive.read(entry))
     if not (destination / 'resources/TechLoungeProfile.nip').exists():
         raise RuntimeError('NVIDIA resources missing. Keep the previous ZIP or provide App/resources.')
+    trim_x64_resources(destination)
+
+
+def trim_x64_resources(destination):
+    """Remove only BCU's other architecture from the generated x64 package."""
+    destination = Path(destination).resolve()
+    bcu = destination / 'resources/tools/bcu'
+    other = (bcu / 'win-arm64').resolve()
+    if other.exists():
+        if not other.is_relative_to(destination) or other != bcu / 'win-arm64':
+            raise RuntimeError('Unexpected BCU ARM64 path; package unchanged.')
+        if not (bcu / 'win-x64/BCUninstaller.exe').is_file():
+            raise RuntimeError('BCU x64 payload missing; cannot trim other architectures.')
+        shutil.rmtree(other)
 
 
 def publish_files():

@@ -122,7 +122,10 @@ class UpdatesTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);(root/'candidate').mkdir();(root/'candidate/TechLoungeTweaks.exe').write_bytes(b'MZ')
             updates.atomic_json(root/'pending-app.json',dict(folder='candidate',version='2026-10-01'))
-            manager=updates.UpdateManager(temp,{'built_utc':'2026-09-01'});manager._load()
+            build=dict(schema=2,app_revision='a'*64,built_utc='2026-09-01T00:00:00+00:00')
+            (root/'candidate/_internal').mkdir()
+            updates.atomic_json(root/'candidate/_internal/build-info.json',dict(build,app_revision='b'*64,built_utc='2026-10-01T00:00:00+00:00'))
+            manager=updates.UpdateManager(temp,build);manager._load()
             self.assertTrue(manager.status()['ready'])
             newer=updates.UpdateManager(temp,{'built_utc':'2026-10-01'});newer._load()
             self.assertFalse(newer.status().get('ready'))

@@ -79,7 +79,7 @@ _state = {'running': False, 'phase': 'idle', 'progress': 0, 'message': 'Choose w
 
 
 def validate_bundle(root=None):
-    base = Path(root) if root else (Path(sys.executable).parent if getattr(sys,'frozen',False) else Path(__file__).parent.parent)
+    base = Path(root) if root else (Path(getattr(sys, '_tl_app_root', Path(sys.executable).parent)) if getattr(sys,'frozen',False) else Path(__file__).parent.parent)
     bundle = base / 'resources/defender-remover'
     raw = (bundle / 'payload-hashes.json').read_bytes()
     if hashlib.sha256(raw).hexdigest() != MANIFEST_SHA256:

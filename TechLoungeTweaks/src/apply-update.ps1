@@ -16,6 +16,13 @@ try {
     }
     $running = Get-Process -Id $AppProcess -ErrorAction SilentlyContinue
     if ($running -and -not $running.WaitForExit(60000)) { throw 'App did not close. Update was not applied.' }
+    $sourceInfo = Get-Content -LiteralPath (Join-Path $sourcePath '_internal\build-info.json') -Raw | ConvertFrom-Json
+    $targetInfo = Get-Content -LiteralPath (Join-Path $targetPath '_internal\build-info.json') -Raw | ConvertFrom-Json
+    $sourceChannel = if ($sourceInfo.channel) { $sourceInfo.channel } else { 'stable' }
+    $targetChannel = if ($targetInfo.channel) { $targetInfo.channel } else { 'stable' }
+    if ($sourceChannel -notin @('stable','nuitka') -or $sourceChannel -ne $targetChannel) {
+        throw 'App update channel mismatch. Current app retained.'
+    }
     # WebView children and antivirus can briefly retain handles after shutdown.
     for ($attempt = 0; $attempt -lt 10; $attempt++) {
         try { Move-Item -LiteralPath $targetPath -Destination $backupPath; $moved = $true; break }

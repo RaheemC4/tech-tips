@@ -1,3 +1,32 @@
+Smaller main x64 release and current test-download links.
+
+- Apply the verified BCU architecture reduction to the main release: omit its separate ARM64 files while retaining the complete x64 runtime, official launcher, licences and all other offline tools.
+- Add packaging identity metadata so existing main-release users can receive this smaller package through the updater.
+- Keep the latest-download button on the main release and expose the cleaned, channel-isolated Nuitka prerelease separately in the README.
+
+Cleaner, smaller Nuitka portable package.
+
+- Put runtime DLLs, extension modules and the compiled backend inside _internal. A small Windows .NET Framework launcher remains at the top level beside _internal and resources.
+- Preserve portable-root resolution for tool resources, NVIDIA files, cleanup exclusions and app replacement. Forward launcher arguments for diagnostics.
+- Omit BCU's separate ARM64 payload from this Intel/AMD x64 package, retaining its official launcher, full x64 runtime, licences and other bundled tools. Do not remove required DLSS Swapper runtimes or make tools online-only.
+- Combine this packaging change with the dedicated Nuitka update channel below.
+
+Keep Nuitka app updates on Nuitka.
+
+- Discover only explicitly marked Nuitka GitHub releases; never fall back to the standard update feed.
+- Reject cross-channel metadata and packages at download staging, pending-update recovery and restart, including a final check in the replacement helper.
+- Isolate the Nuitka update cache. Preserve official bundled-tool update sources.
+- Generate channel metadata with the Nuitka ZIP and add a dedicated prerelease publisher which leaves the stable latest release unchanged.
+- First-candidate users need one manual download to acquire the corrected updater. Fresh-Windows antivirus acceptance remains unverified.
+
+Separate Nuitka packaging candidate.
+
+- Add a reproducible Nuitka 4.2.1 standalone build of the existing interface and backend, with a dedicated ZIP and output folder. Keep the standard PyInstaller release and publishing workflow.
+- Preserve the existing packaged resource and update layout through a dedicated entry point. End users do not install Python.
+- Correct first-launch documentation: folder packaging is not a guarantee against quarantine; distinguish Windows reputation checks from antivirus detections.
+- Add a read-only packaged runtime check and more diagnostic context for the intermittent floating-window foreground test. Full release preparation remains blocked when that desktop assertion fails.
+- Fresh-Windows Defender acceptance remains unverified. No certificate purchase, review submission, security exclusion or protection change is part of this work.
+
 Reliable publishing of an already-prepared release.
 
 - The push script verifies and reuses an unchanged prepared release instead of rebuilding and repeating desktop focus tests on every upload. Changed or missing files still require full preparation; failed checks still stop publication.

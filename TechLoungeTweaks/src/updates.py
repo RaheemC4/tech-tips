@@ -54,8 +54,46 @@ def version(value):
     return tuple(parts)
 
 
+def app_channel(build):
+    channel = build.get('channel', 'stable')
+    if channel not in ('stable', 'nuitka'):
+        raise ValueError('Unknown app update channel.')
+    return channel
+
+
+def app_manifest(build):
+    if app_channel(build) == 'stable':
+        return get_json(RAW + 'release.json')
+    # Prereleases do not appear at /releases/latest. Only explicit Nuitka
+    # metadata qualifies; an absent channel never falls back to stable.
+    for page in range(1, 11):
+        entries = get_json(f'https://api.github.com/repos/{APP_REPO}/releases?per_page=100&page={page}')
+        for entry in entries:
+            if entry.get('draft') or not entry.get('tag_name', '').startswith('nuitka-'):
+                continue
+            assets = [a for a in entry.get('assets', []) if a['name'] == 'nuitka-update.json']
+            if len(assets) != 1:
+                continue
+            prefix = f'https://github.com/{APP_REPO}/releases/download/{entry["tag_name"]}/'
+            if not assets[0]['browser_download_url'].startswith(prefix):
+                raise ValueError('Unexpected Nuitka metadata source.')
+            manifest = get_json(assets[0]['browser_download_url'])
+            if app_channel(manifest) != 'nuitka' or not manifest['download_url'].startswith(prefix):
+                raise ValueError('Nuitka release metadata has the wrong channel or source.')
+            package = [a for a in entry.get('assets', []) if a['name'] == 'TechLoungeTweaks-Nuitka.zip']
+            if (len(package) != 1 or package[0]['browser_download_url'] != manifest['download_url'] or
+                    package[0].get('digest') != 'sha256:' + manifest['files']['TechLoungeTweaks/TechLoungeTweaks.zip']):
+                raise ValueError('Nuitka release checksum does not match GitHub.')
+            return manifest
+        if len(entries) < 100:
+            return build  # No channel release yet; stay on the current build.
+    raise ValueError('Nuitka update lookup limit reached; current app unchanged.')
+
+
 def newer_app(manifest, build):
     """Compare exact app contents, then release order; reject legacy ambiguity."""
+    if app_channel(manifest) != app_channel(build):
+        raise ValueError('App update belongs to a different channel.')
     if manifest.get('schema') != 2:
         raise ValueError('The publisher has not supplied current app update metadata yet.')
     for data in (manifest, build):
@@ -233,7 +271,10 @@ class UpdateManager:
     def __init__(self, root=None, build=None, bundle_root=None, bundle_manifest=None):
         self.root = Path(root or Path(os.environ.get('LOCALAPPDATA', tempfile.gettempdir())) / 'TechLoungeTweaks' / 'Updates')
         self.build = build or self._build_info()
-        app_dir = Path(sys.executable).parent if getattr(sys, 'frozen', False) else Path(__file__).parent.parent
+        self.channel = app_channel(self.build)
+        if self.channel == 'nuitka':
+            self.root = self.root / 'nuitka'
+        app_dir = Path(getattr(sys, '_tl_app_root', Path(sys.executable).parent)) if getattr(sys, 'frozen', False) else Path(__file__).parent.parent
         self.bundle_root = Path(bundle_root) if bundle_root else app_dir / 'resources/tools' if root is None else None
         self.bundle_manifest = bundle_manifest or Path(getattr(sys, '_MEIPASS', Path(__file__).parent)) / 'bundled-tools.json'
         self.bundles = {}
@@ -299,7 +340,9 @@ class UpdateManager:
             path = (self.root / pending['folder']).resolve()
             if (pending['version'] > self.build.get('built_utc', '') and
                     path.is_relative_to(self.root.resolve()) and (path / 'TechLoungeTweaks.exe').is_file()):
-                self._set(ready=str(path))
+                info = json.loads((path / '_internal/build-info.json').read_text())
+                if newer_app(info, self.build):
+                    self._set(ready=str(path))
         except (OSError, ValueError, KeyError, TypeError):
             pass
 
@@ -336,7 +379,7 @@ class UpdateManager:
             row = dict(id='app', name='TechLoungeTweaks', installed=self.build.get('version'), action=None, status='checking',
                        message='The full app update includes tested Windows integrations.')
             try:
-                manifest = get_json(RAW + 'release.json')
+                manifest = app_manifest(self.build)
                 remote = manifest['built_utc']
                 is_new = newer_app(manifest, self.build)
                 row['available'] = manifest['version']
@@ -415,6 +458,8 @@ class UpdateManager:
                         raise ValueError('App package and release metadata do not match. Check again later.')
                     if info.get('app_revision') != offer['app_revision']:
                         raise ValueError('App content identity does not match the release. Check again later.')
+                    if not newer_app(info, self.build):
+                        raise ValueError('App package is not a newer release in this channel.')
                     target = self.root / ('app-' + uuid.uuid4().hex)
                     shutil.move(str(payload), target)
                     atomic_json(self.root / 'pending-app.json', dict(folder=target.name, version=offer['version']))
@@ -525,12 +570,19 @@ class UpdateManager:
         ready = self.status().get('ready')
         if not ready or not getattr(sys, 'frozen', False):
             return {'ok': False, 'message': 'No app update is ready.'}
+        try:
+            path = Path(ready).resolve()
+            info = json.loads((path / '_internal/build-info.json').read_text())
+            if not path.is_relative_to(self.root.resolve()) or not newer_app(info, self.build):
+                raise ValueError('Update is not a newer release in this channel.')
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            return {'ok': False, 'message': 'App update rejected: ' + str(exc)}
         # Run the helper outside the app folder so none of its files are held open.
         helper = self.root / ('apply-' + uuid.uuid4().hex + '.ps1')
         shutil.copyfile(Path(sys._MEIPASS) / 'apply-update.ps1', helper)
         subprocess.Popen(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(helper),
                           '-AppProcess', str(os.getpid()), '-Source', ready,
-                          '-Destination', str(Path(sys.executable).parent)],
+                          '-Destination', str(getattr(sys, '_tl_app_root', Path(sys.executable).parent))],
                          creationflags=0x08000000, cwd=self.root)
         return {'ok': True}
 
