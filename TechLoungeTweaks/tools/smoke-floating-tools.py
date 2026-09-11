@@ -12,6 +12,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from tool_windows import FloatingTools, inset_rect, chrome_insets
 
 user=ctypes.WinDLL('user32',use_last_error=True)
+user.SetThreadDpiAwarenessContext.argtypes=[ctypes.c_void_p]
+user.SetThreadDpiAwarenessContext.restype=ctypes.c_void_p
+user.SetThreadDpiAwarenessContext(ctypes.c_void_p(-4))
 user.CreateWindowExW.argtypes=[wintypes.DWORD,wintypes.LPCWSTR,wintypes.LPCWSTR,wintypes.DWORD,
                               ctypes.c_int,ctypes.c_int,ctypes.c_int,ctypes.c_int,wintypes.HWND,wintypes.HMENU,wintypes.HINSTANCE,ctypes.c_void_p]
 user.CreateWindowExW.restype=wintypes.HWND
@@ -162,6 +165,19 @@ try:
     dpi=native.GetDpiForWindow(hwnd) or 96
     border,top,bottom=chrome_insets(native,hwnd,'nvpi',dpi)
     assert top<round(12*dpi/96),'NVPI client header was cropped like a caption'
+    # Maximize/restore and repeated resizing must fit the final host rectangle.
+    for cycle in range(8):
+        native.ShowWindow(owner,3 if cycle%2 == 0 else 9)
+        settle(.2)
+        if cycle%2:
+            native.SetWindowPos(owner,None,100+cycle*5,100,1000+cycle*20,750,0x0014)
+            settle(.2)
+        native.GetWindowRect(owner,ctypes.byref(parent))
+        native.GetWindowRect(hwnd,ctypes.byref(rect))
+        border,top,bottom=chrome_insets(native,hwnd,'nvpi',native.GetDpiForWindow(owner) or 96)
+        expected=inset_rect((parent.left,parent.top,parent.right,parent.bottom),native.GetDpiForWindow(owner) or 96)
+        assert (rect.left+border,rect.top+top)==expected[:2], f'NVPI shifted after maximize/resize: cycle={cycle}, actual={(rect.left+border,rect.top+top)}, expected={expected}, owner={(parent.left,parent.top,parent.right,parent.bottom)}'
+        assert abs((rect.right-rect.left-2*border)-expected[2])<=2, 'NVPI width did not follow host'
     native.GetWindowRect(hwnd,ctypes.byref(rect))
     region=gdi.CreateRectRgn(0,0,0,0)
     native.GetWindowRgn(hwnd,region)
@@ -243,3 +259,4 @@ finally:
     floating.detach()
     child.terminate();child.wait(timeout=5)
     user.DestroyWindow(owner)
+

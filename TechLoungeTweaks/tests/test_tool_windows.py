@@ -23,6 +23,21 @@ class Native:
         a,b,c,d=self.bounds[hwnd];self.bounds[hwnd]=(a+dx,b+dy,c+dx,d+dy)
 
 class MovementTests(unittest.TestCase):
+    def test_layout_callback_defers_native_resize_until_callback_returns(self):
+        u=Native()
+        u.SetWinEventHook=Mock(return_value=1)
+        u.UnhookWinEvent=Mock()
+        link=WindowLink(u,1,2)
+        link.start()
+        u.writes.clear()
+        u.move(1,100,50)
+        link.callback(1,0x800B,1,0,0,0,0)
+        self.assertEqual(u.writes,[], 'Native resize re-entered the notification')
+        link.process_events()
+        self.assertEqual(u.writes,[2])
+        self.assertEqual(u.bounds[2][:2],(228,240))
+        link.close()
+
     def test_chrome_repair_preserves_windows_minimized_state(self):
         u=Mock();u.GetWindowLongPtrW.return_value=0x20CF0000
         surface=ToolSurface.__new__(ToolSurface)

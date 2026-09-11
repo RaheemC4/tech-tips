@@ -1,3 +1,19 @@
+Fix hosted-tool layout handling and retire the Nuitka experiment.
+
+- Defer window fitting until native layout notifications return, avoiding re-entrant resizing during maximize/restore and scaling changes. Extend native smoke coverage with repeated NVPI maximize/restore and resize cycles.
+- Remove Nuitka download links, candidate build/publish scripts and distributable. The two GitHub test releases and tags are removed; the main repository remains.
+- Include the dedicated VRAM reporting fix in the standard package.
+
+Fix dedicated VRAM reporting for graphics cards above 4 GB.
+
+- Replace truncated WMI AdapterRAM with DXGI dedicated memory and PCI adapter matching. Preserve 8 GB and 16 GB variants without guessing from the model name, and report N/A if unavailable or ambiguous.
+
+Show only the Nuitka launcher in Explorer by default.
+
+- Mark _internal and resources as hidden support folders in the portable package and explicit ZIP directory entries. Windows Explorer extraction preserves these attributes.
+- Restore only those folder attributes on launch if another extractor drops them, without changing Explorer settings or blocking startup when the folder is read-only.
+- Preserve hidden support files during app replacement. Keep antivirus scanning unchanged; this presentation change does not resolve the reported bundled-component detections.
+
 Smaller main x64 release and current test-download links.
 
 - Apply the verified BCU architecture reduction to the main release: omit its separate ARM64 files while retaining the complete x64 runtime, official launcher, licences and all other offline tools.
@@ -163,3 +179,5 @@ Bundled tools, a simpler update panel and clearer version status.
 - App and tool update notifications are distinct. Content-based app identity prevents unchanged rebuilds from appearing as new software.
 - Fixed sidebar crowding with independent menu scrolling and a spaced, fixed-height status footer.
 - The push batch publishes the larger bundled ZIP as a verified GitHub Release asset and commits updated source, README, release notes and screenshots together.
+
+

@@ -28,7 +28,7 @@ try {
         try { Move-Item -LiteralPath $targetPath -Destination $backupPath; $moved = $true; break }
         catch { if ($attempt -eq 9) { throw }; Start-Sleep -Milliseconds 700 }
     }
-    Copy-Item -LiteralPath $sourcePath -Destination $targetPath -Recurse
+    Copy-Item -LiteralPath $sourcePath -Destination $targetPath -Recurse -Force
     Start-Process -FilePath (Join-Path $targetPath 'TechLoungeTweaks.exe') -WorkingDirectory $targetPath -WindowStyle Hidden
     "Updated successfully. Previous app kept at $backupPath" | Set-Content -LiteralPath (Join-Path $updateRoot 'last-update.txt')
 } catch {

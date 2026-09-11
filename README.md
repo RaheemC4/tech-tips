@@ -44,10 +44,6 @@ preset, and individual pages explain the scope and undo options for their change
 
 **[⬇ Download TechLoungeTweaks.zip](https://github.com/RaheemC4/tech-tips/releases/latest/download/TechLoungeTweaks.zip)**
 
-Also available: **[Nuitka test build](https://github.com/RaheemC4/tech-tips/releases/tag/nuitka-test-2026.09.11.125807-4be74f5f66af)**,
-with a clean folder layout and a dedicated Nuitka app-update channel. This remains
-a separate test version; fresh-Windows antivirus acceptance is not yet verified.
-
 1. Download the zip
 2. **Extract it** somewhere you keep programs — `C:\Tools\` is a good spot.
    Do not run it from inside the zip.
@@ -74,34 +70,7 @@ reduce the download and extracted size. Bundled tools remain available offline. 
 folder together. Folder packaging avoids extracting the runtime on every launch,
 but does not guarantee acceptance by antivirus or Windows reputation checks.
 
-A separate **TechLoungeTweaks-Nuitka.zip** candidate is built with Nuitka 4.2.1
-standalone mode. It uses the existing backend and interface, includes its Python
-dependencies, and needs no separate Python installation. The top level contains `TechLoungeTweaks.exe`, `_internal`, and `resources`.
-The small launcher opens the compiled app inside `_internal`; keep both folders.
-This package targets Intel/AMD x64 Windows. BCU includes its complete x64 runtime
-but omits the separate ARM64 payload. DLSS Swapper and the other bundled tools
-remain available offline with their existing runtimes. The
-candidate does not replace the standard download or its publishing workflow.
-
-Nuitka app updates stay on the **Nuitka channel**. They only discover releases
-with Nuitka update metadata, check the package channel before staging and restart,
-and keep pending updates in a separate cache. Offline or missing channel releases
-do not fall back to the standard package. Official updates for bundled tools
-continue to work. Users of the first candidate must download the channel-enabled
-ZIP once; that older build cannot discover this fix automatically.
-
-The build writes `nuitka-update.json` alongside the ZIP. After preparing and
-verifying the candidate, publish both with the build environment's Python and
-`../tools/publish_nuitka.py --publish` from this app directory. Publication creates
-a separate prerelease and preserves the stable latest release. Publishing remains
-an explicit action; the standard push BAT continues serving the stable channel.
-Build it with the build environment's Python and `tools/build-nuitka.py` after
-installing `Nuitka==4.2.1`. The first build downloads the required compiler tools.
-
-The candidate is an alternative packaging experiment, not a verified fix for
-Defender. Fresh-Windows browser download, extraction and first-launch acceptance
-must be checked separately. No security exclusions or protection changes are
-performed by the build or launcher.
+The Nuitka packaging experiment has been retired after testing did not resolve Defender detections. Use the standard download above.
 
 The app is unsigned. SmartScreen reputation warnings, Smart App Control blocks,
 and antivirus quarantine are different outcomes. If a file is quarantined,
@@ -689,3 +658,11 @@ licences and upstream source references; they are not patched or modified. If an
 list it is because there is no legitimate automated source for it.
 
 Use at your own risk — read what a tweak does before applying it.
+
+### Graphics memory reporting
+
+System Information reads dedicated VRAM through DXGI instead of the old 32-bit WMI field that could show 4 GB on larger cards. It matches the adapter identity, supports different capacities of the same GPU model, and shows N/A if no unambiguous reading is available. Driver-reported dedicated memory can be slightly below advertised capacity; shared system memory is not counted.
+
+
+Hosted tool windows defer native layout updates until Windows layout callbacks return, keeping resizing and maximize/restore handling out of re-entrant callbacks.
+

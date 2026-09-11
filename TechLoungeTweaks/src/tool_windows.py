@@ -234,6 +234,7 @@ class WindowLink:
         self.dragging = None
         self.hooks = []
         self.callback = None
+        self.pending_events = []
 
     def rect(self, hwnd):
         value = wintypes.RECT()
@@ -297,17 +298,9 @@ class WindowLink:
         @callback_type
         def event(hook, code, hwnd, object_id, child_id, thread_id, timestamp):
             if hwnd not in (self.owner, self.tool) or object_id or child_id: return
-            if code == 0x000A:
-                self.dragging = hwnd
-            elif code == 0x000B:
-                self.changed(hwnd)
-                self.dragging = None
-                if self.visible() and not u.IsIconic(self.owner) and not u.IsIconic(self.tool):
-                    self.updating = True
-                    try: self.from_owner()
-                    finally: self.updating = False
-            elif code == 0x800B:
-                self.changed(hwnd)
+            # Never resize foreign windows inside a WinEvent callback. These
+            # callbacks can re-enter while Windows is negotiating DPI/layout.
+            self.pending_events.append((code, hwnd))
         self.callback = event  # Keep the callback alive until all hooks are removed.
         u.SetWinEventHook.argtypes = [wintypes.DWORD,wintypes.DWORD,wintypes.HMODULE,
             callback_type,wintypes.DWORD,wintypes.DWORD,wintypes.DWORD]
@@ -320,14 +313,33 @@ class WindowLink:
                 raise ctypes.WinError(ctypes.get_last_error())
             self.hooks.append(handle)
 
+    def process_events(self):
+        u = self.user
+        events, self.pending_events = self.pending_events, []
+        # Read final rectangles after the native notification has returned.
+        for code, hwnd in events:
+            if code == 0x000A:
+                self.dragging = hwnd
+            elif code == 0x000B:
+                self.changed(hwnd)
+                self.dragging = None
+                if self.visible() and not u.IsIconic(self.owner) and not u.IsIconic(self.tool):
+                    self.updating = True
+                    try: self.from_owner()
+                    finally: self.updating = False
+            elif code == 0x800B:
+                self.changed(hwnd)
+
     def pump(self):
         # WinEvent callbacks are delivered on this thread's message queue.
         u = self.user
         u.MsgWaitForMultipleObjects(0,None,False,50,0x04FF)
         message = wintypes.MSG()
-        while u.PeekMessageW(ctypes.byref(message),None,0,0,1):
+        for _ in range(256):
+            if not u.PeekMessageW(ctypes.byref(message),None,0,0,1): break
             u.TranslateMessage(ctypes.byref(message))
             u.DispatchMessageW(ctypes.byref(message))
+        self.process_events()
 
     def close(self):
         for handle in self.hooks: self.user.UnhookWinEvent(handle)

@@ -299,7 +299,7 @@ def push(remote=REMOTE):
     repo = workspace / 'repo'
     print(f'Publishing checkout: {repo}')
     run(['git', 'clone', '--branch', 'main', '--single-branch', remote, repo])
-    run(['git', 'rm', '-r', '--ignore-unmatch', '--', 'TechLoungeTweaks', 'docs'], repo)
+    run(['git', 'rm', '-r', '--ignore-unmatch', '--', 'TechLoungeTweaks', 'docs', 'tools'], repo)
     for source in publish_files():
         target = repo / source.relative_to(ROOT)
         target.parent.mkdir(parents=True, exist_ok=True)

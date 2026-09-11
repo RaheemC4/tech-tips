@@ -3,6 +3,7 @@
 import json
 
 from tweaks_engine import ps
+from gpu_memory import adapters, dedicated_memory, format_memory
 
 
 def _q(cmd):
@@ -95,9 +96,10 @@ def memory():
 
 def graphics():
     rows = _q("Get-CimInstance Win32_VideoController | Select-Object Name,"
-              "DriverVersion,DriverDate,AdapterRAM,VideoProcessor,"
+              "DriverVersion,DriverDate,PNPDeviceID,VideoProcessor,"
               "CurrentHorizontalResolution,CurrentVerticalResolution,"
               "CurrentRefreshRate")
+    available = adapters()
     out = []
     for r in rows:
         res = "N/A"
@@ -105,11 +107,11 @@ def graphics():
             res = (f"{r['CurrentHorizontalResolution']}"
                    f" x {r['CurrentVerticalResolution']}"
                    f" @ {_s(r.get('CurrentRefreshRate'))} Hz")
-        vram = r.get("AdapterRAM")
+        vram = dedicated_memory(r, available)
         out.append([
             ("Name", _s(r.get("Name"))),
             ("Driver version", _s(r.get("DriverVersion"))),
-            ("VRAM (reported)", _gb(vram, 0) if vram else "N/A"),
+            ("Dedicated VRAM", format_memory(vram)),
             ("Processor", _s(r.get("VideoProcessor"))),
             ("Current mode", res),
         ])
