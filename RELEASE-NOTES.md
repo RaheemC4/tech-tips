@@ -1,3 +1,18 @@
+Fix Driver Booster and TreeSize window attachment.
+
+- Clip duplicate custom window buttons while preserving tool menus. Keep these tools fitted to the host after custom movement or ownership resets.
+
+Add personal Driver Booster and TreeSize integrations; tidy and compress the distribution.
+
+- Verify TreeSize's About window as Professional 9.8.0.2301. Driver Booster is confirmed displaying 13.5 Pro with bundled executable 13.5.1.400.
+- Let native smoke checks wait up to two seconds for asynchronous startup suppression and splash-region restoration instead of relying on short fixed delays.
+
+- Preserve Driver Booster's supplied default settings: manual product updates, no automatic scans or driver downloads, and exit on close. Retain unrelated existing preferences and save a first backup. Verify the exact bundled executable hash and reject other running copies so an installed Free version cannot intercept Open.
+- Add the supplied Driver Booster 13.5.1.400 and TreeSize Professional 9.8.0.2301 application folders to Extra Tools with host-owned floating windows, movement, hiding and reopening. Preserve their custom headers. Keep these versions separate from official managed updates.
+- Exclude the repack launchers, registry-import wrappers, website shortcuts and encrypted thanks4dl.rar archive. The supplied main executables are modified and have invalid publisher signatures; window testing does not establish their safety.
+- Move logs to LocalAppData/TechLoungeTweaks/Logs. Keep only TechLoungeTweaks.exe visible beside hidden runtime and resources folders, with hidden attributes stored in the ZIP and restored at startup.
+- Use maximum Explorer-compatible ZIP Deflate compression. Keep required app components and help files.
+
 Prevent nested update folders.
 
 - Prepare replacement contents in a separate staging directory and use exact directory renames to install it. Keep the previous installation for rollback.

@@ -161,7 +161,9 @@ const TW={Performance:[['Disable GameDVR','Turns off Xbox Game Bar background re
  await p.evaluate(()=>{
    updateLast={checking:false,busy:false,checked:Date.now()/1000,message:'Checks finished. Downloads start only when you choose Install or Update.',items:[
      {id:'openmouse',name:'OpenMouse',installed:'Live web panel',message:'Opens in your default browser. Mouse controls require WebHID support, such as Edge or Chrome.'},
-     {id:'dlss',name:'DLSS Swapper',installed:'v1.2.6.1',available:'v1.2.6.1',launch:true,message:'Official stable release. Opens as a floating window above TechLoungeTweaks.'},
+     {id:'driverbooster',name:'IObit Driver Booster',installed:'13.5.1.400',local:true,launch:true},
+    {id:'treesize',name:'TreeSize Professional',installed:'9.8.0.2301',local:true,launch:true},
+    {id:'dlss',name:'DLSS Swapper',installed:'v1.2.6.1',available:'v1.2.6.1',launch:true,message:'Official stable release. Opens as a floating window above TechLoungeTweaks.'},
      {id:'bcu',name:'Bulk Crap Uninstaller',installed:'v6.2',available:'v6.3',action:'Update',launch:true,message:'Official stable release. Includes the .NET runtime.'},
      {id:'nvpi',name:'NVIDIA Profile Inspector',installed:'v7.2.1.0',available:'v7.2.1.0',launch:true},
      {id:'app',name:'TechLoungeTweaks',installed:'2026.09.10.194504',available:'2026.09.10.194504',status:'current'}

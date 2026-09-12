@@ -32,6 +32,7 @@ import defender_remover
 from updates import UpdateManager, open_mouse
 from tool_windows import FloatingTools
 from windows_setup import WindowsSetup
+from package_layout import log_path, hide_support_folders
 from tweaks_engine import (build_tweaks, CATEGORY_ORDER, CATEGORY_ICONS, run, ps)
 
 ICON_FOR = {
@@ -59,15 +60,7 @@ def is_admin():
 # --------------------------------------------------------------------------
 
 def _log_path():
-    for folder in (os.path.dirname(os.path.abspath(sys.executable)),
-                   os.environ.get("LOCALAPPDATA", ""), os.getcwd()):
-        if folder:
-            try:
-                os.makedirs(folder, exist_ok=True)
-                return os.path.join(folder, "TL-api.log")
-            except Exception:
-                continue
-    return "TL-api.log"
+    return log_path()
 
 
 LOGFILE = _log_path()
@@ -403,7 +396,7 @@ class Api:
         if self._floating_tools.focus(key):
             return {'ok': True}
         result = self._updates.launch(key)
-        if result.get('ok') and key in ('dlss', 'bcu', 'nvpi'):
+        if result.get('ok') and key in ('dlss', 'bcu', 'nvpi', 'driverbooster', 'treesize'):
             try:
                 owner = self._window.native.Handle.ToInt64()
             except Exception:
@@ -1818,6 +1811,7 @@ def centre_window(window):
 
 
 def main():
+    hide_support_folders()
     if not is_admin():
         relaunch_as_admin()
         return

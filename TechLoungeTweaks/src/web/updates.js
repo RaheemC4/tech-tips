@@ -2,6 +2,8 @@
 let updateTimer = null;
 let updateLast = null;
 const EXTRA_TOOLS = [
+  {id:'driverbooster', name:'IObit Driver Booster', icon:'wrench', text:'Review drivers in Driver Booster. Choose driver changes inside the tool.'},
+  {id:'treesize', name:'TreeSize Professional', icon:'folder', text:'Explore folder sizes and find what is using disk space.'},
   {id:'dlss', name:'DLSS Swapper', icon:'gpu', text:'Manage the upscaling libraries used by your games.'},
   {id:'bcu', name:'Bulk Crap Uninstaller', icon:'box', text:'Remove unwanted apps and review leftover files.'},
   {id:'nvpi', name:'NVIDIA Profile Inspector', icon:'nvidia', text:'Open the full Revamped interface to explore NVIDIA driver profiles.'},
@@ -108,6 +110,7 @@ async function updateAction(method, key) {
 }
 
 function versionLabels(item) {
+  if (item.local) return `<div class="tool-versions"><span><span class="version-label">Included version</span><b>${textEscape(item.installed || 'Not installed')}</b></span></div><small>Personal bundled tool</small>`;
   const older = item.action === 'Update';
   const unavailable = item.check_error || item.status === 'unavailable';
   const latest = !unavailable && item.available && (item.id !== 'app' || /^v?\d+(?:\.\d+)*$/.test(item.available)) ? item.available : null;
@@ -131,7 +134,7 @@ function paintUpdates(state) {
   const rows = state.items || [];
   const app = rows.find(x => x.id === 'app');
   const tools = rows.filter(x => x.id !== 'app' && x.action === 'Update');
-  const visibleTools = rows.filter(x => ['dlss','bcu','nvpi'].includes(x.id));
+  const visibleTools = rows.filter(x => ['dlss','bcu','nvpi','driverbooster','treesize'].includes(x.id));
   const appAvailable = app?.action === 'Update';
   const pill = H('updatesButton');
   if (pill) {

@@ -34,6 +34,15 @@ class HandoffTests(unittest.TestCase):
             while not (target / 'launched.txt').exists() and time.monotonic() < deadline:
                 time.sleep(.05)
             self.assertTrue((target / 'launched.txt').exists())
+            # Writing the marker precedes process exit; wait before TemporaryDirectory
+            # tries to remove its still-mapped executable on fast test machines.
+            import psutil
+            for process in psutil.process_iter(['exe']):
+                try:
+                    if process.info['exe'] and Path(process.info['exe']) == target / 'TechLoungeTweaks.exe':
+                        process.wait(timeout=5)
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
             self.assertFalse((target / 'TechLoungeTweaks').exists())
             backups = list(target.parent.glob('TechLoungeTweaks.previous-*'))
             self.assertEqual(len(backups), 1)

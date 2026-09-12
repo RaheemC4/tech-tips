@@ -44,6 +44,8 @@ def handoff_focus(user, owner, tool):
 
 
 def is_main_tool_window(key, title):
+    if key == 'driverbooster': return title.lower().startswith(('driver booster', 'iobit driver booster'))
+    if key == 'treesize': return title == 'TreeSize' or title.startswith('TreeSize ') or title.endswith(' - TreeSize')
     # BCU's welcome/news/legend windows are not its main application surface.
     if key == 'bcu': return title.startswith('Bulk Crap Uninstaller')
     if key == 'dlss': return title == 'DLSS Swapper'
@@ -77,7 +79,17 @@ def inset_rect(rect, dpi=96):
     return left + inset, top + title, max(100, right-left-2*inset), max(100, bottom-top-title-inset)
 
 
+def caption_holes(key, width, dpi):
+    """Remove only custom window buttons; keep menus and ribbon controls."""
+    dimensions = {'driverbooster': (112, 32), 'treesize': (26, 24)}
+    if key not in dimensions: return []
+    w, h = dimensions[key]
+    return [(max(0, width-round(w*dpi/96)), 0, width, round(h*dpi/96))]
+
+
 def chrome_insets(user, hwnd, key, dpi):
+    # Custom app headers contain menus and must remain fully accessible.
+    if key in ('driverbooster', 'treesize'): return 0, 0, 0
     rect=wintypes.RECT();user.GetWindowRect(hwnd,ctypes.byref(rect))
     origin=wintypes.POINT(0,0)
     user.ClientToScreen.argtypes=[wintypes.HWND,ctypes.POINTER(wintypes.POINT)]
@@ -167,7 +179,7 @@ class ToolSurface:
         if not self.user.GetWindowRect(self.hwnd,ctypes.byref(rect)): return
         left,top,bottom=self.crop
         size=(rect.right-rect.left,rect.bottom-rect.top,left,top,bottom)
-        holes=[]
+        holes=caption_holes(self.key,size[0],self.user.GetDpiForWindow(self.hwnd) or 96)
         if self.owner:
             origin=wintypes.POINT(0,0)
             self.user.ClientToScreen(self.owner,ctypes.byref(origin))
@@ -263,7 +275,7 @@ class WindowLink:
                 if owner != self.owner_rect and self.dragging != self.tool:
                     self.from_owner()
             elif source == self.tool and tool != self.tool_rect:
-                if self.dragging != self.tool:
+                if self.dragging != self.tool or (self.surface and self.surface.key in ('driverbooster','treesize')):
                     # Startup/layout/close movements are not user drags.
                     # In particular, never propagate an app's maximized bounds.
                     if u.IsZoomed(self.tool): u.ShowWindow(self.tool,9)
@@ -340,6 +352,16 @@ class WindowLink:
             u.TranslateMessage(ctypes.byref(message))
             u.DispatchMessageW(ctypes.byref(message))
         self.process_events()
+        # Custom publisher drag loops can move/reset ownership without the
+        # standard move-start/end events. Personal tools stay fitted to the host.
+        if self.surface and self.surface.key in ('driverbooster', 'treesize') and self.visible():
+            if not u.IsIconic(self.owner) and not u.IsIconic(self.tool):
+                if u.GetWindowLongPtrW(self.tool,-8) != self.owner:
+                    u.SetWindowLongPtrW(self.tool,-8,self.owner)
+                bounds=self.rect(self.owner)
+                if bounds:
+                    x,y,w,h=self.surface.geometry(bounds,u.GetDpiForWindow(self.owner) or 96)
+                    if self.rect(self.tool)!=(x,y,x+w,y+h):self.from_owner()
 
     def close(self):
         for handle in self.hooks: self.user.UnhookWinEvent(handle)
@@ -506,6 +528,16 @@ class FloatingTools:
                                     process_ids.add(process.info['pid'])
                             except (psutil.Error, OSError):
                                 pass
+                    if key in ('driverbooster', 'treesize') and folder:
+                        expected = Path(folder) / ('DriverBooster.exe' if key == 'driverbooster' else 'TreeSize.exe')
+                        exact = set()
+                        for process_id in process_ids:
+                            try:
+                                if Path(psutil.Process(process_id).exe()).resolve() == expected.resolve():
+                                    exact.add(process_id)
+                            except (psutil.Error, OSError):
+                                pass
+                        process_ids = exact
                     candidates = []
                     @callback_type
                     def visit(candidate, unused):

@@ -53,14 +53,14 @@ Keep the whole folder together. What you will see inside it:
 
 ```
 TechLoungeTweaks\
-├─ TechLoungeTweaks.exe     ← run this
-├─ TL-api.log               ← plain-text log, for troubleshooting
-├─ _internal\               ← the app itself, leave it alone
-└─ resources\               ← NVIDIA Profile Inspector + the .nip profile
+└─ TechLoungeTweaks.exe     ← run this
 ```
 
-Only the exe and the log sit at the top level, so there is nothing to click on
-by mistake. Moving the exe out on its own will not work.
+Only the launcher is visible with Explorer's normal hidden-file setting. Required
+`_internal` and `resources` folders are hidden, not removed. Keep them with the exe;
+moving the exe alone will not work. Logs live in
+`%LOCALAPPDATA%\TechLoungeTweaks\Logs\TL-api.log`. The whole distribution uses
+maximum standard ZIP Deflate compression and opens with Windows Explorer.
 
 ### Packaging and first launch
 
@@ -368,16 +368,40 @@ opens, so switching tabs is instant.
 
 ![Extra Tools](docs/tools.png)
 
+This personal build also includes **IObit Driver Booster 13.5.1.400** and
+**TreeSize Professional 9.8.0.2301** from the supplied archives. Open launches their
+application executables directly in the host's floating tool frame. Their custom
+headers remain accessible. They show an **Included version**, and TechLoungeTweaks
+does not automatically replace them with a different publisher or repack version.
+TreeSize's About window is verified as Professional 9.8.0.2301, and Driver Booster
+is confirmed displaying 13.5 Pro (bundled executable 13.5.1.400). Both packaged
+executables match the supplied archive hashes. Their duplicate window controls
+are clipped while menus remain accessible; the host frame supplies the tool Close
+button and keeps both tools centered during custom window movement.
+Before Driver Booster opens, the repack's supplied settings are applied to disable
+its own automatic product updates, automatic scans and automatic driver downloads,
+and make Close exit rather than minimize to the tray. Existing unrelated preferences
+are retained, with a first settings backup. Launch checks the bundled executable's
+hash and refuses a different running copy, preventing a locally installed Free
+version from intercepting the Open action.
+Driver changes and disk cleanup are choices made inside each tool, never automatic
+actions of opening a tool or applying the dashboard's presets.
+
+The third-party portable launchers, website shortcuts, registry-import wrappers,
+and the encrypted `thanks4dl.rar` payload are excluded. These two supplied builds
+contain modified executables with invalid publisher signatures; integration and
+window tests do not establish their safety or validate their licences.
+
 **DLSS Swapper, Bulk Crap Uninstaller (BCU) and NVIDIA Profile Inspector Revamped
 come bundled and ready to open.** No separate installation or first-run download
-is needed. BCU includes its .NET runtime and both supported architectures. Its
+is needed. BCU includes its .NET runtime for this x64 distribution. Its
 welcome wizard is skipped through its portable first-run setting; other existing
 preferences are preserved. The integrated frame targets BCU's main window rather
 than its welcome, news or legend dialogs.
 Startup window events suppress the initial surface before the integrated frame
 is ready, including BCU's child-process startup.
-Choose **Open** to use each complete official app in an integrated frame inside
-TechLoungeTweaks. Native title bars, app-name captions and window buttons are hidden;
+Choose **Open** to use each complete app in an integrated frame inside
+TechLoungeTweaks. DLSS, BCU and NVPI native title bars and window buttons are hidden;
 BCU's standard caption is removed rather than cropped using an estimated height.
 the tool has no separate taskbar or Alt-Tab entry and cannot be resized independently.
 Press and hold the empty frame strip above the tool, then drag to move the entire
@@ -402,7 +426,7 @@ until Open is pressed. Closing TechLoungeTweaks requests closure of all hosted
 tools, including hidden ones. If a tool needs a save/busy prompt handled, the main
 app stays open until it can close, so no tool is left orphaned on the desktop.
 
-Each tool shows **Current** and **Latest** versions. An older current version is
+The official managed tools show **Current** and **Latest** versions. An older current version is
 yellow with an **Update available** label; the latest release is green. **Update**
 is shown when a newer official release is available. Open remains available during
 checks. Updated Inspector binaries are used by the existing NVIDIA Profile page;
@@ -605,7 +629,7 @@ Change those settings in the firmware itself at POST.
 
 ## Something not working?
 
-`TL-api.log` sits next to the exe and records what the app did, in plain text.
+`%LOCALAPPDATA%\TechLoungeTweaks\Logs\TL-api.log` records what the app did, in plain text.
 If something misbehaves, that file says why — send it over.
 
 ---
@@ -653,9 +677,9 @@ Bundles [NVIDIA Profile Inspector Revamped](https://github.com/xHybred/NVIDIAPro
 by xHybred for the NVIDIA Profile page.
 
 The Install Apps page installs software from each vendor's own servers, or
-through the Windows Package Manager. No third-party installer is bundled. The three portable tools ship with their
-licences and upstream source references; they are not patched or modified. If an app is not on the
-list it is because there is no legitimate automated source for it.
+through the Windows Package Manager. The official DLSS, BCU and NVPI bundles retain
+their licences and upstream references. The two user-supplied personal tools are
+separate modified builds, as described under Extra Tools above.
 
 Use at your own risk — read what a tweak does before applying it.
 

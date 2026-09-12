@@ -40,6 +40,9 @@ def bundle():
     except (OSError, ValueError):
         manifest = {}
     for key, tool in updates.TOOLS.items():
+        if tool.get('local'):
+            print(f'{tool["name"]}: keeping the supplied personal bundle.', flush=True)
+            continue
         data = updates.release(tool['repo'])
         asset = updates.asset_for(tool, data)
         previous = manifest.get(key, {})

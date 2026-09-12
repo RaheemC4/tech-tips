@@ -1,1 +1,40 @@
-{"dlss": {"version": "v1.2.6.1", "exe": "DLSS Swapper.exe", "repo": "beeradmoore/dlss-swapper", "url": "https://github.com/beeradmoore/dlss-swapper/releases/download/v1.2.6.1/DLSS.Swapper-1.2.6.1-portable.zip", "sha256": "78cf171ae54b0a045c772b839e14b071e8d2dc3f306758df2837809995103489", "name": "DLSS.Swapper-1.2.6.1-portable.zip"}, "bcu": {"version": "v6.3", "exe": "BCUninstaller.exe", "repo": "BCUninstaller/Bulk-Crap-Uninstaller", "url": "https://github.com/BCUninstaller/Bulk-Crap-Uninstaller/releases/download/v6.3/BCUninstaller_6.3.0_portable.7z", "sha256": "1ab75c8fdb88cfc8c05012ef21136f35e7c477bb58b7f69d7d3b4495179c5dc3", "name": "BCUninstaller_6.3.0_portable.7z"}, "nvpi": {"version": "v7.2.1.0", "exe": "NVPI Revamped App/NVPI-R.exe", "repo": "xHybred/NVIDIAProfileInspectorRevamped", "url": "https://github.com/xHybred/NvidiaProfileInspectorRevamped/releases/download/v7.2.1.0/NVPI-R.zip", "sha256": "6f979a7f27cb9bb814b54e44e019b3cf1b649134dacf80bb762d054802966b51", "name": "NVPI-R.zip"}}
+{
+  "dlss": {
+    "version": "v1.2.6.1",
+    "exe": "DLSS Swapper.exe",
+    "repo": "beeradmoore/dlss-swapper",
+    "url": "https://github.com/beeradmoore/dlss-swapper/releases/download/v1.2.6.1/DLSS.Swapper-1.2.6.1-portable.zip",
+    "sha256": "78cf171ae54b0a045c772b839e14b071e8d2dc3f306758df2837809995103489",
+    "name": "DLSS.Swapper-1.2.6.1-portable.zip"
+  },
+  "bcu": {
+    "version": "v6.3",
+    "exe": "BCUninstaller.exe",
+    "repo": "BCUninstaller/Bulk-Crap-Uninstaller",
+    "url": "https://github.com/BCUninstaller/Bulk-Crap-Uninstaller/releases/download/v6.3/BCUninstaller_6.3.0_portable.7z",
+    "sha256": "1ab75c8fdb88cfc8c05012ef21136f35e7c477bb58b7f69d7d3b4495179c5dc3",
+    "name": "BCUninstaller_6.3.0_portable.7z"
+  },
+  "nvpi": {
+    "version": "v7.2.1.0",
+    "exe": "NVPI Revamped App/NVPI-R.exe",
+    "repo": "xHybred/NVIDIAProfileInspectorRevamped",
+    "url": "https://github.com/xHybred/NvidiaProfileInspectorRevamped/releases/download/v7.2.1.0/NVPI-R.zip",
+    "sha256": "6f979a7f27cb9bb814b54e44e019b3cf1b649134dacf80bb762d054802966b51",
+    "name": "NVPI-R.zip"
+  },
+  "driverbooster": {
+    "version": "13.5.1.400",
+    "exe": "DriverBooster.exe",
+    "source": "User-supplied local archive; modified executable",
+    "archive_sha256": "3f1485f44e0f61678550e4219aab6539b9c57c919c33c072c0ebf8a25ea650a8",
+    "sha256": "1a3d34ab01cca8b2c600d6db73cb37122ee6a50a46c9c4d6a94fffe22347db44"
+  },
+  "treesize": {
+    "version": "9.8.0.2301",
+    "exe": "TreeSize.exe",
+    "source": "User-supplied local archive; modified executable",
+    "archive_sha256": "1426cfa13bcc9b45706be3ae554d7058d81baba4109c222853b84d85006d081a",
+    "sha256": "d9df244964617a476c21cd87e0366601bf1f25a677373d650597d16627b11c45"
+  }
+}

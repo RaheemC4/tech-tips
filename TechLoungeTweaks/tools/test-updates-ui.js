@@ -11,6 +11,8 @@ const assert = require('assert');
   await page.evaluate(()=>{
    document.body.classList.remove('booting');H('bootlayer')?.remove();window.calls=[];
    window.updateFixture={busy:false,checking:false,checked:Date.now()/1000,message:'Checks finished.',items:[
+    {id:'driverbooster',name:'IObit Driver Booster',installed:'13.5.1.400',local:true,launch:true},
+    {id:'treesize',name:'TreeSize Professional',installed:'9.8.0.2301',local:true,launch:true},
     {id:'dlss',name:'DLSS Swapper',installed:'1.2.6.1',available:'1.2.6.1',launch:true},
     {id:'bcu',name:'Bulk Crap Uninstaller',installed:'6.2',available:'6.3',launch:true,action:'Update'},
     {id:'nvpi',name:'NVIDIA Profile Inspector',installed:'7.2.1',available:'7.2.1',launch:true},
@@ -29,6 +31,11 @@ const assert = require('assert');
   assert(await page.locator('[data-extra-tool="nvpi"]').isEnabled());
   await page.locator('[data-extra-tool="openmouse"]').click();
   assert.deepStrictEqual(await page.evaluate(()=>calls.find(c=>c[0]==='updates_launch')),['updates_launch','nvpi']);
+  for (const key of ['driverbooster','treesize']) {
+    await page.locator(`[data-extra-tool="${key}"]`).click();
+    assert(await page.evaluate(k=>calls.some(c=>c[0]==='updates_launch' && c[1]===k),key));
+    assert.strictEqual(await page.locator(`[data-extra-update="${key}"]`).count(),0);
+  }
   assert.strictEqual(await page.getByRole('button',{name:'Install',exact:true}).count(),0);
   assert.strictEqual(await page.getByText('Keep your toolbox current').count(),0);
   assert.strictEqual(await page.locator('#updatesButtonLabel').innerText(),'1 tool update');

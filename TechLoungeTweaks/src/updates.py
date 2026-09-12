@@ -24,6 +24,10 @@ import zipfile
 APP_REPO = 'RaheemC4/tech-tips'
 RAW = 'https://raw.githubusercontent.com/' + APP_REPO + '/main/TechLoungeTweaks/'
 TOOLS = {
+    'driverbooster': dict(name='IObit Driver Booster', local=True, exe='DriverBooster.exe',
+                         description='Open the supplied Driver Booster interface to review drivers.'),
+    'treesize': dict(name='TreeSize Professional', local=True, exe='TreeSize.exe',
+                     description='Explore folder sizes and find what is using disk space.'),
     'dlss': dict(name='DLSS Swapper', repo='beeradmoore/dlss-swapper',
                  pattern=r'DLSS\.Swapper-.+-portable\.zip', exe='DLSS Swapper.exe',
                  description='Manage game upscaling libraries using the complete official DLSS Swapper app.'),
@@ -354,7 +358,7 @@ class UpdateManager:
             # Slow/offline publishers must not hold existing tools hostage.
             initial = [dict(id=k, name=t['name'], description=t['description'],
                             installed=self.installed.get(k, {}).get('version', t.get('baseline')),
-                            launch=bool(self._tool_path(k)), action=None, message='Checking publisher…')
+                            launch=bool(self._tool_path(k)), local=bool(t.get('local')), action=None, message='Checking publisher…')
                        for k, t in TOOLS.items()] + [dict(OPENMOUSE)]
             self._set(items=copy.deepcopy(initial))
             for key, tool in TOOLS.items():
@@ -363,6 +367,13 @@ class UpdateManager:
                            installed=old.get('version', tool.get('baseline')), available=None, action=None,
                            launch=bool(self._tool_path(key)), rollback=bool(old.get('previous')), message='')
                 try:
+                    if tool.get('local'):
+                        row['local'] = True
+                        row['message'] = 'Personal bundled tool. Replaced only with a reviewed app build.'
+                        items.append(row)
+                        completed = {r['id'] for r in items}
+                        self._set(items=copy.deepcopy(items + [r for r in initial if r['id'] not in completed]))
+                        continue
                     data = release(tool['repo'])
                     tag = data['tag_name']
                     row['available'] = tag
@@ -516,6 +527,15 @@ class UpdateManager:
         path = self._tool_path(key)
         if not path:
             return {'ok': False, 'message': 'Install this tool first.'}
+        if TOOLS[key].get('local'):
+            from personal_tools import conflicting_copy, prepare_driverbooster
+            expected = self.bundles.get(key, {}).get('sha256')
+            if not expected or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+                return {'ok': False, 'message': 'The supplied tool executable has changed. Restore the reviewed personal bundle.'}
+            if conflicting_copy(path):
+                return {'ok': False, 'message': 'Close the other ' + TOOLS[key]['name'] + ' copy first. TechLoungeTweaks only opens its supplied version.'}
+            if key == 'driverbooster':
+                prepare_driverbooster(defaults=Path(getattr(sys, '_MEIPASS', Path(__file__).parent)) / 'vendor/personal-tools/driverbooster.ini')
         process = self.processes.get(key)
         if process and process.poll() is None:
             return {'ok': True, 'pid': process.pid, 'folder': str(path.parent)}

@@ -75,7 +75,7 @@ class UpdatesTests(unittest.TestCase):
                 deadline=time.monotonic()+3
                 while manager.status()['checking'] and time.monotonic()<deadline: time.sleep(.01)
                 self.assertFalse(manager.status()['checking'])
-                self.assertEqual(len(manager.status()['items']),7)
+                self.assertEqual(len(manager.status()['items']),len(updates.TOOLS) + len(updates.REVIEWED) + 2)
                 self.assertTrue(any('offline' in r['message'] for r in manager.status()['items']))
 
     def test_transaction_success_failure_and_rollback(self):

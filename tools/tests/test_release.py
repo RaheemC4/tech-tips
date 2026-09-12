@@ -13,6 +13,23 @@ spec.loader.exec_module(release)
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_distribution_has_only_launcher_and_hidden_support_folders(self):
+        import zipfile
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / 'built'
+            (root / '_internal').mkdir(parents=True)
+            (root / 'resources').mkdir()
+            (root / 'TechLoungeTweaks.exe').write_bytes(b'launcher')
+            (root / '_internal/runtime.dll').write_bytes(b'a' * 10000)
+            archive = Path(temp) / 'app.zip'
+            release.write_distribution(root, archive)
+            with zipfile.ZipFile(archive) as bundle:
+                self.assertEqual(bundle.testzip(), None)
+                self.assertTrue(bundle.getinfo('TechLoungeTweaks/resources/').external_attr & 2)
+                self.assertTrue(bundle.getinfo('TechLoungeTweaks/_internal/').external_attr & 2)
+                self.assertLess(bundle.getinfo('TechLoungeTweaks/_internal/runtime.dll').compress_size, 100)
+            (root / 'stray.txt').write_text('unexpected')
+            with self.assertRaises(RuntimeError): release.write_distribution(root, archive)
     def test_x64_resource_trim_preserves_supported_tool_and_licence(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -140,6 +157,11 @@ class ReleaseTests(unittest.TestCase):
             readme = root / 'README.md'
             readme.write_text('Reviewed content')
             with zipfile.ZipFile(archive, 'w') as z:
+                for folder in ('_internal', 'resources'):
+                    entry = zipfile.ZipInfo('TechLoungeTweaks/' + folder + '/')
+                    entry.create_system = 0
+                    entry.external_attr = 0x12
+                    z.writestr(entry, b'')
                 for name in ['TechLoungeTweaks/TechLoungeTweaks.exe',
                              'TechLoungeTweaks/_internal/vendor/mas/LICENSE',
                              'TechLoungeTweaks/_internal/vendor/win11debloat/LICENSE',

@@ -59,7 +59,8 @@ floating=FloatingTools()
 try:
     hwnd=int(child.stdout.readline())
     splash=int(child.stdout.readline())
-    settle(.15)
+    deadline=time.monotonic()+2
+    while hwnd not in guard.handles and time.monotonic()<deadline:settle(.01)
     assert hwnd in guard.handles,'Startup window was not suppressed before attachment'
     assert floating.attach('fixture',child.pid,owner,guard=guard)
     native=floating._native()
@@ -76,6 +77,8 @@ try:
     gdi=ctypes.WinDLL('gdi32');gdi.CreateRectRgn.restype=wintypes.HANDLE
     gdi.DeleteObject.argtypes=[wintypes.HANDLE]
     probe=gdi.CreateRectRgn(0,0,0,0)
+    deadline=time.monotonic()+2
+    while native.GetWindowRgn(splash,probe)!=1 and time.monotonic()<deadline:settle(.01)
     assert native.GetWindowRgn(splash,probe)==1,'Splash became visible after attachment'
     gdi.DeleteObject(probe)
     assert not (native.GetWindowLongPtrW(hwnd,-16)&0x00040000),'Tool is still resizable'

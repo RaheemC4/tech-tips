@@ -150,6 +150,25 @@ def trim_x64_resources(destination):
         shutil.rmtree(other)
 
 
+def write_distribution(built, destination):
+    """Explorer-compatible maximum Deflate compression and hidden support dirs."""
+    built = Path(built).resolve()
+    sys.path.insert(0, str(APP / 'src'))
+    from package_layout import hide_support_folders
+    hide_support_folders(built)
+    with zipfile.ZipFile(destination, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+        for name in ('_internal', 'resources'):
+            info = zipfile.ZipInfo('TechLoungeTweaks/' + name + '/')
+            info.create_system = 0
+            info.external_attr = 0x12  # DOS directory + hidden, preserved by Explorer.
+            archive.writestr(info, b'')
+        for path in files(built):
+            relative = path.relative_to(built)
+            if len(relative.parts) == 1 and relative.name != 'TechLoungeTweaks.exe':
+                raise RuntimeError(f'Unexpected file beside launcher: {relative}')
+            archive.write(path, 'TechLoungeTweaks/' + relative.as_posix())
+
+
 def publish_files():
     paths = []
     for folder in ('src', 'tools', 'tests', 'docs'):
@@ -176,6 +195,12 @@ def verify_release():
     with zipfile.ZipFile(ARCHIVE) as archive:
         if archive.testzip():
             raise RuntimeError('ZIP integrity check failed.')
+        for name in ('_internal', 'resources'):
+            if not archive.getinfo('TechLoungeTweaks/' + name + '/').external_attr & 2:
+                raise RuntimeError('Support folders must be hidden in the distribution.')
+        root_files = [n for n in archive.namelist() if not n.endswith('/') and n.count('/') == 1]
+        if root_files != ['TechLoungeTweaks/TechLoungeTweaks.exe']:
+            raise RuntimeError('Only the launcher may be a top-level file.')
         if manifest.get('schema') == 2:
             build = json.loads(archive.read('TechLoungeTweaks/_internal/build-info.json'))
             if any(build.get(k) != manifest.get(k) for k in ('version', 'built_utc', 'app_revision')):
@@ -257,9 +282,7 @@ def prepare():
     built = APP / 'src/dist/TechLoungeTweaks'
     copy_resources(built)
     temporary = ARCHIVE.with_suffix('.zip.tmp')
-    with zipfile.ZipFile(temporary, 'w', zipfile.ZIP_DEFLATED) as archive:
-        for path in files(built):
-            archive.write(path, 'TechLoungeTweaks/' + path.relative_to(built).as_posix())
+    write_distribution(built, temporary)
     with zipfile.ZipFile(temporary) as archive:
         if archive.testzip():
             raise RuntimeError('New ZIP failed validation; previous archive retained.')

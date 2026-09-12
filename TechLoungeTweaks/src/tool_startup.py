@@ -8,6 +8,9 @@ import time
 def should_suppress(key, title, style, exstyle, area, owned):
     """Never suppress XAML input sites, dialogs or unrelated helper windows."""
     if key is None: return True  # Disposable native fixture.
+    if key in ('driverbooster', 'treesize'):
+        from tool_windows import is_main_tool_window
+        return is_main_tool_window(key, title)
     if key == 'bcu':
         return title.startswith('Bulk Crap Uninstaller') or (owned and not title and not style & 0x00C00000 and bool(exstyle & 0x00080000) and area > 80000)
     if key == 'dlss': return title == 'DLSS Swapper'
