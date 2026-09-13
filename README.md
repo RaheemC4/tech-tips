@@ -549,7 +549,7 @@ toolbox like Ghost's, without the baggage.
 
 | Group | What's in it |
 |---|---|
-| **Chat & voice** | Discord, Discord PTB |
+| **Chat & voice** | Discord with the latest OpenAsar nightly, Discord PTB |
 | **Tuning tools** | MSI Afterburner (GPU overclocking/monitoring — installed without RivaTuner/RTSS; overclocking done in the real tool, never by this app) |
 | **Runtimes** | Visual C++ Redistributables (2005–2022, x86 + x64), DirectX web installer, .NET Desktop Runtime 8 |
 | **Browsers** | Edge & WebView2, Brave, Chrome, Firefox, Opera GX, Vivaldi |
@@ -564,6 +564,21 @@ available and the vendor page is the way in.
 Downloads are checked against an allowlist of vendor domains before anything
 is fetched, so a link that is not on the vendor's own domain is refused.
 Installers run with their official silent switches. These installers are downloaded on demand, and nothing is repacked or modified.
+
+The **Discord** card also installs the current unmodified OpenAsar nightly from
+its official GitHub release. It finds the highest numeric `app-*` version under
+`%LOCALAPPDATA%\Discord`, verifies the asset against the SHA-256 digest supplied
+by GitHub, keeps Discord's stock `app.asar.backup`, and atomically replaces the
+latest version's `resources\app.asar`. Running the card again repairs OpenAsar
+if a later Discord update replaces it.
+
+Before Discord restarts, the app merges these OpenAsar choices into
+`%APPDATA%\discord\settings.json`: Performance focus, No Track on, Disable
+Typing on, Splash Theming on, Quickstart on and Multi Instance off. Existing
+Discord and unrelated OpenAsar settings are retained. The setup-complete flag
+is written too, so OpenAsar does not show its first-launch configuration window.
+OpenAsar is a third-party Discord modification and Discord updates can replace
+it.
 
 If the Windows Package Manager has been stripped out — debloated images
 usually remove it — the page says so and falls back to direct downloads.
@@ -680,6 +695,10 @@ The Install Apps page installs software from each vendor's own servers, or
 through the Windows Package Manager. The official DLSS, BCU and NVPI bundles retain
 their licences and upstream references. The two user-supplied personal tools are
 separate modified builds, as described under Extra Tools above.
+
+The Discord installer downloads unmodified [OpenAsar](https://github.com/GooseMod/OpenAsar)
+on demand from its official nightly release. OpenAsar is licensed under AGPL-3.0
+and is not bundled with TechLoungeTweaks.
 
 Use at your own risk — read what a tweak does before applying it.
 

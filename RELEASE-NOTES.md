@@ -1,3 +1,20 @@
+Install and configure the latest OpenAsar nightly with Discord.
+
+- Make the Discord card install Discord first, then find its highest numeric
+  `%LOCALAPPDATA%\Discord\app-*` version and atomically replace that version's
+  `resources\app.asar` with the current official OpenAsar nightly.
+- Query the OpenAsar nightly release on GitHub each time, require its exact
+  official `app.asar` asset URL, and verify the download against GitHub's
+  SHA-256 digest and declared size before changing Discord.
+- Keep Discord's original stock-sized `app.asar.backup` for recovery. Re-running
+  the Discord card repairs OpenAsar after a Discord update replaces it.
+- Preconfigure Performance focus, No Track, Disable Typing, Splash Theming and
+  Quickstart on, with Multi Instance off. Preserve other Discord/OpenAsar
+  settings and mark setup complete so the first-launch config window stays shut.
+- Add numeric-version, settings-merge, digest-verification, post-install and
+  atomic replacement regression tests. Refresh the Install Apps screenshot and
+  documentation.
+
 Fix Driver Booster and TreeSize window attachment.
 
 - Clip duplicate custom window buttons while preserving tool menus. Keep these tools fitted to the host after custom movement or ownership resets.

@@ -1,15 +1,15 @@
 {
-  "reviewed_utc": "2026-09-12T00:57:02.341789+00:00",
+  "reviewed_utc": "2026-09-13T15:49:49.448465+00:00",
   "inputs": {
     "TechLoungeTweaks/src/app.ico": "ae172401d71bc38d75cc23d6620a6377591c947b2cdea430def9e40f4b2d28a3",
     "TechLoungeTweaks/src/app.js": "8f7a9dda63c60443d686837b6ceca7e1cdc3536b9e67dfe6e6693a0866b9f070",
     "TechLoungeTweaks/src/app_ui.py": "1d03617f77162930c18ba6b7a23d80685881c6a91b217ba61b1b743d2074a98a",
     "TechLoungeTweaks/src/apply-update.ps1": "f58036573781a9791f6004277934bc0d77ef277875783a9e2c1277a288d424a7",
-    "TechLoungeTweaks/src/apps.py": "e7cafc6493313709f70c94cf5af8acacc0322ec12d3fd5fc09922ac82ce1b719",
+    "TechLoungeTweaks/src/apps.py": "3a74ea23604392de3b42d78a6c16b3f8b5c62d9d63a184533fc4363a0d6fe9a9",
     "TechLoungeTweaks/src/biosinfo.py": "7086a9f9168848598223773b815affc72bb54ea483addc76bda865a0209e5403",
     "TechLoungeTweaks/src/boot_payload.py": "5958d124dcfc0dd4c2138732370771c9ee3d983c0dca324704519f41d94342cc",
     "TechLoungeTweaks/src/bootparse.py": "f9011256b70e266e1ecc510829c1e658314de3286ffd5b8e12a453636f052abe",
-    "TechLoungeTweaks/src/build-info.json": "ebaab465227066de725b6edb1fd133d4829366c2e4f57b3a6eaa9d5779b4ad60",
+    "TechLoungeTweaks/src/build-info.json": "48d4fb0da46bcfc3b73bebe7101ea9df6f8abd6bc67315fefe404fadec383bfb",
     "TechLoungeTweaks/src/BUILD.md": "a13023458ae4d3a792d6c872132c1d5963e2b1c4ef431ac9fcf5dfc9dec6a564",
     "TechLoungeTweaks/src/bundled-tools.json": "71f9fc9fc8d6f6a0e276a0af2c8256dcf5c30fa1ce669dbca6f634027a4f60db",
     "TechLoungeTweaks/src/chrome.py": "abc696a1bfbd3a0ce42334b7eaabadfa7276eb7740498a0588c20ed88843d419",
@@ -402,7 +402,7 @@
     "TechLoungeTweaks/src/vendor/win11debloat/UPSTREAM.md": "2fccd7e817494d851901f72b5c521482c86544581a5fafb9ccf20680fbb46352",
     "TechLoungeTweaks/src/vendor/win11debloat/Win11Debloat.ps1": "973697851255f85341dcba29c7cc126bdf86c2ac925643718d44a8611fc1f5bb",
     "TechLoungeTweaks/src/virt.py": "2fdd250dc7fb7ece7e1db5ec8b1007a4085f47ee53de1791b24becc340957c26",
-    "TechLoungeTweaks/src/web/app.js": "cba9dcb47003a9562526744859d356192774e6ecd87dfb84ac83a867a43a9453",
+    "TechLoungeTweaks/src/web/app.js": "a735f1fd4e6f6fe835ba6f0f2541c62e4c28e84f3a149e0c74ba9aaae59c9cee",
     "TechLoungeTweaks/src/web/debloat.js": "b4186afd08efd6ad8efa095f839674411f5e247e857e1c14ca2690e1453f0022",
     "TechLoungeTweaks/src/web/defender-removal.js": "5d0e5e0211a69d7c7bffc23c55a1915bd510865b4b9baa7750041a512c2b5b07",
     "TechLoungeTweaks/src/web/index.html": "c6b64500b04a8384f5a6d5fcc55c0f2f020cb0f2e532e763416ed7f65733c325",
@@ -412,7 +412,7 @@
     "TechLoungeTweaks/src/windows_setup.py": "218c68b1d845668086c5336b4fb5ed125b0e5b259faa6c3c1df706f9473b5d5c",
     "TechLoungeTweaks/tools/build-debloat-catalog.py": "62311f7a23759ce202d6c93177f7625741b57e1cc7215558fe55b70d3764af16",
     "TechLoungeTweaks/tools/bundle-tools.py": "11142bcaff13b9d96658d113c7430fea6a291d1dd82f21d99857196734b464a8",
-    "TechLoungeTweaks/tools/make-screenshots.js": "bcba7d5ecef86088788a1e2b3eca640b63bff697527a26dbdf787dbaac228bd7",
+    "TechLoungeTweaks/tools/make-screenshots.js": "20355b13a0a64af3bd57fbbfd66e40b1b5cb2ff3d64687a5bbcac94930bd17ee",
     "TechLoungeTweaks/tools/smoke-close.py": "e0dc28767f9341b4b9d1d21f4472243bdcc248cad27f53bf0fcea5bb2a7374c8",
     "TechLoungeTweaks/tools/smoke-floating-tools.py": "68f1c1a119e5fc5510e646fce3c39ff31245a04470a62414b421ebc50b19d883",
     "TechLoungeTweaks/tools/smoke-nvpi-startup.py": "3365816c1c009049845c9c083bb11351fd160671f16e313834b603e4cdfbfc2b",
@@ -422,6 +422,7 @@
     "TechLoungeTweaks/tools/test-defender-removal-ui.js": "e7c8260884da0fd70c474b51e35eaa9ee68a00db10a8d35be9bfa5eaea25c859",
     "TechLoungeTweaks/tools/test-updates-ui.js": "f27cd5b05cd98fade27d089a3a96ec661b2ac6dd9dd1731d850a84131045261d",
     "TechLoungeTweaks/tools/test-windows-setup-ui.js": "0e6acd86f39801c0a95c519d3911589896509fa3b64598aa775ef2cf82913f20",
+    "TechLoungeTweaks/tests/test_apps.py": "ffc4bbfc0d36cbdcb1a1550e8300366ad3eb3f8642a48a9b71d41692e663c0de",
     "TechLoungeTweaks/tests/test_bcu_startup.py": "44e14263e50154388f7d2861686a04afc74fc167d6461a66630433c9155a004b",
     "TechLoungeTweaks/tests/test_debloat.py": "091b4a1c5a7c4beb6678466d4ea3dab50c0d3b23453a4718841f3321af40e3e8",
     "TechLoungeTweaks/tests/test_defender_remover.py": "f56acea2f087cc36b2139bf2a53225025ea0d62fb86b41b391f5ebd6e0e9bed6",
@@ -436,7 +437,7 @@
     "TechLoungeTweaks/tests/test_update_handoff_integration.py": "0cf71452e6c6524c4f41a4e28e982a781636084323c81145de3619bd8228feb0",
     "TechLoungeTweaks/tests/test_updates.py": "b98721e196741e43da5e5fb3d07dac88ceb55f7577757db0a27bc150c8d6d41e",
     "TechLoungeTweaks/tests/test_windows_setup.py": "afbc65c606509800bbd4307563ebc2cba377c19d3b530df0dc56b9198ce92047",
-    "TechLoungeTweaks/README.md": "40a0db79c4aa8c9510ec53565a02edfada81d5427b3d9f466036c97c2ccce619",
-    "RELEASE-NOTES.md": "48b71aa17e06b5b8b010f62278386cafb52dc7d74de251876bf48be2e6671fb5"
+    "TechLoungeTweaks/README.md": "7c8a5add6929d358c97630b553a0aa4cdcedb016554539b08acf379f279a43b1",
+    "RELEASE-NOTES.md": "564cc4ee7473fdc18519741a6a281e8dff306c16c6b6764377f2b2791df80e07"
   }
 }

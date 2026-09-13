@@ -16,10 +16,14 @@ Every entry also carries a `page` so there is always a manual route when an
 install fails.
 """
 
+import hashlib
+import json
 import os
 import re
 import shutil
 import subprocess
+import tempfile
+import time
 import urllib.parse
 import urllib.request
 
@@ -46,7 +50,24 @@ ALLOWED_HOSTS = (
     "amazongames.com", "download.amazongames.com",
     "discord.com", "dl.discordapp.net", "stable.dl2.discordapp.net",
     "github.com", "objects.githubusercontent.com",
+    "release-assets.githubusercontent.com",
 )
+
+OPENASAR_RELEASE_API = (
+    "https://api.github.com/repos/GooseMod/OpenAsar/releases/tags/nightly"
+)
+OPENASAR_ASSET_URL = (
+    "https://github.com/GooseMod/OpenAsar/releases/download/nightly/app.asar"
+)
+OPENASAR_SETTINGS = {
+    "setup": True,
+    "cmdPreset": "perf",
+    "noTrack": True,
+    "noTyping": True,
+    "themeSync": True,
+    "quickstart": True,
+    "multiInstance": False,
+}
 
 
 def host_allowed(url):
@@ -202,7 +223,9 @@ APPS = [
 
     # ------------------------------------------------------- chat & voice
     dict(id="discord", name="Discord", group="Chat & voice",
-         desc="The desktop client. Installs and self-updates on first launch.",
+         desc="The desktop client plus the latest OpenAsar nightly for a "
+              "faster launch and snappier UI. Re-run this installer after a "
+              "Discord update if it replaces OpenAsar.",
          winget="Discord.Discord",
          url="https://discord.com/api/download?platform=win",
          silent=["/S"],
@@ -417,6 +440,231 @@ def install_direct(app, dest_dir, on_progress=None, on_line=None,
     return False, f"The installer exited with code {rc}."
 
 
+# --------------------------------------------------------- Discord/OpenAsar
+def _discord_version(name):
+    """Return a numeric version tuple for a Discord app-* directory."""
+    match = re.fullmatch(r"app-(\d+(?:\.\d+)*)", name, re.IGNORECASE)
+    return tuple(int(part) for part in match.group(1).split(".")) if match else None
+
+
+def latest_discord_app(local_appdata=None):
+    """Find the newest complete stable Discord Squirrel app directory."""
+    root = os.path.join(local_appdata or os.environ.get("LOCALAPPDATA", ""),
+                        "Discord")
+    candidates = []
+    try:
+        entries = os.scandir(root)
+    except OSError:
+        return None
+    with entries:
+        for entry in entries:
+            version = _discord_version(entry.name)
+            if not version or not entry.is_dir(follow_symlinks=False):
+                continue
+            folder = entry.path
+            if (os.path.isfile(os.path.join(folder, "Discord.exe")) and
+                    os.path.isfile(os.path.join(folder, "resources", "app.asar"))):
+                candidates.append((version, folder))
+    return max(candidates, default=(None, None))[1]
+
+
+def _openasar_asset():
+    """Read the moving nightly release metadata and require GitHub's digest."""
+    req = urllib.request.Request(OPENASAR_RELEASE_API, headers={
+        **UA, "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    })
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        if not host_allowed(resp.geturl()):
+            raise ValueError("OpenAsar release metadata redirected off GitHub.")
+        raw = resp.read((2 << 20) + 1)
+    if len(raw) > (2 << 20):
+        raise ValueError("OpenAsar release metadata was unexpectedly large.")
+    release = json.loads(raw.decode("utf-8"))
+    if release.get("tag_name") != "nightly":
+        raise ValueError("GitHub did not return the OpenAsar nightly release.")
+    assets = [a for a in release.get("assets", []) if a.get("name") == "app.asar"]
+    if len(assets) != 1:
+        raise ValueError("The OpenAsar nightly app.asar asset was not unique.")
+    asset = assets[0]
+    if asset.get("browser_download_url") != OPENASAR_ASSET_URL:
+        raise ValueError("The OpenAsar nightly asset URL was not the expected official URL.")
+    digest = str(asset.get("digest") or "")
+    if not re.fullmatch(r"sha256:[0-9a-fA-F]{64}", digest):
+        raise ValueError("GitHub did not provide a valid OpenAsar SHA-256 digest.")
+    size = asset.get("size")
+    if not isinstance(size, int) or not 1024 <= size <= (5 << 20):
+        raise ValueError("The OpenAsar nightly asset size was not plausible.")
+    return {"url": OPENASAR_ASSET_URL, "size": size,
+            "sha256": digest.split(":", 1)[1].lower()}
+
+
+def _download_openasar(dest_dir, on_progress=None, should_cancel=None):
+    """Download and verify the current official nightly app.asar."""
+    asset = _openasar_asset()
+    os.makedirs(dest_dir, exist_ok=True)
+    fd, dest = tempfile.mkstemp(prefix="openasar-", suffix=".asar", dir=dest_dir)
+    os.close(fd)
+    got = 0
+    digest = hashlib.sha256()
+    try:
+        req = urllib.request.Request(asset["url"], headers=UA)
+        with urllib.request.urlopen(req, timeout=60) as resp, open(dest, "wb") as fh:
+            if not host_allowed(resp.geturl()):
+                raise ValueError("OpenAsar download redirected off GitHub.")
+            while True:
+                if should_cancel and should_cancel():
+                    raise InterruptedError("Cancelled.")
+                chunk = resp.read(1 << 20)
+                if not chunk:
+                    break
+                got += len(chunk)
+                if got > asset["size"]:
+                    raise ValueError("OpenAsar download exceeded its declared size.")
+                digest.update(chunk)
+                fh.write(chunk)
+                if on_progress:
+                    on_progress(got / asset["size"])
+        if got != asset["size"] or digest.hexdigest() != asset["sha256"]:
+            raise ValueError("OpenAsar download failed its GitHub SHA-256 check.")
+        return dest, asset
+    except Exception:
+        try:
+            os.remove(dest)
+        except OSError:
+            pass
+        raise
+
+
+def configure_openasar(appdata=None):
+    """Merge the requested OpenAsar defaults into Discord's settings.json."""
+    root = appdata or os.environ.get("APPDATA", "")
+    if not root:
+        raise OSError("Windows AppData could not be located.")
+    folder = os.path.join(root, "discord")
+    path = os.path.join(folder, "settings.json")
+    os.makedirs(folder, exist_ok=True)
+    current = {}
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8-sig") as fh:
+            current = json.load(fh)
+        if not isinstance(current, dict):
+            raise ValueError("Discord settings.json does not contain an object.")
+    config = current.get("openasar")
+    if not isinstance(config, dict):
+        config = {}
+    config.update(OPENASAR_SETTINGS)
+    current["openasar"] = config
+
+    fd, staged = tempfile.mkstemp(prefix="settings-", suffix=".json.tmp", dir=folder)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+            json.dump(current, fh, indent=2, ensure_ascii=False)
+            fh.write("\n")
+        if os.path.exists(path):
+            shutil.copymode(path, staged)
+        os.replace(staged, path)
+    except Exception:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        try:
+            os.remove(staged)
+        except OSError:
+            pass
+        raise
+    return path
+
+
+def _stop_discord(force=False):
+    args = ["taskkill.exe", "/IM", "Discord.exe", "/T"]
+    if force:
+        args.append("/F")
+    try:
+        subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       stdin=subprocess.DEVNULL, timeout=15,
+                       creationflags=CREATE_NO_WINDOW)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def _replace_openasar(downloaded, target):
+    """Stage beside app.asar, retain a stock backup, then replace atomically."""
+    resources = os.path.dirname(target)
+    backup = target + ".backup"
+    # OpenAsar is tiny. Only preserve a stock-sized asar as the uninstall copy,
+    # and never overwrite a valid backup with an already-modified file.
+    if os.path.getsize(target) > (1 << 20) and not os.path.exists(backup):
+        shutil.copy2(target, backup)
+    fd, staged = tempfile.mkstemp(prefix="app.asar.openasar-", suffix=".tmp",
+                                  dir=resources)
+    os.close(fd)
+    try:
+        shutil.copy2(downloaded, staged)
+        os.replace(staged, target)
+    except PermissionError:
+        _stop_discord(force=True)
+        time.sleep(0.5)
+        os.replace(staged, target)
+    finally:
+        try:
+            os.remove(staged)
+        except OSError:
+            pass
+
+
+def install_openasar(dest_dir, on_progress=None, on_line=None,
+                     should_cancel=None, local_appdata=None, appdata=None):
+    """Install verified OpenAsar into the newest stable Discord version."""
+    if on_line:
+        on_line("Finding the newest Discord version…")
+    folder = None
+    for _ in range(20):
+        folder = latest_discord_app(local_appdata)
+        if folder or (should_cancel and should_cancel()):
+            break
+        time.sleep(0.5)
+    if should_cancel and should_cancel():
+        return False, "Cancelled."
+    if not folder:
+        return False, ("Discord installed, but its newest app-* folder was not ready. "
+                       "Open Discord once, then run this installer again.")
+
+    try:
+        if on_line:
+            on_line("Checking the latest OpenAsar nightly on GitHub…")
+        downloaded, asset = _download_openasar(dest_dir, on_progress, should_cancel)
+        if on_line:
+            on_line("Applying OpenAsar performance settings…")
+        configure_openasar(appdata)
+        if on_line:
+            on_line("Closing Discord and installing OpenAsar…")
+        _stop_discord()
+        target = os.path.join(folder, "resources", "app.asar")
+        _replace_openasar(downloaded, target)
+        try:
+            os.remove(downloaded)
+        except OSError:
+            pass
+        if on_line:
+            on_line("Starting Discord…")
+        try:
+            subprocess.Popen([os.path.join(folder, "Discord.exe")], cwd=folder,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             stdin=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW)
+            launch = " Discord has been restarted."
+        except OSError:
+            launch = " Open Discord normally to finish."
+        version = os.path.basename(folder).removeprefix("app-")
+        return True, (f"Discord {version} and the latest verified OpenAsar nightly "
+                      f"are ready.{launch}")
+    except InterruptedError:
+        return False, "Cancelled."
+    except Exception as e:
+        return False, f"Discord installed, but OpenAsar could not be applied: {e}"
+
+
 def install(app_id, dest_dir, on_progress=None, on_line=None,
             should_cancel=None):
     """Install one app by its catalogue id. Returns (ok, message)."""
@@ -426,12 +674,18 @@ def install(app_id, dest_dir, on_progress=None, on_line=None,
     # winget first: it keeps its own URLs current and handles silent switches.
     if app.get("winget") and winget_path():
         ok, msg = install_via_winget(app, on_line, should_cancel)
-        if ok:
-            return True, msg
-        if should_cancel and should_cancel():
-            return False, "Cancelled."
-        if not app.get("url"):
-            return False, msg
-        if on_line:
-            on_line("winget could not do it - trying the vendor download…")
-    return install_direct(app, dest_dir, on_progress, on_line, should_cancel)
+        if not ok:
+            if should_cancel and should_cancel():
+                return False, "Cancelled."
+            if not app.get("url"):
+                return False, msg
+            if on_line:
+                on_line("winget could not do it - trying the vendor download…")
+            ok, msg = install_direct(app, dest_dir, on_progress, on_line,
+                                     should_cancel)
+    else:
+        ok, msg = install_direct(app, dest_dir, on_progress, on_line,
+                                 should_cancel)
+    if ok and app_id == "discord":
+        return install_openasar(dest_dir, on_progress, on_line, should_cancel)
+    return ok, msg

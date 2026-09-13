@@ -1267,7 +1267,7 @@ let APPCACHE = null;
 
 async function pageApps() {
   pageShell('Install Apps', {crumb: 'Tools › Install Apps',
-    text: 'Runtimes, browsers and game clients, installed silently from the vendor.'},
+    text: 'Runtimes, browsers, game clients and a faster Discord setup, installed from official sources.'},
     `<div id="appsBody"><div class="card">Loading the catalogue…</div></div>`);
   const cat = APPCACHE || await api('app_catalog');
   if (!cat) return;
@@ -1312,10 +1312,11 @@ async function pageApps() {
     ${storeCardHtml()}
     ${groups}
     <div class="card" style="margin-top:16px"><p style="color:var(--muted);font-size:11.5px;line-height:1.65">
-      Downloads only ever come from each vendor's own domain — the app refuses
-      any link that is not on that allowlist — and installers run with their
-      official silent switches. Nothing is bundled with this app and nothing is
-      repacked or modified.</p></div>`;
+      Installers come from their vendor or Windows Package Manager and use
+      official silent switches. The Discord card also downloads the unmodified
+      OpenAsar nightly from its official GitHub release and verifies GitHub's
+      SHA-256 digest before replacing Discord's app.asar. Nothing is bundled or
+      repacked.</p></div>`;
 
   wireApps(cat);
   wireStoreCard();
