@@ -92,6 +92,18 @@ def host_allowed(url):
 #   note    optional warning shown on the card
 #
 APPS = [
+    dict(id="convtpersonal", name="ConvtPersonal", group="File tools",
+         desc="Offline file conversion with all six engines and an Explorer "
+              "right-click submenu. Personal Windows x64 build, installed "
+              "for the current user. Downloads about 351 MB.",
+         winget=None,
+         url="https://github.com/RaheemC4/tech-tips/releases/download/"
+             "convtpersonal-0.3.0-20261009/ConvtPersonal-0.3.0-Setup.exe",
+         silent=["/S"],
+         sha256="50e6b8c846d97ad2db08a282496283d7db8b654a14268f5f85ab81596d1e6d52",
+         size=367539525,
+         page="https://github.com/RaheemC4/tech-tips/releases/tag/"
+              "convtpersonal-0.3.0-20261009"),
     # ------------------------------------------------------------ runtimes
     dict(id="vcredist", name="Visual C++ Redistributables (all)",
          group="Runtimes",
@@ -247,7 +259,7 @@ APPS = [
          page="https://discord.com/download"),
 ]
 
-GROUP_ORDER = ["Chat & voice", "Runtimes", "Browsers", "Game clients",
+GROUP_ORDER = ["File tools", "Chat & voice", "Runtimes", "Browsers", "Game clients",
                "Tuning tools"]
 
 
@@ -368,6 +380,8 @@ def download(url, dest_dir, on_progress=None, should_cancel=None):
     os.makedirs(dest_dir, exist_ok=True)
     req = urllib.request.Request(url, headers=UA)
     with urllib.request.urlopen(req, timeout=60) as resp:
+        if not host_allowed(resp.geturl()):
+            raise ValueError("Refusing a download redirected to an unrecognised host.")
         # Take the real filename after redirects where the server gives one.
         name = ""
         disp = resp.headers.get("Content-Disposition") or ""
@@ -379,6 +393,9 @@ def download(url, dest_dir, on_progress=None, should_cancel=None):
                 urllib.parse.urlparse(resp.geturl()).path) or ""
         if not name or "." not in name:
             name = "installer.exe"
+        name = os.path.basename(name.replace("\\", "/"))
+        if name in ("", ".", ".."):
+            raise ValueError("Invalid installer filename.")
         dest = os.path.join(dest_dir, name)
 
         total = int(resp.headers.get("Content-Length") or 0)
@@ -415,6 +432,25 @@ def install_direct(app, dest_dir, on_progress=None, on_line=None,
         return False, "Cancelled."
     except Exception as e:
         return False, f"Download failed: {e}"
+
+    if app.get("sha256"):
+        if on_line:
+            on_line("Verifying installer size and SHA-256…")
+        try:
+            digest = hashlib.sha256()
+            with open(path, "rb") as stream:
+                while chunk := stream.read(1 << 20):
+                    if should_cancel and should_cancel():
+                        return False, "Cancelled."
+                    digest.update(chunk)
+            if (os.path.getsize(path) != app["size"] or
+                    digest.hexdigest() != app["sha256"]):
+                os.remove(path)
+                return False, "Installer verification failed. Nothing was installed."
+        except OSError as e:
+            return False, f"Installer verification failed: {e}"
+    if should_cancel and should_cancel():
+        return False, "Cancelled."
 
     if on_line:
         on_line("Installing…")

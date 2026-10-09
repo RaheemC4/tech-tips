@@ -544,11 +544,12 @@ around that one.
 
 ![Install Apps](docs/apps.png)
 
-Runtimes, browsers and game clients, installed silently — the useful half of a
+File conversion tools, runtimes, browsers and game clients, installed silently — the useful half of a
 toolbox like Ghost's, without the baggage.
 
 | Group | What's in it |
 |---|---|
+| **File tools** | ConvtPersonal 0.3.0, personal Windows x64 build with all six conversion engines and the Explorer submenu |
 | **Chat & voice** | Discord with the latest OpenAsar nightly, Discord PTB |
 | **Tuning tools** | MSI Afterburner (GPU overclocking/monitoring — installed without RivaTuner/RTSS; overclocking done in the real tool, never by this app) |
 | **Runtimes** | Visual C++ Redistributables (2005–2022, x86 + x64), DirectX web installer, .NET Desktop Runtime 8 |
@@ -563,7 +564,23 @@ available and the vendor page is the way in.
 
 Downloads are checked against an allowlist of vendor domains before anything
 is fetched, so a link that is not on the vendor's own domain is refused.
-Installers run with their official silent switches. These installers are downloaded on demand, and nothing is repacked or modified.
+Installers are downloaded on demand and run silently. Vendor packages remain unmodified; ConvtPersonal is the separately packaged personal source build described below.
+
+Click **Install** on the **ConvtPersonal** card to download the approximately
+351 MB setup from this repository's pinned release. The app checks its exact
+size and SHA-256 before running it silently. It installs for the current Windows
+user, normally under `%LOCALAPPDATA%\Programs\ConvtPersonal`, or repairs an
+existing installation in its registered folder. No licence key or separate
+engine downloads are needed. Image, SVG, HEIC, audio/video, PDF and document
+conversion engines are included. On Windows 11, right-click a file, choose
+**Show more options > Convt > format**. Uninstall through **Windows Settings >
+Apps > Installed apps > Convt Personal**. The setup is unsigned.
+
+The installer is downloaded only when requested, keeping the TechLoungeTweaks
+ZIP small. The existing [TechLoungeTweaks download link](https://github.com/RaheemC4/tech-tips/releases/latest/download/TechLoungeTweaks.zip)
+is unchanged. ConvtPersonal uses a separate pinned release, so future toolbox
+updates do not remove its installer. Its setup includes source, the personal
+patch and third-party licences; it is based on [convt](https://github.com/opencoredev/convt).
 
 The **Discord** card also installs the current unmodified OpenAsar nightly from
 its official GitHub release. It finds the highest numeric `app-*` version under
@@ -691,7 +708,7 @@ server's tech-tips archive plus documented Windows settings.
 Bundles [NVIDIA Profile Inspector Revamped](https://github.com/xHybred/NVIDIAProfileInspectorRevamped)
 by xHybred for the NVIDIA Profile page.
 
-The Install Apps page installs software from each vendor's own servers, or
+The Install Apps page installs vendor software from each vendor's own servers, or
 through the Windows Package Manager. The official DLSS, BCU and NVPI bundles retain
 their licences and upstream references. The two user-supplied personal tools are
 separate modified builds, as described under Extra Tools above.

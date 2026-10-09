@@ -1267,7 +1267,7 @@ let APPCACHE = null;
 
 async function pageApps() {
   pageShell('Install Apps', {crumb: 'Tools › Install Apps',
-    text: 'Runtimes, browsers, game clients and a faster Discord setup, installed from official sources.'},
+    text: 'ConvtPersonal file conversion, runtimes, browsers, game clients and a faster Discord setup.'},
     `<div id="appsBody"><div class="card">Loading the catalogue…</div></div>`);
   const cat = APPCACHE || await api('app_catalog');
   if (!cat) return;

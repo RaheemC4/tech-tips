@@ -1,3 +1,13 @@
+Add ConvtPersonal to Install Apps; preserve the existing toolbox download URL.
+
+- Add a File tools card for the personal ConvtPersonal 0.3.0 Windows x64 build.
+- Download the standalone setup on demand from a pinned GitHub release, verify
+  its exact size and SHA-256, then run its per-user silent installer.
+- Include all six engines and Explorer integration through the existing setup;
+  do not add the 351 MB installer to the toolbox ZIP.
+- Refresh the Apps screenshots and document installation, repair and uninstall.
+- Keep releases/latest/download/TechLoungeTweaks.zip unchanged.
+
 Install and configure the latest OpenAsar nightly with Discord.
 
 - Make the Discord card install Discord first, then find its highest numeric

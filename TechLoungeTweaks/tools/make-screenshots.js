@@ -15,7 +15,8 @@ const D = __dirname + '/../docs/';
 const DEBLOAT = require('../src/debloat_catalog.json').items.map((item, index) => ({...item, supported:true, applied:index % 3 === 0}));
 const PAGE = require('url').pathToFileURL(require('path').resolve(__dirname, '../src/web/index.html')).href;
 
-const CAT={groups:['Chat & voice','Runtimes','Browsers','Game clients','Tuning tools'],winget:true,apps:[
+const CAT={groups:['File tools','Chat & voice','Runtimes','Browsers','Game clients','Tuning tools'],winget:true,apps:[
+ {id:'convtpersonal',name:'ConvtPersonal',group:'File tools',desc:'Offline file conversion with all six engines and an Explorer right-click submenu. Personal Windows x64 build, installed for the current user. Downloads about 351 MB.',page:'https://github.com/RaheemC4/tech-tips/releases/tag/convtpersonal-0.3.0-20261009',route:'direct',installable:true},
  {id:'afterburner',name:'MSI Afterburner',group:'Tuning tools',desc:'The standard GPU tuning + monitoring tool. Installed without RivaTuner (RTSS). Overclocking is done here in the real tool - this app never touches clocks itself.',page:'#',route:'winget',installable:true},
  {id:'discord',name:'Discord',group:'Chat & voice',desc:'The desktop client plus the latest OpenAsar nightly for a faster launch and snappier UI. Re-run this installer after a Discord update if it replaces OpenAsar.',page:'#',route:'winget',installable:true},
  {id:'discordptb',name:'Discord PTB',group:'Chat & voice',desc:'Public Test Build - runs alongside the normal client, gets features early.',page:'#',route:'winget',installable:true},

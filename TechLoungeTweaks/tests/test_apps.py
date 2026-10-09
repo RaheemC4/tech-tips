@@ -11,6 +11,48 @@ import apps
 
 
 class AppInstallTests(unittest.TestCase):
+    def test_convtpersonal_is_direct_without_winget(self):
+        with patch("apps.winget_path", return_value=None):
+            cat = apps.catalog()
+        entry = next(a for a in cat["apps"] if a["id"] == "convtpersonal")
+        self.assertEqual(entry["route"], "direct")
+        self.assertTrue(entry["installable"])
+        self.assertIn("File tools", cat["groups"])
+        self.assertEqual(apps.by_id("convtpersonal")["silent"], ["/S"])
+
+    def test_verified_installer_runs_only_with_matching_bytes(self):
+        payload = b"verified installer fixture"
+        app = dict(apps.by_id("convtpersonal"), size=len(payload),
+                   sha256=hashlib.sha256(payload).hexdigest())
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "setup.exe"
+            for body, expected in ((payload, True), (b"corrupt", False),
+                                   (b"X" * len(payload), False)):
+                with self.subTest(body=body):
+                    path.write_bytes(body)
+                    with patch("apps.download", return_value=str(path)), \
+                            patch("apps.subprocess.Popen") as launch:
+                        launch.return_value.returncode = 0
+                        ok, message = apps.install_direct(app, tmp)
+                        self.assertEqual(ok, expected, message)
+                        if expected:
+                            self.assertEqual(launch.call_args.args[0], [str(path), "/S"])
+                        else:
+                            launch.assert_not_called()
+                            self.assertFalse(path.exists())
+
+    def test_cancelled_verified_installer_never_launches(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "setup.exe"
+            path.write_bytes(b"fixture")
+            with patch("apps.download", return_value=str(path)), \
+                    patch("apps.subprocess.Popen") as launch:
+                ok, message = apps.install_direct(apps.by_id("convtpersonal"), tmp,
+                                                  should_cancel=lambda: True)
+            self.assertFalse(ok)
+            self.assertEqual(message, "Cancelled.")
+            launch.assert_not_called()
+
     def _discord_version(self, root, version, payload=b"stock"):
         folder = Path(root) / "Discord" / f"app-{version}"
         (folder / "resources").mkdir(parents=True)
