@@ -1,3 +1,15 @@
+Optimise hardware reads and repair concurrent installer handling after code review.
+
+- Reuse the System Information section cache for the Home hardware summary.
+  A read-only comparison retained the exact summary while reducing the startup
+  hardware sequence from 31 PowerShell queries to 11 (12.56 s to 4.36 s on
+  this development PC; not a total-launch benchmark).
+- Give each installer job a separate temporary directory. Completion or failure
+  cleans only that job's downloads and preserves other jobs and unrelated files.
+- Discard unused direct-installer console output to prevent an unread-pipe stall.
+- Add real concurrent-job, cleanup, refresh and verbose-process regressions.
+- Document the Code Quality Trio review and validation limits.
+
 Add ConvtPersonal to Install Apps; preserve the existing toolbox download URL.
 
 - Add a File tools card for the personal ConvtPersonal 0.3.0 Windows x64 build.

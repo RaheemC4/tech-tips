@@ -1,5 +1,7 @@
 import hashlib
 import json
+import os
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
@@ -11,6 +13,32 @@ import apps
 
 
 class AppInstallTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == "nt", "Windows installer process flags")
+    def test_verbose_installer_does_not_block_on_unread_output(self):
+        popen = subprocess.Popen
+        children = []
+
+        def launch(*args, **kwargs):
+            child = popen(*args, **kwargs)
+            children.append(child)
+            wait = child.wait
+            child.wait = lambda timeout=None: wait(timeout=min(timeout or 5, 5))
+            return child
+
+        app = dict(url="https://github.com/example/setup.exe",
+                   silent=["-c", "import sys; sys.stdout.write('x' * 2000000); sys.stdout.flush()"])
+        try:
+            with tempfile.TemporaryDirectory() as tmp, \
+                    patch("apps.download", return_value=sys.executable), \
+                    patch("apps.subprocess.Popen", side_effect=launch):
+                ok, message = apps.install_direct(app, tmp)
+            self.assertTrue(ok, message)
+        finally:
+            for child in children:
+                if child.poll() is None:
+                    child.kill()
+                child.wait()
+
     def test_convtpersonal_is_direct_without_winget(self):
         with patch("apps.winget_path", return_value=None):
             cat = apps.catalog()

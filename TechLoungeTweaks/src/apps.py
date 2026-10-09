@@ -458,7 +458,9 @@ def install_direct(app, dest_dir, on_progress=None, on_line=None,
     if path.lower().endswith(".msi"):
         args = ["msiexec.exe", "/i", path, "/qn", "/norestart"]
     try:
-        proc = subprocess.Popen(args, stdout=subprocess.PIPE,
+        # Direct installer output is not displayed. An unread pipe can fill
+        # and deadlock a verbose installer while wait() waits for it to exit.
+        proc = subprocess.Popen(args, stdout=subprocess.DEVNULL,
                                 stderr=subprocess.STDOUT,
                                 stdin=subprocess.DEVNULL,
                                 creationflags=CREATE_NO_WINDOW)

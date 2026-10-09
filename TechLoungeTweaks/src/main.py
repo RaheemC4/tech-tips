@@ -576,19 +576,19 @@ class Api:
                         return b
             return "Unknown"
         try:
-            mem = sysinfo.memory()
-            mb = sysinfo.mainboard()
-            win = sysinfo.windows()
+            mem = self.sysinfo_section("Memory")
+            mb = self.sysinfo_section("Mainboard")
+            win = self.sysinfo_section("Windows")
             return {
-                "CPU": first(sysinfo.cpu(), "Name"),
-                "Graphics": first(sysinfo.graphics(), "Name"),
+                "CPU": first(self.sysinfo_section("CPU"), "Name"),
+                "Graphics": first(self.sysinfo_section("Graphics"), "Name"),
                 "Memory": f'{first(mem, "Total capacity")} @ '
                           f'{first(mem, "Running at")}',
                 "Motherboard": f'{first(mb, "Manufacturer")} '
                                f'{first(mb, "Product")}',
                 "Windows": f'{first(win, "Edition")} '
                            f'(build {first(win, "Build")})',
-                "Storage": first(sysinfo.storage(), "Model"),
+                "Storage": first(self.sysinfo_section("Storage"), "Model"),
             }
         except Exception as e:
             return {"Error": str(e)}
@@ -1038,16 +1038,21 @@ if ($e -and $e.UninstallString) {
 """
 
     def _run_app_install(self, app_id, jobkey):
-        dest = os.path.join(os.environ.get("LOCALAPPDATA", tempfile.gettempdir()),
+        base = os.path.join(os.environ.get("LOCALAPPDATA", tempfile.gettempdir()),
                             "TechLoungeTweaks", "installers")
         try:
-            ok, msg = apps.install(
-                app_id, dest,
-                on_progress=lambda f: self._job_update(jobkey, throttle=0.2,
-                                                       progress=f),
-                on_line=lambda t: self._job_update(jobkey, throttle=0.25,
-                                                   line=t),
-                should_cancel=lambda: jobkey in self._dl_cancel)
+            os.makedirs(base, exist_ok=True)
+            # Each job owns its downloads; one completed install cannot delete
+            # another job's installer while it is being fetched or executed.
+            with tempfile.TemporaryDirectory(prefix="app-", dir=base,
+                                              ignore_cleanup_errors=True) as dest:
+                ok, msg = apps.install(
+                    app_id, dest,
+                    on_progress=lambda f: self._job_update(jobkey, throttle=0.2,
+                                                           progress=f),
+                    on_line=lambda t: self._job_update(jobkey, throttle=0.25,
+                                                       line=t),
+                    should_cancel=lambda: jobkey in self._dl_cancel)
         except Exception as e:
             log(f"app {app_id} FAILED\n" + traceback.format_exc())
             ok, msg = False, str(e) or "The install could not run."
@@ -1075,15 +1080,6 @@ if ($e -and $e.UninstallString) {
                          result={"ok": ok, "state": "clean" if ok else "problem",
                                  "message": msg},
                          line=msg[:160])
-        # Installers leave big files behind; keep the folder tidy.
-        try:
-            for name in os.listdir(dest):
-                p = os.path.join(dest, name)
-                if os.path.isfile(p):
-                    os.remove(p)
-        except Exception:
-            pass
-
     @traced
     def cancel_app(self, jobkey):
         self._dl_cancel.add(jobkey)

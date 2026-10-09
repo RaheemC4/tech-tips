@@ -732,3 +732,16 @@ Restart and apply posts shutdown to the native Windows UI thread after the updat
 
 Updates stage the complete replacement beside the installed folder before swapping directories. Open the regular TechLoungeTweaks folder after updating; folders named TechLoungeTweaks.previous-* are retained backups, not the current installation.
 
+### Performance and installer reliability
+
+The Home hardware summary and System Information reuse the same section cache.
+**Re-read hardware** clears it so explicit refreshes still collect new values.
+A read-only comparison on the development PC reduced the startup hardware-read
+sequence from 31 PowerShell queries to 11, with the same summary. This measures
+the hardware stage, not total application launch time.
+
+Simultaneous app installs use separate temporary download folders and clean up
+only their own files. Direct installers discard unused console output so a
+verbose installer cannot stall on a full, unread output pipe. See the
+[code review and validation notes](docs/code-review-2026-10-09.md).
+
