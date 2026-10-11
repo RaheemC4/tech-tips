@@ -49,12 +49,12 @@ class AppInstallTests(unittest.TestCase):
         self.assertEqual(apps.by_id("shiftd")["silent"], ["/S"])
         self.assertIsNone(apps.by_id("convtpersonal"))
         self.assertEqual(entry["name"], "Shiftd")
-        self.assertEqual(apps.by_id("shiftd")["size"], 394562137)
+        self.assertEqual(apps.by_id("shiftd")["size"], 394626869)
         self.assertEqual(apps.by_id("shiftd")["sha256"],
-                         "ae625f4d5bb16fb47cecc4ede4ff7cd0d240276a5c76f10415d4c3f93a3e0cb6")
+                         "e6b8aae534698f1b687184a4790c8f18956e69d27b334b4b33bc55a8fa31a1fe")
         self.assertEqual(apps.by_id("shiftd")["url"],
                          "https://github.com/RaheemC4/tech-tips/releases/download/"
-                         "shiftd-1.0.0-20261011/Shiftd-1.0.0-Setup.exe")
+                         "shiftd-1.0.0-20261011-r2/Shiftd-1.0.0-Setup.exe")
 
     def test_retired_convtpersonal_cannot_start_an_install(self):
         with patch("apps.install_direct") as install:

@@ -98,12 +98,12 @@ APPS = [
               "right-click submenu. Windows x64. Downloads about 395 MB.",
          winget=None,
          url="https://github.com/RaheemC4/tech-tips/releases/download/"
-             "shiftd-1.0.0-20261011/Shiftd-1.0.0-Setup.exe",
+             "shiftd-1.0.0-20261011-r2/Shiftd-1.0.0-Setup.exe",
          silent=["/S"],
-         sha256="ae625f4d5bb16fb47cecc4ede4ff7cd0d240276a5c76f10415d4c3f93a3e0cb6",
-         size=394562137,
+         sha256="e6b8aae534698f1b687184a4790c8f18956e69d27b334b4b33bc55a8fa31a1fe",
+         size=394626869,
          page="https://github.com/RaheemC4/tech-tips/releases/tag/"
-              "shiftd-1.0.0-20261011"),
+              "shiftd-1.0.0-20261011-r2"),
     # ------------------------------------------------------------ runtimes
     dict(id="vcredist", name="Visual C++ Redistributables (all)",
          group="Runtimes",

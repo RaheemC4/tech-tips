@@ -572,6 +572,7 @@ its exact size and SHA-256 before running it silently. Shiftd requires Windows
 10/11 x64 and installs for the current user under
 `%LOCALAPPDATA%\Programs\ShiftdStandalone`. Its runtime and conversion engines
 are included; normal conversion works offline without an account or activation.
+This is the updated 11 October build, still labelled Shiftd 1.0.0.
 Run the same installer again to upgrade or repair Shiftd. The setup is unsigned.
 
 Open **Shiftd** from the Start menu for batch conversion, compression, maximum
@@ -583,13 +584,21 @@ lossless trimming uses nearby keyframes and cannot also resize or target a file
 size. For quick conversion, right-click a supported file and choose **Shiftd >
 format**, using **Show more options** on Windows 11 if needed. The desktop stays
 closed, originals are preserved and existing outputs receive numbered names.
+For visual video trimming, right-click a video and choose **Shiftd > Trim video**.
+Preview the selected range with the timestamped seek bar, adjust its boundaries
+with the mouse or keyboard, and use undo, redo or reset as needed. Preview volume
+and mute do not change the saved audio. Save clip lets you choose a name and
+folder, shows progress and supports cancellation. Copy file or drag the saved
+clip into compatible apps; destination support varies. Originals are preserved
+unless you explicitly choose removal.
+
 Notifications are enabled on fresh installs and can be disabled in Shiftd's
 Settings; upgrades preserve that choice. Uninstall through **Windows Settings >
 Apps > Installed apps > Shiftd**.
 
 The installer is downloaded only when requested, keeping the TechLoungeTweaks
 ZIP small. The existing [TechLoungeTweaks download link](https://github.com/RaheemC4/tech-tips/releases/latest/download/TechLoungeTweaks.zip)
-is unchanged. Shiftd uses a [separate pinned release](https://github.com/RaheemC4/tech-tips/releases/tag/shiftd-1.0.0-20261011),
+is unchanged. Shiftd uses a [separate pinned release](https://github.com/RaheemC4/tech-tips/releases/tag/shiftd-1.0.0-20261011-r2),
 so future toolbox updates do not remove its installer. That release also provides
 the matching source in nine archive parts and their checksums; source is optional
 for installation. Keep all parts together and open `.001` with 7-Zip to extract.

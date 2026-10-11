@@ -1,3 +1,10 @@
+Update Shiftd to the latest 11 October 2026 build (version 1.0.0).
+
+- Pin the new installer and matching source archives to a separate revision release.
+- Refresh installer size and SHA-256 verification.
+- Document visual video trimming, preview controls, undo/redo, saving, cancellation and sharing.
+- Preserve the existing TechLoungeTweaks download URL and prior pinned installers.
+
 Replace the ConvtPersonal Apps card with Shiftd 1.0.0.
 
 - Offer the supplied Shiftd Windows x64 installer under Install Apps > File tools.
