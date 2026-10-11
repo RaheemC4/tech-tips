@@ -16,7 +16,7 @@ const DEBLOAT = require('../src/debloat_catalog.json').items.map((item, index) =
 const PAGE = require('url').pathToFileURL(require('path').resolve(__dirname, '../src/web/index.html')).href;
 
 const CAT={groups:['File tools','Chat & voice','Runtimes','Browsers','Game clients','Tuning tools'],winget:true,apps:[
- {id:'convtpersonal',name:'ConvtPersonal',group:'File tools',desc:'Offline file conversion with all six engines and an Explorer right-click submenu. Personal Windows x64 build, installed for the current user. Downloads about 351 MB.',page:'https://github.com/RaheemC4/tech-tips/releases/tag/convtpersonal-0.3.0-20261009',route:'direct',installable:true},
+ {id:'shiftd',name:'Shiftd',group:'File tools',desc:'Offline file conversion, compression, image resizing and audio/video trimming, with a desktop app and Explorer right-click submenu. Windows x64. Downloads about 395 MB.',page:'https://github.com/RaheemC4/tech-tips/releases/tag/shiftd-1.0.0-20261011',route:'direct',installable:true},
  {id:'afterburner',name:'MSI Afterburner',group:'Tuning tools',desc:'The standard GPU tuning + monitoring tool. Installed without RivaTuner (RTSS). Overclocking is done here in the real tool - this app never touches clocks itself.',page:'#',route:'winget',installable:true},
  {id:'discord',name:'Discord',group:'Chat & voice',desc:'The desktop client plus the latest OpenAsar nightly for a faster launch and snappier UI. Re-run this installer after a Discord update if it replaces OpenAsar.',page:'#',route:'winget',installable:true},
  {id:'discordptb',name:'Discord PTB',group:'Chat & voice',desc:'Public Test Build - runs alongside the normal client, gets features early.',page:'#',route:'winget',installable:true},
@@ -99,7 +99,7 @@ const TW={Performance:[['Disable GameDVR','Turns off Xbox Game Bar background re
  await p.evaluate(()=>closeModal());
  await p.evaluate(()=>show('Install Apps'));await p.waitForTimeout(1400);
  await p.screenshot({path:D+'apps.png'});
- await p.evaluate(()=>window.py_job({key:'app:chrome',kind:'app',label:'Google Chrome',state:'running',progress:0.63,line:'Downloading from the vendor…',elapsed:12,result:null}));
+ await p.evaluate(()=>window.py_job({key:'app:shiftd',kind:'app',label:'Shiftd',state:'running',progress:0.63,line:'Downloading from the vendor…',elapsed:12,result:null}));
  await p.waitForTimeout(600);await p.screenshot({path:D+'apps-installing.png'});
  
   // ---- pages that need their own stubbed bridge ----

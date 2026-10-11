@@ -92,18 +92,18 @@ def host_allowed(url):
 #   note    optional warning shown on the card
 #
 APPS = [
-    dict(id="convtpersonal", name="ConvtPersonal", group="File tools",
-         desc="Offline file conversion with all six engines and an Explorer "
-              "right-click submenu. Personal Windows x64 build, installed "
-              "for the current user. Downloads about 351 MB.",
+    dict(id="shiftd", name="Shiftd", group="File tools",
+         desc="Offline file conversion, compression, image resizing and "
+              "audio/video trimming, with a desktop app and Explorer "
+              "right-click submenu. Windows x64. Downloads about 395 MB.",
          winget=None,
          url="https://github.com/RaheemC4/tech-tips/releases/download/"
-             "convtpersonal-0.3.0-20261009/ConvtPersonal-0.3.0-Setup.exe",
+             "shiftd-1.0.0-20261011/Shiftd-1.0.0-Setup.exe",
          silent=["/S"],
-         sha256="50e6b8c846d97ad2db08a282496283d7db8b654a14268f5f85ab81596d1e6d52",
-         size=367539525,
+         sha256="ae625f4d5bb16fb47cecc4ede4ff7cd0d240276a5c76f10415d4c3f93a3e0cb6",
+         size=394562137,
          page="https://github.com/RaheemC4/tech-tips/releases/tag/"
-              "convtpersonal-0.3.0-20261009"),
+              "shiftd-1.0.0-20261011"),
     # ------------------------------------------------------------ runtimes
     dict(id="vcredist", name="Visual C++ Redistributables (all)",
          group="Runtimes",

@@ -94,7 +94,7 @@ class StartupAndInstallTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, \
                 patch.dict(os.environ, LOCALAPPDATA=tmp), \
                 patch("main.apps.install", side_effect=RuntimeError("fixture failure")):
-            api._run_app_install("convtpersonal", "app:convtpersonal")
+            api._run_app_install("shiftd", "app:shiftd")
             self.assertEqual(list((Path(tmp) / "TechLoungeTweaks/installers").iterdir()), [])
             self.assertEqual(api._job_finish.call_args.args[1], "error")
             self.assertIn("fixture failure", api._job_finish.call_args.kwargs["result"]["message"])

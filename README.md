@@ -549,7 +549,7 @@ toolbox like Ghost's, without the baggage.
 
 | Group | What's in it |
 |---|---|
-| **File tools** | ConvtPersonal 0.3.0, personal Windows x64 build with all six conversion engines and the Explorer submenu |
+| **File tools** | Shiftd 1.0.0: offline conversion, compression, image resizing and audio/video trimming, with a desktop app and Explorer submenu |
 | **Chat & voice** | Discord with the latest OpenAsar nightly, Discord PTB |
 | **Tuning tools** | MSI Afterburner (GPU overclocking/monitoring — installed without RivaTuner/RTSS; overclocking done in the real tool, never by this app) |
 | **Runtimes** | Visual C++ Redistributables (2005–2022, x86 + x64), DirectX web installer, .NET Desktop Runtime 8 |
@@ -564,23 +564,39 @@ available and the vendor page is the way in.
 
 Downloads are checked against an allowlist of vendor domains before anything
 is fetched, so a link that is not on the vendor's own domain is refused.
-Installers are downloaded on demand and run silently. Vendor packages remain unmodified; ConvtPersonal is the separately packaged personal source build described below.
+Installers are downloaded on demand and run silently. Vendor packages remain unmodified; Shiftd is the separate application described below.
 
-Click **Install** on the **ConvtPersonal** card to download the approximately
-351 MB setup from this repository's pinned release. The app checks its exact
-size and SHA-256 before running it silently. It installs for the current Windows
-user, normally under `%LOCALAPPDATA%\Programs\ConvtPersonal`, or repairs an
-existing installation in its registered folder. No licence key or separate
-engine downloads are needed. Image, SVG, HEIC, audio/video, PDF and document
-conversion engines are included. On Windows 11, right-click a file, choose
-**Show more options > Convt > format**. Uninstall through **Windows Settings >
-Apps > Installed apps > Convt Personal**. The setup is unsigned.
+Click **Install** on the **Shiftd** card to download the approximately 395 MB
+(376 MiB) Shiftd 1.0.0 setup from this repository's pinned release. The app checks
+its exact size and SHA-256 before running it silently. Shiftd requires Windows
+10/11 x64 and installs for the current user under
+`%LOCALAPPDATA%\Programs\ShiftdStandalone`. Its runtime and conversion engines
+are included; normal conversion works offline without an account or activation.
+Run the same installer again to upgrade or repair Shiftd. The setup is unsigned.
+
+Open **Shiftd** from the Start menu for batch conversion, compression, maximum
+output-size targets, image resizing and audio/video trimming. Image resizing
+keeps proportions and never enlarges smaller images. Size targets apply per
+output file; impossible targets fail without publishing oversized output.
+Animated GIF, document and PDF output size targets are unsupported. Fast
+lossless trimming uses nearby keyframes and cannot also resize or target a file
+size. For quick conversion, right-click a supported file and choose **Shiftd >
+format**, using **Show more options** on Windows 11 if needed. The desktop stays
+closed, originals are preserved and existing outputs receive numbered names.
+Notifications are enabled on fresh installs and can be disabled in Shiftd's
+Settings; upgrades preserve that choice. Uninstall through **Windows Settings >
+Apps > Installed apps > Shiftd**.
 
 The installer is downloaded only when requested, keeping the TechLoungeTweaks
 ZIP small. The existing [TechLoungeTweaks download link](https://github.com/RaheemC4/tech-tips/releases/latest/download/TechLoungeTweaks.zip)
-is unchanged. ConvtPersonal uses a separate pinned release, so future toolbox
-updates do not remove its installer. Its setup includes source, the personal
-patch and third-party licences; it is based on [convt](https://github.com/opencoredev/convt).
+is unchanged. Shiftd uses a [separate pinned release](https://github.com/RaheemC4/tech-tips/releases/tag/shiftd-1.0.0-20261011),
+so future toolbox updates do not remove its installer. That release also provides
+the matching source in nine archive parts and their checksums; source is optional
+for installation. Keep all parts together and open `.001` with 7-Zip to extract.
+Included dependencies retain their licence notices.
+
+Shiftd replaces the ConvtPersonal card in this toolbox. Updating TechLoungeTweaks
+does not automatically uninstall an existing ConvtPersonal installation.
 
 The **Discord** card also installs the current unmodified OpenAsar nightly from
 its official GitHub release. It finds the highest numeric `app-*` version under

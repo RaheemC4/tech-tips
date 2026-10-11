@@ -1,3 +1,16 @@
+Replace the ConvtPersonal Apps card with Shiftd 1.0.0.
+
+- Offer the supplied Shiftd Windows x64 installer under Install Apps > File tools.
+- Download setup from a separate pinned release, verify its exact size and
+  SHA-256, and run its per-user silent installer. Keep the matching source
+  archives available alongside setup, outside the toolbox ZIP.
+- Describe desktop conversion, compression, image resizing, media trimming,
+  Explorer conversion, notifications, repair and uninstall in the README.
+- Regenerate screenshots, including visible Shiftd download progress, and
+  update regression coverage to reject the retired ConvtPersonal card.
+- Preserve releases/latest/download/TechLoungeTweaks.zip and the existing updater.
+- Existing ConvtPersonal installations are not automatically uninstalled.
+
 Optimise hardware reads and repair concurrent installer handling after code review.
 
 - Reuse the System Information section cache for the Home hardware summary.

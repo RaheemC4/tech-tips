@@ -39,18 +39,32 @@ class AppInstallTests(unittest.TestCase):
                     child.kill()
                 child.wait()
 
-    def test_convtpersonal_is_direct_without_winget(self):
+    def test_shiftd_is_direct_without_winget(self):
         with patch("apps.winget_path", return_value=None):
             cat = apps.catalog()
-        entry = next(a for a in cat["apps"] if a["id"] == "convtpersonal")
+        entry = next(a for a in cat["apps"] if a["id"] == "shiftd")
         self.assertEqual(entry["route"], "direct")
         self.assertTrue(entry["installable"])
         self.assertIn("File tools", cat["groups"])
-        self.assertEqual(apps.by_id("convtpersonal")["silent"], ["/S"])
+        self.assertEqual(apps.by_id("shiftd")["silent"], ["/S"])
+        self.assertIsNone(apps.by_id("convtpersonal"))
+        self.assertEqual(entry["name"], "Shiftd")
+        self.assertEqual(apps.by_id("shiftd")["size"], 394562137)
+        self.assertEqual(apps.by_id("shiftd")["sha256"],
+                         "ae625f4d5bb16fb47cecc4ede4ff7cd0d240276a5c76f10415d4c3f93a3e0cb6")
+        self.assertEqual(apps.by_id("shiftd")["url"],
+                         "https://github.com/RaheemC4/tech-tips/releases/download/"
+                         "shiftd-1.0.0-20261011/Shiftd-1.0.0-Setup.exe")
+
+    def test_retired_convtpersonal_cannot_start_an_install(self):
+        with patch("apps.install_direct") as install:
+            self.assertEqual(apps.install("convtpersonal", "unused"),
+                             (False, "Unknown app."))
+        install.assert_not_called()
 
     def test_verified_installer_runs_only_with_matching_bytes(self):
         payload = b"verified installer fixture"
-        app = dict(apps.by_id("convtpersonal"), size=len(payload),
+        app = dict(apps.by_id("shiftd"), size=len(payload),
                    sha256=hashlib.sha256(payload).hexdigest())
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "setup.exe"
@@ -75,7 +89,7 @@ class AppInstallTests(unittest.TestCase):
             path.write_bytes(b"fixture")
             with patch("apps.download", return_value=str(path)), \
                     patch("apps.subprocess.Popen") as launch:
-                ok, message = apps.install_direct(apps.by_id("convtpersonal"), tmp,
+                ok, message = apps.install_direct(apps.by_id("shiftd"), tmp,
                                                   should_cancel=lambda: True)
             self.assertFalse(ok)
             self.assertEqual(message, "Cancelled.")
