@@ -649,3 +649,46 @@ body.dragging #spot { transition: none !important; }
 .removal-log .btn { margin-top: 10px; }
 .removal-log summary:focus-visible { outline: 1px solid var(--accent); border-radius: 4px; }
 #toolGrip i { display: none; }
+
+/* Compact category catalogue, retaining live jobs when switching categories. */
+.apps-categories { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }
+.apps-categories .btn { padding:8px 12px; }
+.apps-categories [aria-pressed="true"] { color:var(--text); background:var(--glow); border-color:var(--accent); }
+.app-group[hidden], #storeCard[hidden] { display:none; }
+.apps-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.appcard { padding:12px 14px; }
+.app-heading { display:flex; align-items:flex-start; gap:10px; }
+.app-icon { width:32px; height:32px; flex:0 0 32px; }
+span.app-icon { display:grid; place-items:center; border-radius:9px; background:var(--glow); color:var(--accent-3); font-size:11px; font-weight:750; }
+.app-icon-shiftd { font-size:21px!important; }
+.app-description { color:var(--muted); font-size:11.5px; line-height:1.4; margin-top:4px; }
+.app-actions { margin-top:10px; gap:8px; }
+.app-actions .btn { padding:6px 10px; font-size:11px; }
+.app-status { color:var(--muted); font-size:11.5px; }
+.app-status:not(:empty), .app-result:not(:empty) { margin-top:8px; }
+.apps-note { margin-top:12px; }
+.apps-note p { font-size:10.5px!important; line-height:1.4!important; }
+@media (max-height:720px) {
+ .appcard { padding:9px 12px; }
+ .apps-categories { margin-bottom:10px; }
+ .app-actions { margin-top:7px; }
+ .app-icon { width:26px; height:26px; flex-basis:26px; }
+ #pagehead:has(+ #scroll #appsBody) { padding-top:12px; padding-bottom:8px; }
+ #scroll:has(#appsBody) { padding-bottom:12px; }
+ .app-heading b { font-size:12px!important; }
+ .app-description { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:10px; }
+ .appcard .badge { font-size:8px; }
+ .app-heading { gap:7px; }
+ .apps-grid { gap:7px; }
+ .apps-categories { gap:4px; }
+ .apps-categories .btn { padding:6px 8px; font-size:11px; }
+ .apps-note p { font-size:9px!important; }
+ .apps-winget-warning { font-size:10px; margin-bottom:8px; }
+}
+
+.apps-winget-warning { color:var(--warn); font-size:11px; margin-bottom:10px; line-height:1.4; }
+.apps-note summary { color:var(--muted); cursor:pointer; font-size:11px; }
+
+/* Inline SVGs work offline in both the WebView and local-file previews. */
+span.app-brand-icon { border-radius:0; background:none; color:var(--accent-3); }
+.app-brand-icon svg { display:block; width:100%; height:100%; fill:currentColor; }

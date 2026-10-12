@@ -263,6 +263,7 @@ def prepare():
     node, env = browser_env()
     run([sys.executable, '-m', 'unittest', 'discover', '-s', APP / 'tests', '-v'])
     run([sys.executable, '-m', 'unittest', 'discover', '-s', ROOT / 'tools/tests', '-v'])
+    run([node, '--check', APP / 'src/web/app-icons.js'])
     run([node, '--check', APP / 'src/web/app.js'])
     run([node, '--check', APP / 'src/web/updates.js'])
     run([node, APP / 'tools/test-updates-ui.js'], env=env)

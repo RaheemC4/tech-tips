@@ -1166,7 +1166,7 @@ async function refreshVirt() {
     </button>`;
 
   H('virtBody').innerHTML = `
-    ${!st.vt_firmware ? `<div class="card" style="margin-bottom:14px;
+    ${!st.vt_firmware ? `<div class="card apps-winget-warning" style="margin-bottom:14px;
       border-color:rgba(255,93,108,.35);background:rgba(255,93,108,.1)">
       <b style="color:var(--bad);font-size:13.5px">Virtualisation is turned off in your BIOS</b>
       <p style="color:var(--muted);font-size:12px;line-height:1.65;margin-top:7px">
@@ -1264,6 +1264,13 @@ function confirmVirt(mode) {
    (Microsoft keeps those URLs and switches current); otherwise the app falls
    back to a direct download from the vendor's own domain. */
 let APPCACHE = null;
+let APP_GROUP = 'File tools';
+function appIcon(id) {
+  const labels = {shiftd: 'S', vcredist: 'C++', directx: 'DX', dotnet8: '.NET'};
+  return labels[id]
+    ? `<span class="app-icon app-icon-${id}" aria-hidden="true">${labels[id]}</span>`
+    : `<span class="app-icon app-brand-icon" aria-hidden="true">${APP_BRAND_ICONS[id] || icon('box')}</span>`;
+}
 
 async function pageApps() {
   pageShell('Install Apps', {crumb: 'Tools › Install Apps',
@@ -1276,13 +1283,14 @@ async function pageApps() {
   const groups = cat.groups.map(g => {
     const items = cat.apps.filter(a => a.group === g);
     if (!items.length) return '';
-    return `<div class="section">${g}</div>
-      <div class="grid g2">${items.map(a => `
+    return `<section class="app-group" data-app-group="${g}" ${g === APP_GROUP ? "" : "hidden"} aria-label="${g}">
+      <div class="apps-grid">${items.map(a => `
         <div class="card appcard" data-app="${a.id}">
-          <div class="row" style="align-items:flex-start;gap:12px">
-            <div style="flex:1">
+          <div class="app-heading">
+            ${appIcon(a.id)}
+            <div style="flex:1;min-width:0">
               <b style="font-size:14.5px">${a.name}</b>
-              <p style="color:var(--muted);font-size:11.5px;line-height:1.55;margin-top:5px">${a.desc}</p>
+              <p class="app-description" title="${a.desc.replaceAll('"', '&quot;')}">${a.desc}</p>
             </div>
             <span class="badge" title="${a.route === 'winget'
               ? 'Installed through the Windows Package Manager'
@@ -1290,34 +1298,41 @@ async function pageApps() {
                                       : 'No automatic route - opens the vendor page')}"
               >${a.route === 'winget' ? 'WINGET' : (a.route === 'direct' ? 'DIRECT' : 'MANUAL')}</span>
           </div>
-          <div id="appline_${a.id}" style="color:var(--muted);font-size:11.5px;margin-top:9px"></div>
+          <div id="appline_${a.id}" class="app-status"></div>
           <div class="jobbar" id="appbar_${a.id}" style="display:none"><i></i></div>
-          <div id="appres_${a.id}" style="margin-top:8px"></div>
-          <div class="row" style="margin-top:11px;gap:9px">
+          <div id="appres_${a.id}" class="app-result"></div>
+          <div class="row app-actions">
             ${a.installable ? `<button class="btn" data-inst="${a.id}">Install</button>` : ''}
             <button class="btn ghost" data-cancelapp="${a.id}" style="display:none">Cancel</button>
             <button class="btn ghost" onclick="api('open_url','${a.page}')">Vendor page</button>
           </div>
-        </div>`).join('')}</div>`;
+        </div>`).join('')}</div></section>`;
   }).join('');
 
   H('appsBody').innerHTML = `
-    ${cat.winget ? '' : `<div class="card" style="margin-bottom:14px;
-        border-color:rgba(255,190,61,.3);background:rgba(255,190,61,.08)">
-        <b style="color:var(--warn);font-size:13px">Windows Package Manager is missing</b>
-        <p style="color:var(--muted);font-size:12px;line-height:1.6;margin-top:6px">
-          Debloated Windows images usually strip it out. Anything marked
-          <b>DIRECT</b> still installs normally, straight from the vendor.
-          Entries marked <b>MANUAL</b> need their vendor page.</p></div>`}
+    ${cat.winget ? '' : `<p class="apps-winget-warning">Windows Package Manager is missing. DIRECT apps still install; use the vendor page for MANUAL entries.</p>`}
+    <div class="apps-categories" role="group" aria-label="App categories">
+      ${cat.groups.map(g => `<button class="btn ghost" data-app-category="${g}" aria-pressed="${g === APP_GROUP}">${g}</button>`).join('')}
+    </div>
     ${storeCardHtml()}
     ${groups}
-    <div class="card" style="margin-top:16px"><p style="color:var(--muted);font-size:11.5px;line-height:1.65">
+    <details class="apps-note"><summary>Installer sources and Discord setup</summary><p style="color:var(--muted);font-size:11.5px;line-height:1.65">
       Installers come from their vendor or Windows Package Manager and use
       official silent switches. The Discord card also downloads the unmodified
       OpenAsar nightly from its official GitHub release and verifies GitHub's
       SHA-256 digest before replacing Discord's app.asar. Nothing is bundled or
-      repacked.</p></div>`;
+      repacked.</p></details>`;
 
+  document.querySelectorAll('[data-app-category]').forEach(button => {
+    button.onclick = () => {
+      APP_GROUP = button.dataset.appCategory;
+      document.querySelectorAll('[data-app-category]').forEach(b => b.setAttribute('aria-pressed', b === button));
+      document.querySelectorAll('[data-app-group]').forEach(panel => panel.hidden = panel.dataset.appGroup !== APP_GROUP);
+      H('storeCard').hidden = APP_GROUP !== 'File tools';
+      H('scroll').scrollTop = 0;
+    };
+  });
+  H('storeCard').hidden = APP_GROUP !== 'File tools';
   wireApps(cat);
   wireStoreCard();
   restoreJobs();

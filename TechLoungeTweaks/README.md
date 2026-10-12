@@ -544,6 +544,17 @@ around that one.
 
 ![Install Apps](docs/apps.png)
 
+Choose a category above the compact app cards. Each category fits the standard
+window without scrolling, with local monochrome app icons available offline.
+Icons follow all six colour themes immediately, including Shiftd and runtime
+tiles. Microsoft
+Store and Xbox controls appear under File tools. Running installations retain
+progress and cancellation when switching categories.
+
+![Game clients](docs/apps-games.png)
+
+![Game clients with the purple theme](docs/apps-games-purple.png)
+
 File conversion tools, runtimes, browsers and game clients, installed silently — the useful half of a
 toolbox like Ghost's, without the baggage.
 

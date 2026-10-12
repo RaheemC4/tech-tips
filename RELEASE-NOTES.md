@@ -1,3 +1,15 @@
+Make Install Apps icons consistently monochrome across all six themes.
+
+- Use inline SVG shapes with the selected theme accent for every brand.
+- Remove fixed Shiftd colours and replaced full-colour PNG assets.
+- Verify live theme changes across every category and refresh screenshots.
+
+Clean up Install Apps with compact category navigation and offline app icons.
+
+- Keep each catalogue category on one screen at the supported window sizes.
+- Preserve installation jobs across category changes and keep Store/Xbox in File tools.
+- Refresh screenshots and check category layouts with and without winget.
+
 Update Shiftd to the latest 11 October 2026 build (version 1.0.0).
 
 - Pin the new installer and matching source archives to a separate revision release.

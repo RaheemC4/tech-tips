@@ -1,0 +1,5 @@
+Monochrome brand SVGs: https://github.com/simple-icons/simple-icons (CC0-1.0).
+Browsers, Steam, Epic and Discord: simple-icons 14; Edge: 11.
+Other SVGs downloaded 2026-10-12 from simple-icons latest.
+Brand marks belong to their respective owners.
+Shiftd and runtime tiles are rendered locally using text.

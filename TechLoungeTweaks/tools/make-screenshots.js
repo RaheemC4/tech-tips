@@ -99,8 +99,63 @@ const TW={Performance:[['Disable GameDVR','Turns off Xbox Game Bar background re
  await p.evaluate(()=>closeModal());
  await p.evaluate(()=>show('Install Apps'));await p.waitForTimeout(1400);
  await p.screenshot({path:D+'apps.png'});
+ for (const size of [{width:1380,height:900},{width:940,height:640}]) {
+  await p.setViewportSize(size);
+  for (const winget of [true,false]) {
+   await p.evaluate(async value => { APPCACHE = {...window.__CAT,winget:value}; await pageApps(); }, winget);
+   for (const group of CAT.groups) {
+    await p.locator('[data-app-category]').filter({hasText:group}).click();
+    const layout = await p.evaluate(() => {
+     const el=document.getElementById('scroll');
+     return {overflow:el.scrollHeight-el.clientHeight, broken:[...document.querySelectorAll('.app-group:not([hidden]) img')].filter(i=>!i.complete || !i.naturalWidth).map(i=>i.src)};
+    });
+    if (layout.overflow > 1 || layout.broken.length) throw new Error(JSON.stringify({size,winget,group,layout}));
+   }
+  }
+ }
+ await p.setViewportSize({width:1440,height:1050});
+ await p.evaluate(async()=>{APP_GROUP='Game clients';APPCACHE=window.__CAT;await pageApps();});
+ await p.screenshot({path:D+'apps-games.png'});
+ for (const theme of ['blue','blurple','purple','red','green','cyan']) {
+  await p.evaluate(t=>applyTheme(t),theme);
+  for (const group of CAT.groups) {
+   await p.locator('[data-app-category]').filter({hasText:group}).click();
+   const failures = await p.evaluate(async()=> {
+    const root=getComputedStyle(document.documentElement);
+    const probe=document.createElement('span');document.body.append(probe);
+    probe.style.color=root.getPropertyValue('--accent-3');const brandColour=getComputedStyle(probe).color;
+    probe.style.color=root.getPropertyValue('--accent-3');const tileColour=getComputedStyle(probe).color;probe.remove();
+    const errors=[];
+    for(const icon of document.querySelectorAll('.app-icon')) {
+     const style=getComputedStyle(icon);
+     if(icon.classList.contains('app-brand-icon')) {
+      const svg=icon.querySelector('svg');
+      if(style.color!==brandColour || !svg || getComputedStyle(svg).fill!==brandColour) errors.push('Wrong brand colour or missing shape');
+      if(icon.closest('.app-group:not([hidden])')) {
+       const bounds=svg && svg.getBBox();
+       if(!bounds || bounds.width<=0 || bounds.height<=0) errors.push('Empty visible icon');
+      }
+     } else if(style.color!==tileColour) errors.push('Wrong tile colour');
+    }
+    return errors;
+   });
+   if(failures.length) throw new Error(JSON.stringify({theme,group,failures}));
+  }
+  await p.locator('[data-app-category="Game clients"]').click();
+  if (theme==='purple') await p.screenshot({path:D+'apps-games-purple.png'});
+ }
+ await p.evaluate(()=>applyTheme('blue'));
+ console.log('PASS: all app icon assets and live colours across six themes and every category.');
+
+ await p.evaluate(async()=>{APP_GROUP='File tools';await pageApps();});
  await p.evaluate(()=>window.py_job({key:'app:shiftd',kind:'app',label:'Shiftd',state:'running',progress:0.63,line:'Downloading from the vendor…',elapsed:12,result:null}));
  await p.waitForTimeout(600);await p.screenshot({path:D+'apps-installing.png'});
+ await p.locator('[data-app-category="Browsers"]').click();
+ await p.locator('[data-app-category="File tools"]').click();
+ if (!await p.locator('[data-cancelapp="shiftd"]').isVisible()) throw new Error('Running job lost on category change');
+ await p.evaluate(()=>window.py_job({key:'app:shiftd',kind:'app',state:'done',result:{ok:true,message:'Install complete'}}));
+ if (!await p.locator('#appres_shiftd').textContent().then(t=>t.includes('Install complete'))) throw new Error('Completion missing');
+
  
   // ---- pages that need their own stubbed bridge ----
   await boot();
