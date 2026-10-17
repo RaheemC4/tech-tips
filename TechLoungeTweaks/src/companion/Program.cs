@@ -36,7 +36,7 @@ static class Program {
     public static void Startup(bool enabled) {
         dynamic scheduler=Activator.CreateInstance(Type.GetTypeFromProgID("Schedule.Service")); scheduler.Connect();
         dynamic folder=scheduler.GetFolder("\\");
-        if(!enabled) {try{folder.DeleteTask(TaskName,0);}catch(System.Runtime.InteropServices.COMException){} Save("Startup","0");return;}
+        if(!enabled) {try{folder.DeleteTask(TaskName,0);}catch(FileNotFoundException){}catch(System.Runtime.InteropServices.COMException ex){if(ex.HResult!=unchecked((int)0x80070002))throw;} Save("Startup","0");return;}
         dynamic task=scheduler.NewTask(0);
         task.RegistrationInfo.Description="Tech Lounge tray companion. Starts three minutes after sign-in.";
         task.Principal.UserId=Sid; task.Principal.LogonType=3; task.Principal.RunLevel=0;

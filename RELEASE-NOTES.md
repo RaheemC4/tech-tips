@@ -1,5 +1,7 @@
 Installed edition and native tray companion.
 
+- Allow uninstalling or disabling startup when the scheduled startup task has already been removed.
+
 - Replace the portable ZIP contents with an offline per-user setup EXE, retaining the same public ZIP URL.
 - Add a native theme-matched quick-actions popup, on-demand backend workers and results retained across popup navigation.
 - Add delayed sign-in startup, quiet idle-only installer updates and Windows uninstall registration.
