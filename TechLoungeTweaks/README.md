@@ -99,6 +99,21 @@ preset, and individual pages explain the scope and undo options for their change
 2. Setup installs for your Windows account and adds a Start menu shortcut and an uninstaller in Windows Settings.
 3. Open **Tech Lounge Tweaks** from Start, or click its tray icon for quick actions.
 
+Setup now has a native frosted-style interface matching the saved app theme.
+It shows real stages for preparation, app files, bundled tools, tray setup and
+verification. Progress follows extracted bytes, with short button reactions and
+smooth minimise/close transitions. Windows reduced-motion preferences disable
+these animations. There is no browser runtime, animated wallpaper or extra download.
+New installations enable delayed tray startup by default; existing disabled
+startup preferences are preserved. Change this later in app settings.
+Cancellation stops before the new version becomes current. Once setup reaches
+its final registration step it finishes that step instead of interrupting it.
+Automatic app updates use the same installer with the entire interface bypassed.
+
+![Native installer](docs/installer.png)
+
+![Real installation progress](docs/installer-progress.jpg)
+
 The existing download URL is unchanged. The ZIP now contains a setup program,
 not a portable app folder. Existing portable users run setup once to migrate;
 the old portable copy can be kept until the installed version is verified.

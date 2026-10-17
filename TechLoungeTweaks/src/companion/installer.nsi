@@ -20,12 +20,32 @@ ShowInstDetails nevershow
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "English"
 Var UpdateMode
+Var StatusPath
+Var CanCancel
+Function ReportProgress
+  Pop $R0
+  StrCmp $StatusPath "" report_done
+  FileOpen $R1 "$StatusPath" w
+  FileWrite $R1 $R0
+  FileClose $R1
+  report_done:
+FunctionEnd
+Function CheckCancellation
+  StrCmp $StatusPath "" cancel_done
+  StrCmp $CanCancel "0" cancel_done
+  IfFileExists "$StatusPath.cancel" 0 cancel_done
+  SetErrorLevel 1223
+  Abort
+  cancel_done:
+FunctionEnd
 Function .onInit
   ${IfNot} ${RunningX64}
     MessageBox MB_ICONSTOP "Tech Lounge Tweaks requires 64-bit Windows."
     Abort
   ${EndIf}
   SetShellVarContext current
+  ReadEnvStr $StatusPath "TLT_SETUP_STATUS"
+  StrCpy $CanCancel "1"
   ${GetParameters} $0
   ClearErrors
   ${GetOptions} $0 "/UPDATE" $1
@@ -34,6 +54,9 @@ Function .onInit
   ${EndIf}
 FunctionEnd
 Section "Install"
+  Push "0|5"
+  Call ReportProgress
+  Call CheckCancellation
   ${If} $UpdateMode != "1"
     IfFileExists "$INSTDIR\TechLounge.exe" 0 no_existing_install
     ExecWait '"$INSTDIR\TechLounge.exe" --prepare-install' $0
@@ -47,11 +70,15 @@ Section "Install"
   SetOutPath "$INSTDIR\versions\${VERSION}"
   SetOverwrite ifdiff
   ClearErrors
-  File /r "${PAYLOAD}\*.*"
+  !include "${FILELIST}"
   ${If} ${Errors}
     SetErrorLevel 1
     Abort "Could not install the app. Close Tech Lounge Tweaks and retry."
   ${EndIf}
+  Call CheckCancellation
+  StrCpy $CanCancel "0"
+  Push "3|90"
+  Call ReportProgress
   SetOutPath "$INSTDIR"
   File "${PAYLOAD}\TechLounge.exe"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
@@ -79,13 +106,22 @@ Section "Install"
   WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\TechLoungeTweaks" "NoModify" 1
   WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\TechLoungeTweaks" "NoRepair" 1
   CreateShortcut "$SMPROGRAMS\Tech Lounge Tweaks.lnk" "$INSTDIR\TechLounge.exe"
+  Push "4|95"
+  Call ReportProgress
   ExecWait '"$INSTDIR\TechLounge.exe" --install' $0
   ${If} $0 != 0
     DetailPrint "Installed. Windows could not register delayed startup. Enable Open on startup in companion settings."
+    StrCmp $StatusPath "" no_warning_file
+    FileOpen $R1 "$StatusPath.warning" w
+    FileWrite $R1 "Windows could not register delayed startup. Enable Open on startup in app settings."
+    FileClose $R1
+    no_warning_file:
   ${EndIf}
   ${If} $UpdateMode != "1"
     Exec '"$INSTDIR\TechLounge.exe" --tray'
   ${EndIf}
+  Push "4|98"
+  Call ReportProgress
 SectionEnd
 Section "Uninstall"
   SetShellVarContext current

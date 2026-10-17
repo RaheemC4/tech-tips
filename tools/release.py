@@ -305,7 +305,7 @@ def prepare(background_only=False):
     copy_resources(built)
     sys.path.insert(0, str(APP / 'tools'))
     from build_companion import build as build_companion
-    from build_installer import build as build_installer
+    from build_installer import build as build_installer, check as check_installer
     build_companion(built)
     check = build_companion(built, checks=True)
     report = APP / 'src/build/companion-check.txt'
@@ -318,10 +318,11 @@ def prepare(background_only=False):
         print('DEFERRED: native screenshot refresh; retaining the previously captured companion image.', flush=True)
     else:
         run([built / 'TechLounge.exe', '--preview', APP / 'docs/companion.png'])
+    setup = build_installer(built, APP / 'TechLoungeTweaks-Setup.exe')
+    check_installer(setup, None if background_only else APP / 'docs/installer.png')
     for relative in re.findall(r'!\[[^\]]*\]\((docs/[^)]+)\)', readme.read_text(encoding='utf-8')):
         if not (APP / relative).is_file():
             raise RuntimeError(f'README screenshot missing: {relative}')
-    setup = build_installer(built, APP / 'TechLoungeTweaks-Setup.exe')
     temporary = ARCHIVE.with_suffix('.zip.tmp')
     identity = json.loads((APP / 'src/build-info.json').read_text())
     with zipfile.ZipFile(temporary, 'w', zipfile.ZIP_STORED) as archive:

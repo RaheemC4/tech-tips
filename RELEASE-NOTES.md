@@ -1,5 +1,10 @@
 Installed edition and native tray companion.
 
+- Replace the visible setup wizard with a native frosted interface, theme matching, real stage text and animated extraction progress.
+- Add smooth button feedback and minimise/close transitions, respecting reduced motion, without a browser runtime.
+- Preserve silent automatic app updates and the existing download link. Verify installed launcher hashes before reporting success.
+- Support cancellation before version commit and default delayed startup without an installer checkbox.
+
 - Allow uninstalling or disabling startup when the scheduled startup task has already been removed.
 
 - Replace the portable ZIP contents with an offline per-user setup EXE, retaining the same public ZIP URL.
