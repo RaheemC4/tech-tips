@@ -296,7 +296,9 @@ class WindowLink:
                         x, y = owner[0]+dx, owner[1]+dy
                     # NOSIZE | NOZORDER | NOACTIVATE. No repositioning of tool.
                     u.SetWindowPos(self.owner, None, x, y, 0, 0, 0x0015)
-                self.owner_rect, self.tool_rect = self.rect(self.owner), self.rect(self.tool)
+                # A further tool drag can arrive while SetWindowPos moves the
+                # owner. Cache only the tool position we actually propagated.
+                self.owner_rect, self.tool_rect = self.rect(self.owner), tool
         finally:
             self.updating = False
 

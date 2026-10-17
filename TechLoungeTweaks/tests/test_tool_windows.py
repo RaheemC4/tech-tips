@@ -54,6 +54,20 @@ class MovementTests(unittest.TestCase):
             self.assertEqual(u.bounds[2][0]-u.bounds[1][0],28)
             self.assertEqual(u.bounds[2][1]-u.bounds[1][1],90)
         self.assertEqual(u.writes,[1]*100)
+    def test_next_drag_arriving_during_host_move_is_not_consumed(self):
+        u=Native();link=WindowLink(u,1,2);link.dragging=2
+        original=u.SetWindowPos
+        def move_and_deliver_next(hwnd,*args):
+            original(hwnd,*args)
+            if hwnd==1: u.move(2,13,7)
+        u.move(2,13,7)
+        with patch.object(u,'SetWindowPos',side_effect=move_and_deliver_next):
+            link.changed(2)
+        link.changed(2)
+        self.assertEqual(u.bounds[1],(126,114,1326,914))
+        self.assertEqual(u.bounds[2],(154,204,1298,886))
+        self.assertEqual(u.writes,[1,1])
+
     def test_host_drags_move_tool_without_feedback(self):
         u=Native();link=WindowLink(u,1,2)
         for _ in range(100):

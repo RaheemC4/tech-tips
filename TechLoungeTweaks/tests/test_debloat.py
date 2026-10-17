@@ -52,7 +52,7 @@ class DebloatTests(unittest.TestCase):
 
     def test_recommended_backend_only_touches_allowlist(self):
         api = main.Api.__new__(main.Api)
-        tweaks = {key: Mock() for key in ['bing_search','ad_id','gamedvr','game_mode','hags','mitigations','context_menu','lockscreen']}
+        tweaks = {key: Mock(error=None, check=Mock(return_value=True)) for key in ['bing_search','ad_id','gamedvr','game_mode','hags','mitigations','context_menu','lockscreen']}
         api._tweaks = lambda: tweaks
         api._applied = set()
         result = main.Api.bulk_tweaks.__wrapped__(api, 'recommended')

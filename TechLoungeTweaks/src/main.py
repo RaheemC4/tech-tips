@@ -28,6 +28,7 @@ import nettest
 import sysinfo
 import virt
 import debloat
+import tweak_undo
 import defender_remover
 from updates import UpdateManager, open_mouse
 from tool_windows import FloatingTools
@@ -115,7 +116,6 @@ class Api:
         self._locked = set()
         self._applied = set()
         self._cache = {}
-        self._pending = {}          # user changes made during a scan
         self._cachelock = threading.Lock()
         self._nv_checked = 0.0      # when the NVIDIA state was last verified
         self._nv_scanning = False
@@ -126,7 +126,6 @@ class Api:
         # come back to find the job still running with its live progress.
         self._jobs = {}             # key -> job dict
         self._jobslock = threading.Lock()
-        self._snapshot = None       # applied-state of each tweak at first open
         self._dl_cancel = set()     # driver-download job keys asked to cancel
 
     # NOTE: deliberately a private method, NOT a @property.
@@ -256,12 +255,16 @@ class Api:
             "category": t.category, "warning": t.warning,
             "icon": ICON_FOR.get(t.category, "cpu"),
             "restart": t.needs_restart,
-            "applied": t.key in getattr(self, "_applied", set()),
+            "applied": None if t.error else t.key in getattr(self, "_applied", set()),
             "locked": False,
         }
 
     @traced
     def scan(self):
+        with tweak_undo.LOCK:
+            return self._scan_locked()
+
+    def _scan_locked(self):
         """Run every detection check in parallel.
 
         Serially this took ~15 s - most checks shell out to PowerShell, and
@@ -282,10 +285,6 @@ class Api:
                 if ok:
                     applied.add(key)
 
-        # A toggle the user flipped while this scan was running wins - the
-        # scan started before their change and would otherwise undo it.
-        for key, want in list(self._pending.items()):
-            applied.add(key) if want else applied.discard(key)
         self._applied = applied
         self._locked = set()
         return [self._payload(t) for t in self._tweaks().values()]
@@ -432,10 +431,6 @@ class Api:
             tweaks = self.scan()
             cats = [c for c in CATEGORY_ORDER
                     if any(t["category"] == c for t in tweaks)]
-            # Snapshot how the machine was when the app opened - this is what
-            # "Revert all" puts things back to. Captured once.
-            if self._snapshot is None:
-                self._snapshot = {t["key"]: bool(t["applied"]) for t in tweaks}
             self._emit("scanned", {"tweaks": tweaks, "categories": cats})
         except Exception:
             log("background scan FAILED\n" + traceback.format_exc())
@@ -459,43 +454,52 @@ class Api:
         except Exception:
             log("nv warm FAILED\n" + traceback.format_exc())
 
+    @staticmethod
+    def _read_tweak(t):
+        try:
+            value = bool(t.check())
+            return None if getattr(t, 'error', None) else value
+        except Exception:
+            return None
+
     @traced
     def toggle(self, key, want):
+        if type(want) is not bool:
+            return {'ok': False, 'message': 'Choose on or off.'}
         t = self._tweaks().get(key)
         if not t:
-            return {"ok": False, "message": "Unknown tweak."}
-        self._pending[key] = want
-        try:
-            t.apply() if want else t.revert()
-        except Exception as e:
-            self._pending.pop(key, None)
-            return {"ok": False, "message": str(e)}
+            return {'ok': False, 'message': 'Unknown tweak.'}
+        with tweak_undo.LOCK:
+            error = None
+            try:
+                t.apply() if want else t.revert()
+            except Exception as exc:
+                error = str(exc)
+            verified = self._read_tweak(t)
+            if verified is True:
+                self._applied.add(key)
+            else:
+                self._applied.discard(key)
+            if error or verified is None or verified != want:
+                return {'ok': False, 'applied': verified, 'message': error or
+                        ('Could not verify the current setting.' if verified is None else
+                         'The requested state did not read back. Windows may require a restart or enforce another policy.')}
+            return {'ok': True, 'applied': verified}
 
-        self._applied.add(key) if want else self._applied.discard(key)
-
-        # Confirm against the system rather than assuming the write took.
-        verified = None
-        try:
-            verified = bool(t.check())
-        except Exception:
-            pass
-        self._pending.pop(key, None)
-        if verified is not None and verified != want:
-            self._applied.add(key) if verified else self._applied.discard(key)
-            # best_effort tweaks (e.g. Widgets on a debloated image) can apply
-            # without the change reading back the way we expect. That is not an
-            # error worth a red banner - just reflect whatever state we can see.
-            if getattr(t, "best_effort", False):
-                # The write itself did not raise, so it was accepted - only the
-                # read-back is unreliable on this image. Trust the intent and
-                # show the card as the user set it, with no error.
-                self._applied.add(key) if want else self._applied.discard(key)
-                return {"ok": True, "applied": want, "soft": True}
-            return {"ok": False, "applied": verified,
-                    "message": ("Windows did not accept that change. It may "
-                                "need a reboot, or another policy is "
-                                "enforcing it.")}
-        return {"ok": True, "applied": want}
+    def _bulk_targets(self, targets, mode):
+        with tweak_undo.LOCK:
+            failures = {}
+            for key, want in targets.items():
+                result = self.toggle(key, want)
+                if not result.get('ok'):
+                    failures[key] = result.get('message', 'Change failed.')
+            applied = {key: self._read_tweak(t) for key, t in self._tweaks().items()}
+            self._applied = {key for key, value in applied.items() if value is True}
+            for key, want in targets.items():
+                if applied.get(key) is None or applied[key] != want:
+                    failures.setdefault(key, 'The final state could not be verified.')
+            return {'ok': not failures, 'mode': mode, 'applied': applied,
+                    'failed': list(failures), 'errors': failures}
 
     # Tweaks excluded from "Apply recommended": the two that break kernel
     # anti-cheat / weaken security, plus GameDVR and Fullscreen Optimizations
@@ -504,67 +508,36 @@ class Api:
 
     @traced
     def bulk_tweaks(self, mode, confirmed=False):
-        """Apply/revert many tweaks at once. mode:
-             all         - apply every tweak
-             recommended - apply every tweak except the risky/compat ones
-             revert      - back to how the machine was when the app opened
-             defaults    - Windows-stock: turn every tweak off
-        Returns the resulting applied-state map so the UI can repaint at once.
-        """
+        """Apply presets, explicit off defaults, or undo only this session's changes."""
         tweaks = self._tweaks()
         if mode == 'all' and confirmed is not True:
             return {'ok': False, 'message': 'Confirm Apply All before continuing.'}
-        targets = {}
-        if mode in ("all", "recommended"):
-            for key, t in tweaks.items():
-                if mode == "recommended" and key not in self.RECOMMENDED_KEYS:
-                    continue
-                targets[key] = True
-        elif mode == "revert":
-            snap = self._snapshot or {}
-            for key in tweaks:
-                targets[key] = bool(snap.get(key, False))
-        elif mode == "defaults":
-            for key in tweaks:
-                targets[key] = False
-        else:
-            return {"ok": False, "message": "Unknown bulk mode."}
-
-        failures = []
-        for key, want in targets.items():
-            t = tweaks.get(key)
-            if not t:
-                continue
-            try:
-                if want:
-                    t.apply(); self._applied.add(key)
-                else:
-                    t.revert(); self._applied.discard(key)
-            except Exception:
-                failures.append(key)
-                log(f"bulk {mode}: {key} failed\n" + traceback.format_exc())
-
-        applied = {}
-        for key, t in tweaks.items():
-            try:
-                applied[key] = bool(t.check())
-            except Exception:
-                applied[key] = key in self._applied
-        return {"ok": not failures, "mode": mode, "applied": applied, 'failed': failures,
-                "skipped": sorted(set(tweaks) - self.RECOMMENDED_KEYS)
-                           if mode == "recommended" else []}
+        if mode == 'revert':
+            with tweak_undo.LOCK:
+                sessions = {id(t.undo): t.undo for t in tweaks.values()}
+                failures = {}
+                for session in sessions.values():
+                    failures.update(session.restore())
+                applied = {key: self._read_tweak(t) for key, t in tweaks.items()}
+                self._applied = {key for key, value in applied.items() if value is True}
+                return {'ok': not failures, 'mode': mode, 'applied': applied,
+                        'failed': list(failures), 'errors': failures}
+        if mode not in ('all', 'recommended', 'defaults'):
+            return {'ok': False, 'message': 'Unknown bulk mode.'}
+        targets = {key: mode != 'defaults' for key in tweaks
+                   if mode != 'recommended' or key in self.RECOMMENDED_KEYS}
+        result = self._bulk_targets(targets, mode)
+        result['skipped'] = sorted(set(tweaks) - set(targets))
+        return result
 
     @traced
     def bulk(self, category, want):
-        for key, t in self._tweaks().items():
-            if t.category != category:
-                continue
-            try:
-                t.apply() if want else t.revert()
-                self._applied.add(key) if want else self._applied.discard(key)
-            except Exception:
-                pass
-        return True
+        if type(want) is not bool:
+            return {'ok': False, 'message': 'Choose on or off.'}
+        targets = {key: want for key, t in self._tweaks().items() if t.category == category}
+        if not targets:
+            return {'ok': False, 'message': 'Unknown or empty category.'}
+        return self._bulk_targets(targets, category)
 
     # ------------------------------------------------------------ info
     @traced
@@ -750,10 +723,10 @@ class Api:
         items = cleanup.scan()
         total, used, free = cleanup.drive_usage("C")
         return {
-            "items": [{"name": n, "path": p, "kind": k, "default": d,
+            "items": [{"id": cid, "name": n, "default": d,
                        "desc": ds, "bytes": b, "files": f,
                        "human": cleanup.human(b)}
-                      for n, p, k, d, ds, b, f in items],
+                      for cid, (n, p, k, d, ds, b, f) in zip(cleanup.CATEGORY_IDS, items)],
             "disk": {"total": total, "used": used, "free": free,
                      "totalH": cleanup.human(total),
                      "usedH": cleanup.human(used),
@@ -762,12 +735,15 @@ class Api:
 
     @traced
     def clean_run(self, selected):
-        sel = [(i["name"], i["path"], i["kind"]) for i in selected]
+        try:
+            sel = cleanup.resolve_categories(selected)
+        except ValueError as exc:
+            return {"ok": False, "message": str(exc)}
         freed, skipped, per = cleanup.clean(
             sel, log=lambda n, f, s: self._emit(
                 "cleanlog", {"name": n, "freed": cleanup.human(f),
                              "skipped": s}))
-        return {"freed": cleanup.human(freed), "skipped": skipped}
+        return {"ok": True, "freed": cleanup.human(freed), "skipped": skipped}
 
     # --------------------------------------------------------- drivers
     @traced

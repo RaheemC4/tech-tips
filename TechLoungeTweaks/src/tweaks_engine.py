@@ -10,6 +10,7 @@ import os
 import re
 import subprocess
 import winreg
+import tweak_undo
 
 HKCU = winreg.HKEY_CURRENT_USER
 HKLM = winreg.HKEY_LOCAL_MACHINE
@@ -65,6 +66,7 @@ def _reg_set_regexe(hive, path, name, value, vtype):
 
 def reg_set(hive, path, name, value, vtype=winreg.REG_DWORD):
     """Write a registry value, trying progressively more tolerant methods."""
+    tweak_undo.record_value(hive, path, name)
     last = None
     for attempt in (_reg_set_direct, _reg_set_stepwise, _reg_set_regexe):
         try:
@@ -81,6 +83,7 @@ def reg_set(hive, path, name, value, vtype=winreg.REG_DWORD):
 
 
 def reg_del_value(hive, path, name):
+    tweak_undo.record_value(hive, path, name)
     try:
         with winreg.OpenKey(hive, path, 0, winreg.KEY_SET_VALUE) as k:
             winreg.DeleteValue(k, name)
@@ -89,6 +92,7 @@ def reg_del_value(hive, path, name):
 
 
 def reg_del_tree(hive_str, path):
+    tweak_undo.record_tree({"HKCU": HKCU, "HKLM": HKLM}[hive_str], path)
     run(["reg", "delete", f"{hive_str}\\{path}", "/f"])
 
 
@@ -142,12 +146,23 @@ class Tweak:
         # the card just shows whatever state we can read.
         self.best_effort = best_effort
         self.error = None
+        self.undo = tweak_undo.SessionUndo()
+
+    def _change(self, operation):
+        with tweak_undo.LOCK:
+            token = tweak_undo.ACTIVE.set(self.undo)
+            try:
+                from tweak_snapshots import capture_external
+                self.undo.remember(('external', self.key), lambda: capture_external(self.key))
+                operation()
+            finally:
+                tweak_undo.ACTIVE.reset(token)
 
     def apply(self):
-        self._apply()
+        self._change(self._apply)
 
     def revert(self):
-        self._revert()
+        self._change(self._revert)
 
     def check(self):
         self.error = None
@@ -844,12 +859,14 @@ def t_pause_windows_updates():
 
 def build_tweaks():
     T = []
+    undo = tweak_undo.SessionUndo()
 
     def add(key, name, desc, cat, triple, warning=None, icon="⚙",
             restart=False, best_effort=False):
         a, r, c = triple
         T.append(Tweak(key, name, desc, cat, a, r, c, warning, icon, restart,
                        best_effort=best_effort))
+        T[-1].undo = undo
 
     add("pause_windows_updates", "Pause Windows Updates",
         "Pause feature and security updates until 31 December 2051. Included in Apply All and Apply Recommended. Turn off to resume updates.",

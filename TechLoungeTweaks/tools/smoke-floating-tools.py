@@ -120,12 +120,18 @@ try:
         native.GetWindowRect(hwnd,ctypes.byref(rect))
         x,y=rect.left+13,rect.top+7
         native.SetWindowPos(hwnd,None,x,y,0,0,0x0015)
-        settle(.06)
-        native.GetWindowRect(hwnd,ctypes.byref(rect))
-        assert (rect.left,rect.top)==(x,y), 'Tool was snapped backwards'
-        parent=wintypes.RECT();native.GetWindowRect(owner,ctypes.byref(parent))
-        target=inset_rect((parent.left,parent.top,parent.right,parent.bottom),native.GetDpiForWindow(owner) or 96)
-        assert target[:2]==(x+border,y+crop), 'Host did not follow the tool'
+        # WinEvent delivery is asynchronous; verify the outcome with a bound,
+        # rather than assuming the 50 ms message pump always finishes in 60 ms.
+        deadline=time.monotonic()+1
+        while True:
+            settle(.01)
+            native.GetWindowRect(hwnd,ctypes.byref(rect))
+            assert (rect.left,rect.top)==(x,y), 'Tool was snapped backwards'
+            parent=wintypes.RECT();native.GetWindowRect(owner,ctypes.byref(parent))
+            target=inset_rect((parent.left,parent.top,parent.right,parent.bottom),native.GetDpiForWindow(owner) or 96)
+            if target[:2]==(x+border,y+crop): break
+            assert time.monotonic()<deadline, ('Host did not follow the tool within one second',
+                step, target[:2], (x+border,y+crop), worker_errors)
     native.NotifyWinEvent(0x000B,hwnd,0,0);settle(.1)
     native.GetWindowRect(owner,ctypes.byref(parent))
     owner_before=(parent.left,parent.top,parent.right,parent.bottom)

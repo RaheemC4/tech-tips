@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+import stat
 
 from tweaks_engine import CREATE_NO_WINDOW
 
@@ -73,18 +74,52 @@ def _paths():
     ]
 
 
+CATEGORY_IDS = ('user_temp', 'windows_temp', 'update_cache', 'delivery_cache',
+                'crash_dumps', 'thumbnails', 'error_reports', 'prefetch', 'recycle')
+
+
+def resolve_categories(selected):
+    """Only server-owned catalogue entries may reach the deletion code."""
+    if not isinstance(selected, list) or any(not isinstance(x, str) for x in selected):
+        raise ValueError('Select cleanup category IDs, not paths.')
+    catalogue = dict(zip(CATEGORY_IDS, _paths()))
+    if any(x not in catalogue for x in selected):
+        raise ValueError('Unknown cleanup category.')
+    return [catalogue[x][:3] for x in dict.fromkeys(selected)]
+
+
+def _unsafe_path(path):
+    """Do not traverse links/junctions, including ancestors of a selected root."""
+    current = os.path.abspath(path)
+    while True:
+        try:
+            info = os.lstat(current)
+            if stat.S_ISLNK(info.st_mode) or getattr(info, 'st_file_attributes', 0) & 0x400:
+                return True
+        except OSError:
+            return True
+        parent = os.path.dirname(current)
+        if parent == current:
+            return False
+        current = parent
+
+
 def _dir_size(path, match=None):
     total = 0
     files = 0
+    if _unsafe_path(path):
+        return 0, 0
     for root, dirs, names in os.walk(path):
-        if _is_self(root):
+        if _is_self(root) or _unsafe_path(root):
             dirs[:] = []
             continue
-        dirs[:] = [d for d in dirs if not _is_self(os.path.join(root, d))]
+        dirs[:] = [d for d in dirs if not _is_self(os.path.join(root, d)) and not _unsafe_path(os.path.join(root, d))]
         for n in names:
             if match and not n.lower().startswith(match):
                 continue
             try:
+                if _unsafe_path(os.path.join(root, n)):
+                    continue
                 total += os.path.getsize(os.path.join(root, n))
                 files += 1
             except OSError:
@@ -135,30 +170,30 @@ def scan(progress=None):
 def _purge_dir(path, match=None):
     freed = 0
     skipped = 0
-    for root, dirs, names in os.walk(path, topdown=False):
-        if _is_self(root):
+    if _unsafe_path(path) or _is_self(path):
+        return 0, 1
+    for root, dirs, names in os.walk(path, topdown=True, followlinks=False):
+        if _is_self(root) or _unsafe_path(root):
+            dirs[:] = []
             continue
+        safe_dirs = [d for d in dirs if not _is_self(os.path.join(root, d))
+                     and not _unsafe_path(os.path.join(root, d))]
+        skipped += len(dirs) - len(safe_dirs)
+        dirs[:] = safe_dirs
         for n in names:
             if match and not n.lower().startswith(match):
                 continue
             fp = os.path.join(root, n)
-            if _is_self(fp):
+            if _is_self(fp) or _unsafe_path(fp):
+                skipped += 1
                 continue
             try:
                 sz = os.path.getsize(fp)
-                try:
-                    os.chmod(fp, 0o666)
-                except OSError:
-                    pass
+                # Never change attributes or follow a reparse target to force deletion.
                 os.remove(fp)
                 freed += sz
             except OSError:
-                skipped += 1      # locked by a running app - never force
-        if not match and root != path and not _is_self(root):
-            try:
-                os.rmdir(root)
-            except OSError:
-                pass
+                skipped += 1
     return freed, skipped
 
 

@@ -6,6 +6,35 @@ turn Defender on or off, install runtimes, browsers and game clients silently,
 test your connection for bufferbloat, clean up junk files and check your GPU
 drivers — all from one window.
 
+The redesigned interface keeps every sidebar tab, the tweak-score ring and six
+accent themes, with an inset workspace, a clearer navigation hierarchy, hardware
+tiles and grouped setup controls. Cards, buttons and secondary text share a calmer
+charcoal design. Sidebar navigation, category cards and individual tweak switches
+support keyboard activation and visible focus. Reduced-motion preferences stop
+UI animation. Collapsible sidebar groups and compact headers/cards reduce scrolling without
+hiding descriptions or warnings. All 23 tabs remain accessible, including at
+940 x 640. The app catalogue retains its compact category layout.
+Screenshots and the feature-tour video use representative demonstration data.
+
+Session undo is held in memory and ends when the app closes. It covers tweak
+registry values and the original active power plan, boot timer flag, memory
+features, service state, firewall/offload settings, USB power settings and NVIDIA
+telemetry task states. It does not delete a newly created power plan or undo
+separate debloat, Defender, driver-profile, installation or repair workflows.
+Use a Windows restore point for wider recovery. Windows Defaults and individual
+off switches still apply their documented off values; they are not a factory reset.
+
+Bulk actions now reconcile with verified backend states and report partial failures
+or unknown state instead of showing unverified success. Disk Cleanup accepts only
+server-owned category IDs and skips symbolic links/junctions and protected app files.
+
+
+[Watch the 83-second feature tour](docs/techlounge-feature-tour.mp4): all 23 tabs,
+a close-up tweak demonstration and app-category browsing. Silent, with on-screen
+instructions and sample data labels.
+
+Rapid floating-tool drags retain movements that arrive while the host is catching up.
+
 Tool closure hands input back to the host before hiding the tool, and slow shutdown
 no longer triggers an automatic reopen. NVPI caption covers are host-owned windows,
 clipped to its rounded frame without cross-process child-window parenting.
@@ -106,7 +135,7 @@ with a yellow warning in the app, but to be explicit:
 - **Disable CPU Mitigations** — weakens Spectre/Meltdown protection.
 
 Read each option before applying it. App removal and clearing Start pins are
-not reversed by the dashboard's Revert All button.
+not reversed by the dashboard's Restore Session Changes button.
 
 ---
 
@@ -140,7 +169,7 @@ categories by hand:
 |---|---|
 | **Apply Recommended** | Curated privacy settings, Windows Updates paused until 31 December 2051, optional bundled-app removal and the customization choices listed below. Leaves gaming tweaks, Xbox, Game Bar, NVIDIA settings, Defender and virtualization alone. |
 | **Apply All** | Asks for confirmation, then applies the legacy tweaks (including Windows Updates paused until 2051 and risky ones), NVIDIA profile, Defender off and the curated Debloat & Customization options. |
-| **Revert All** | Restores the legacy tweaks from the app's saved original values. Does not reinstall removed apps or restore Start pins. |
+| **Restore Session Changes** | Restores values captured before this session changed a tweak, including original registry types and missing values. Leaves untouched tweaks alone. Does not undo other tools, app removals or Start pins. |
 | **Windows Defaults** | Turns legacy tweaks off, restores NVIDIA settings and enables Defender. Does not undo the new debloat actions. |
 
 Apply All checks for an NVIDIA GPU before applying its driver profile. Recommended
@@ -652,14 +681,15 @@ listing so there is always a way through.
 
 The palette button in the title bar switches the whole app between blue,
 blurple, purple, red, green and cyan. Everything follows — the icon, the score
-ring, buttons, selections and the background glow. Your choice is remembered
+ring, buttons and selections. Your choice is remembered
 between launches.
 
 ![Purple theme](docs/theme-purple.png)
 
 The window is fully resizable, and drags at your monitor's refresh rate.
-The sidebar menu scrolls independently, keeping the tweak count and administrator
-status visible in a separate footer with clear spacing, even in smaller windows.
+The sidebar opens one navigation group at a time, keeping all 23 tabs reachable
+without sidebar scrolling at the supported 940 x 640 minimum. The tweak count
+and administrator status remain visible in a separate footer.
 
 ---
 
@@ -679,7 +709,7 @@ Change those settings in the firmware itself at POST.
 
 ## Undoing things
 
-- Legacy tweaks — **Revert All** uses their saved original values;
+- Legacy tweaks: **Restore Session Changes** restores values captured before the first change in the current app session;
   **Windows Defaults** switches those tweaks off.
 - Debloat registry settings — use their individual **Undo** buttons. Removed
   apps and Start pins need manual reinstalling or repinning.

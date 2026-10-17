@@ -29,7 +29,7 @@ class PauseUpdatesTests(unittest.TestCase):
                 def get(h,p,n,default=None):return values.get((p,n),default)
                 with patch.object(engine,'reg_set',side_effect=put),patch.object(engine,'reg_get',side_effect=get):
                     apply,resume,check=engine.t_pause_windows_updates()
-                    pause=Mock(apply=Mock(side_effect=apply),check=check)
+                    pause=Mock(apply=Mock(side_effect=apply),check=check,error=None)
                     api=main.Api.__new__(main.Api);api._tweaks=lambda:{'pause_windows_updates':pause};api._applied=set()
                     self.assertFalse(check())
                     result=main.Api.bulk_tweaks.__wrapped__(api,mode,True)

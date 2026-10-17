@@ -1,3 +1,28 @@
+Fix the three review findings and reduce scrolling.
+
+- Capture original tweak values before mutation and restore session changes without resetting untouched tweaks.
+- Preserve registry value types and absence; verify restoration of non-registry tweak settings.
+- Report bulk failures and unknown read-back states accurately across category, Networking and dashboard flows.
+- Restrict cleanup to server-owned category IDs and skip links/junctions.
+- Add regression coverage for custom values, partial failures, retry, mixed states and cleanup boundaries.
+- Collapse navigation groups and compact headers/cards while retaining every tab, description and warning.
+- Refresh screenshots, README and the 23-tab feature video.
+- Preserve the existing latest-download URL.
+
+Redesign the Tech Lounge Tweaks workspace while retaining all features.
+
+- Retain all 23 sidebar tabs, the score ring and six accent themes.
+- Add an inset workspace, redesigned overview, hardware tiles and grouped setup controls.
+- Introduce quieter charcoal surfaces, clearer secondary text and more consistent controls.
+- Remove continuous backdrop movement and cursor-following highlights.
+- Add native keyboard navigation, accessible individual tweak switches and visible focus.
+- Honour reduced-motion and Windows forced-colour preferences.
+- Preserve compact app categories at the minimum supported window size.
+- Refresh screenshots with isolated demonstration data.
+- Include an 83-second practical video covering all 23 tabs.
+- Fix a floating-tool movement race and add a regression test.
+- Give asynchronous native movement checks a bounded outcome-based wait.
+
 Make Install Apps icons consistently monochrome across all six themes.
 
 - Use inline SVG shapes with the selected theme accent for every brand.

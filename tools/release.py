@@ -270,6 +270,7 @@ def prepare():
     run([node, APP / 'tools/test-windows-setup-ui.js'], env=env)
     run([node, APP / 'tools/test-defender-removal-ui.js'], env=env)
     run([node, APP / 'tools/test-debloat-ui.js'], env=env)
+    run([node, APP / 'tools/test-review-fixes-ui.js'], env=env)
     run([sys.executable, APP / 'tools/smoke-close.py'])
     run([sys.executable, APP / 'tools/smoke-floating-tools.py'])
     run([sys.executable, APP / 'tools/smoke-nvpi-startup.py'])

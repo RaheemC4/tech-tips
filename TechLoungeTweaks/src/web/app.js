@@ -166,7 +166,7 @@ const ICONS = {
 const svg = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
   stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICONS[k]||ICONS.cpu}</svg>`;
 
-let STATE = { tweaks: [], cats: [], page: 'Home', specs: {}, admin: true, snapshot: null };
+let STATE = { tweaks: [], cats: [], page: 'Home', specs: {}, admin: true };
 
 /* ---------- nav ---------- */
 const NAV = [
@@ -189,13 +189,37 @@ const NAV = [
 
 function buildNav() {
   const el = document.getElementById('navlist');
-  el.innerHTML = NAV.map(n => {
-    if (n[0] === 'sec') return `<div class="navsec">${n[1]}</div>`;
+  let markup = '', group = null;
+  for (const n of NAV) {
+    if (n[0] === 'sec') {
+      if (group) markup += '</div></section>';
+      group = n[1];
+      markup += `<section class="navgroup" data-navgroup="${group}"><button type="button" class="navsec" aria-expanded="false" aria-controls="nav-${group}" data-navgroup-toggle="${group}">${group}<span aria-hidden="true">⌄</span></button><div id="nav-${group}" class="navitems" hidden>`;
+      continue;
+    }
     const chip = n[0] === 'cat' ? `<span class="chip" data-chip="${n[1]}">0/0</span>` : '';
-    return `<div class="nav" data-nav="${n[1]}">${svg(n[2])}<span>${n[1]}</span>${chip}</div>`;
-  }).join('');
-  el.querySelectorAll('[data-nav]').forEach(n =>
-    n.onclick = () => show(n.dataset.nav));
+    markup += `<button type="button" class="nav" data-nav="${n[1]}">${svg(n[2])}<span>${n[1]}</span>${chip}</button>`;
+  }
+  el.innerHTML = markup + '</div></section>';
+  el.querySelectorAll('[data-nav]').forEach(n => n.onclick = () => show(n.dataset.nav));
+  el.querySelectorAll('[data-navgroup-toggle]').forEach(button => button.onclick = () => {
+    const open = button.getAttribute('aria-expanded') !== 'true';
+    setNavGroup(button.dataset.navgroupToggle, open);
+  });
+  revealNav(STATE.page);
+}
+
+function setNavGroup(name, open) {
+  document.querySelectorAll('[data-navgroup]').forEach(group => {
+    const expanded = group.dataset.navgroup === name ? open : false;
+    group.querySelector('.navsec').setAttribute('aria-expanded', String(expanded));
+    group.querySelector('.navitems').hidden = !expanded;
+  });
+}
+
+function revealNav(name) {
+  const button = document.querySelector(`[data-nav="${CSS.escape(name)}"]`);
+  if (button) setNavGroup(button.closest('[data-navgroup]').dataset.navgroup, true);
 }
 
 let pageHistoryStarted = false;
@@ -221,8 +245,13 @@ function show(name, recordHistory = true) {
   }
   if (typeof closeUpdates === 'function') closeUpdates();
   STATE.page = name;
-  document.querySelectorAll('[data-nav]').forEach(n =>
-    n.classList.toggle('active', n.dataset.nav === name));
+  revealNav(name);
+  document.querySelectorAll('[data-nav]').forEach(n => {
+    const active = n.dataset.nav === name;
+    n.classList.toggle('active', active);
+    if (active) n.setAttribute('aria-current', 'page');
+    else n.removeAttribute('aria-current');
+  });
   const isCat = STATE.cats.includes(name);
   const routes = {
     'Extra Tools': pageUpdates,
@@ -270,30 +299,58 @@ function paintCard(t) {
   if (!card) return;
   card.classList.toggle('on', !!t.applied);
   const sw = card.querySelector('.sw');
-  if (sw) sw.classList.toggle('on', !!t.applied);
+  if (sw) {
+    sw.classList.toggle('on', !!t.applied);
+    if (sw.getAttribute('role') === 'switch') sw.setAttribute('aria-checked', String(!!t.applied));
+  }
   const badge = card.querySelector('.badge');
   if (badge) {
-    badge.textContent = t.applied ? 'APPLIED' : 'NOT APPLIED';
+    badge.textContent = t.applied == null ? 'UNKNOWN' : t.applied ? 'APPLIED' : 'NOT APPLIED';
     badge.className = 'badge' + (t.applied ? ' on' : '');
   }
 }
 
 function setToggle(key) {
+  if (BULK_BUSY) return;
   const t = STATE.tweaks.find(x => x.key === key);
   if (!t) return;
   const want = !t.applied;
-  t.applied = want;            // optimistic
-  paintCard(t);
-  updateCounts();
-
-  const run = () => api('toggle', key, want).then(r => {
-    if (r && r.ok === false) {
-      t.applied = (r.applied !== undefined) ? r.applied : !want;
-      paintCard(t); updateCounts();
-      if (r.message) banner(t.name + ': ' + r.message);
-    }
-  });
+  const intent = t._intent = (t._intent || 0) + 1;
+  t.applied = want;
+  paintCard(t); updateCounts();
+  const run = async () => {
+    let r;
+    try { r = await api('toggle', key, want); }
+    catch (e) { r = {ok:false, message:e.message}; }
+    if (intent !== t._intent) return;
+    t.applied = typeof r?.applied === 'boolean' ? r.applied : null;
+    paintCard(t); updateCounts();
+    if (!r?.ok) banner(t.name + ': ' + (r?.message || 'Could not verify the change. Rescan to check.'));
+  };
   INFLIGHT[key] = (INFLIGHT[key] || Promise.resolve()).then(run, run);
+}
+
+function reconcileTweaks(result, affected = STATE.tweaks) {
+  STATE.tweaks.forEach(t => {
+    if (result?.applied && Object.hasOwn(result.applied, t.key)) t.applied = result.applied[t.key];
+    else if (affected.includes(t)) t.applied = null;
+    paintCard(t);
+  });
+  refreshCounts(); updateCounts();
+}
+
+async function applyCategory(category, on) {
+  if (BULK_BUSY) return;
+  if (on && !await confirmAction('Apply all in this category?', 'This applies every option in ' + category + ', including any marked warnings.', 'Apply All')) return;
+  if (BULK_BUSY) return;
+  BULK_BUSY = true;
+  try {
+    await Promise.all(Object.values(INFLIGHT));
+    const result = await api('bulk', category, on);
+    reconcileTweaks(result, STATE.tweaks.filter(t => t.category === category));
+    if (!result?.ok) banner('Some changes could not be verified. ' + (result?.message || Object.values(result?.errors || {}).join(' ')));
+  } catch (error) { reconcileTweaks(null, STATE.tweaks.filter(t => t.category === category)); banner('Could not finish: ' + error.message); }
+  finally { BULK_BUSY = false; }
 }
 
 function updateCounts() {
@@ -335,8 +392,8 @@ function renderTweaks(cat) {
       <div class="desc">${t.desc}</div>
       <div class="foot">
         <span class="badge ${t.applied ? 'on' : ''}">
-          ${t.applied ? 'APPLIED' : 'NOT APPLIED'}</span>
-        <div class="sw ${t.applied ? 'on' : ''}" data-sw="${t.key}"></div>
+          ${t.applied == null ? 'UNKNOWN' : t.applied ? 'APPLIED' : 'NOT APPLIED'}</span>
+        <button type="button" class="sw ${t.applied ? 'on' : ''}" data-sw="${t.key}" role="switch" aria-checked="${t.applied === true}" aria-label="${t.name}"></button>
       </div>
       ${t.warning ? `<div class="warnpill">▲ ${t.warning}</div>` : ''}
     </div>`).join('');
@@ -348,11 +405,7 @@ function renderTweaks(cat) {
 }
 
 async function applyAll(on) {
-  if (on && !await confirmAction('Apply all in this category?', 'This applies every option in ' + STATE.page + ', including any marked warnings.', 'Apply All')) return;
-  const items = STATE.tweaks.filter(t => t.category === STATE.page);
-  items.forEach(t => t.applied = on);      // flip first, write behind
-  renderTweaks(STATE.page); refreshCounts();
-  await api('bulk', STATE.page, on);
+  return applyCategory(STATE.page, on);
 }
 
 /* ---------- dashboard one-click setup ---------- */
@@ -366,17 +419,6 @@ function wireBulk() {
   });
 }
 
-function bulkTargets(mode) {
-  if (mode === 'all') return () => true;
-  if (mode === 'recommended') return t => RECOMMENDED_KEYS.includes(t.key) ? true : t.applied;
-  if (mode === 'defaults') return () => false;
-  if (mode === 'revert') {
-    const snap = STATE.snapshot || {};
-    return t => !!snap[t.key];
-  }
-  return () => false;
-}
-
 let BULK_BUSY = false;
 async function runBulk(mode) {
   if (BULK_BUSY) return;
@@ -387,71 +429,70 @@ async function runBulk(mode) {
   btns.forEach(b => b.disabled = true);
   const status = H('debloatStatus') || H('bulkStatus');
 
-  // 1) Flip every affected toggle immediately so the UI never looks frozen.
-  const want = bulkTargets(mode);
-  STATE.tweaks.forEach(t => { t.applied = want(t); });
-  refreshCounts();
-  if (STATE.cats.includes(STATE.page)) renderTweaks(STATE.page);
+  await Promise.all(Object.values(INFLIGHT));
 
   const setStatus = (txt, spin) => {
     if (!status) return;
     status.hidden = false;
-    status.innerHTML = (spin ? '<span class="spin"></span>' : '') +
-      '<span>' + txt + '</span>';
+    status.replaceChildren();
+    if (spin) { const icon = document.createElement('span'); icon.className = 'spin'; status.append(icon); }
+    const label = document.createElement('span'); label.textContent = txt; status.append(label);
   };
   const LABEL = {all: 'Applying every tweak', recommended: 'Applying the recommended tweaks',
-                 revert: 'Reverting to how the PC was', defaults: 'Restoring Windows defaults'}[mode];
+                 revert: 'Restoring this session’s tweak changes', defaults: 'Restoring Windows defaults'}[mode];
   setStatus(LABEL + '…', true);
 
   // 2) Write the tweaks.
   const r = await api('bulk_tweaks', mode, mode === 'all');
-  if (r && r.applied) {
-    STATE.tweaks.forEach(t => {
-      if (t.key in r.applied) t.applied = r.applied[t.key];
-    });
-    refreshCounts();
-    if (STATE.cats.includes(STATE.page)) renderTweaks(STATE.page);
-  }
+  reconcileTweaks(r);
 
   // 3) Defender + NVIDIA, per mode.
   const extras = [];
-  if (!r || r.ok === false) extras.push('Some existing tweaks failed; check TL-api.log');
+  let complete = r?.ok === true;
+  if (!complete) extras.push(r?.message || 'Some tweaks failed or could not be verified. ' + Object.values(r?.errors || {}).join(' '));
   if (mode === 'all' || mode === 'recommended') {
     setStatus('Applying debloat and customization…', true);
     const started = await api('debloat_apply', mode, [], mode === 'all');
     const dr = started?.ok ? await waitForDebloat() : started;
+    complete = complete && dr?.ok === true;
     extras.push(dr?.message || 'Debloat could not start. Check its tab.');
   }
   const wantDefenderOff = (mode === 'all');
   const wantDefenderOn  = (mode === 'defaults');
   const wantNvidiaOn    = (mode === 'all');
-  const wantNvidiaOff   = (mode === 'defaults' || mode === 'revert');
+  const wantNvidiaOff   = (mode === 'defaults');
 
   // Only touch NVIDIA when this PC actually has an NVIDIA GPU + the tool.
   let nv = null;
   try { nv = await api('nvprofile_status'); } catch (e) {}
   const nvUsable = nv && nv.nvidia && nv.tool && nv.profile;
+  if ((wantNvidiaOn || wantNvidiaOff) && (!nv || (nv.nvidia && !nvUsable))) {
+    complete = false; extras.push('NVIDIA profile availability could not be confirmed.');
+  }
 
   if (wantNvidiaOn && nvUsable) {
     setStatus(LABEL + ' — applying NVIDIA profile…', true);
     const nr = await api('nvprofile_set', true);
-    extras.push(nr && nr.ok !== false ? 'NVIDIA profile applied'
+    complete = complete && nr?.ok === true;
+    extras.push(nr?.ok === true ? 'NVIDIA profile applied'
                                       : 'NVIDIA profile could not apply');
   } else if (wantNvidiaOn && nv && !nv.nvidia) {
     extras.push('No NVIDIA GPU — profile skipped');
   } else if (wantNvidiaOff && nvUsable) {
     setStatus(LABEL + ' — restoring NVIDIA settings…', true);
-    await api('nvprofile_set', false);
-    extras.push('NVIDIA settings restored');
+    const nr = await api('nvprofile_set', false);
+    complete = complete && nr?.ok === true;
+    extras.push(nr?.ok === true ? 'NVIDIA settings restored' : 'NVIDIA settings could not be restored');
   }
 
   if (wantDefenderOff || wantDefenderOn) {
     setStatus(LABEL + ' — ' + (wantDefenderOff ? 'turning Defender off' : 'turning Defender on') + '…', true);
     const dr = await api('defender_set', wantDefenderOn);
+    complete = complete && dr?.ok === true;
     if (dr && dr.tamper && wantDefenderOff)
       extras.push('Defender needs one manual step — open the Defender tab to finish');
     else
-      extras.push(wantDefenderOff ? 'Defender turned off' : 'Defender turned on');
+      extras.push(dr?.ok === true ? (wantDefenderOff ? 'Defender turned off' : 'Defender turned on') : 'Defender change could not be confirmed');
   }
 
   // Virtualisation: the apply modes and Windows Defaults are all gaming-facing,
@@ -460,19 +501,22 @@ async function runBulk(mode) {
   if (mode === 'all' || mode === 'defaults') {
     try {
       const vs = await api('virt_status');
+      if (!vs) { complete = false; extras.push('Virtualisation status could not be read.'); }
       if (vs && vs.mode !== 'gaming') {
         setStatus(LABEL + ' — setting up for gaming…', true);
         const vr = await api('virt_set', 'gaming');
+        complete = complete && vr?.ok === true;
         if (vr && vr.ok) extras.push('Set up for gaming, Memory Integrity off (restart needed)');
       }
-    } catch (e) {}
+    } catch (e) { complete = false; extras.push('Virtualisation change failed: ' + e.message); }
   }
 
   const done = {all: 'Applied everything.', recommended: 'Recommended tweaks applied.',
-                revert: 'Reverted to your original setup.', defaults: 'Windows defaults restored.'}[mode];
-  setStatus(done + (extras.length ? '  •  ' + extras.join('  •  ') : ''), false);
+                revert: 'Session tweak changes restored. Other tools and app removals are not included.', defaults: 'Windows defaults restored.'}[mode];
+  setStatus((complete ? done : 'Finished with failures or unverified changes.') + (extras.length ? '  •  ' + extras.join('  •  ') : ''), false);
 
   } catch (error) {
+    reconcileTweaks(null);
     const target = H('debloatStatus') || H('bulkStatus');
     if (target) { target.hidden = false; target.textContent = 'Could not finish: ' + error.message; }
   } finally {
@@ -512,14 +556,18 @@ function refreshCounts() {
     const items = STATE.tweaks.filter(t => t.category === c);
     const on = items.filter(t => t.applied).length;
     const p = items.length ? on / items.length * 100 : 0;
-    return `<div class="card" onclick="show('${c.replace(/'/g, "\\'")}')" style="cursor:pointer;padding:15px">
+    return `<button type="button" class="card" onclick="show('${c.replace(/'/g, "\\'")}')" style="cursor:pointer;padding:15px">
       <div class="row"><span style="font-size:12.5px;font-weight:620">${c}</span>
       <div class="spacer"></div><span style="font-size:11px;color:${on ? 'var(--good)' : 'var(--faint)'}">${on}/${items.length}</span></div>
-      <div class="bar"><i style="width:${p}%"></i></div></div>`;
+      <div class="bar"><i style="width:${p}%"></i></div></button>`;
   }).join('');
 }
 
 function animateNum(el, to) {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    el.textContent = Math.round(to);
+    return;
+  }
   const from = parseFloat(el.textContent) || 0;
   const t0 = performance.now();
   (function step(now) {
@@ -562,23 +610,6 @@ function wireTips() {
     el.onmouseleave = () => tip.classList.remove('show');
   });
 }
-
-/* ---------- cursor reactivity ---------- */
-const spot = document.getElementById('spot');
-addEventListener('mousemove', e => {
-  // Mid-drag the window itself is moving; chasing the cursor here would
-  // repaint the whole backdrop every frame. Leave it exactly where it is.
-  if (document.body.classList.contains('dragging')) return;
-  spot.style.opacity = '1';
-  spot.style.left = e.clientX + 'px';
-  spot.style.top = e.clientY + 'px';
-  const c = e.target.closest('.card');
-  if (c) {
-    const r = c.getBoundingClientRect();
-    c.style.setProperty('--mx', (e.clientX - r.left) + 'px');
-    c.style.setProperty('--my', (e.clientY - r.top) + 'px');
-  }
-});
 
 /* ---------- boot ---------- */
 let boot = async function boot() {
@@ -690,9 +721,6 @@ window.py_scanned = d => {
   const hadNone = STATE.tweaks.length === 0;
   STATE.tweaks = d.tweaks.map(t =>
     busy.has(t.key) ? { ...t, applied: prev.get(t.key) } : t);
-  // First real scan defines the "how it was" baseline for Revert All.
-  if (!STATE.snapshot)
-    STATE.snapshot = Object.fromEntries(d.tweaks.map(t => [t.key, !!t.applied]));
 
   // init() now returns an empty list so it can answer instantly, so this is
   // where the real tweaks (and the categories that actually have any) land.
@@ -871,12 +899,13 @@ window.py_cleanlog = d => {
 async function runClean() {
   const sel = [];
   document.querySelectorAll('[data-cl]').forEach(c => {
-    if (c.checked) sel.push(CLEAN[+c.dataset.cl]); });
+    if (c.checked) sel.push(CLEAN[+c.dataset.cl].id); });
   if (!sel.length) return;
   H('cleanLog').style.display = 'block';
   H('cleanLog').textContent = '--- Cleaning ---\n';
   const r = await api('clean_run', sel);
-  if (r) H('freedLbl').textContent =
+  if (!r?.ok) { banner(r?.message || 'Cleanup could not finish.'); return; }
+  H('freedLbl').textContent =
     `Freed ${r.freed}${r.skipped ? `  ·  ${r.skipped} file(s) locked by a running app` : ''}`;
   setTimeout(pageClean, 1200);
 }
@@ -1574,18 +1603,15 @@ function renderTweaksInto(items, cat) {
       <div class="top"><div class="ico">${svg(t.icon || 'net')}</div><h3>${t.name}</h3></div>
       <div class="desc">${t.desc}</div>
       <div class="foot"><span class="badge ${t.applied ? 'on' : ''}">
-        ${t.applied ? 'APPLIED' : 'NOT APPLIED'}</span>
-        <div class="sw ${t.applied ? 'on' : ''}" data-sw="${t.key}"></div></div>
+        ${t.applied == null ? 'UNKNOWN' : t.applied ? 'APPLIED' : 'NOT APPLIED'}</span>
+        <button type="button" class="sw ${t.applied ? 'on' : ''}" data-sw="${t.key}" role="switch" aria-checked="${t.applied === true}" aria-label="${t.name}"></button></div>
       ${t.warning ? `<div class="warnpill">▲ ${t.warning}</div>` : ''}</div>`).join('');
   document.querySelectorAll('[data-sw]').forEach(sw => {
     sw.onclick = () => setToggle(sw.dataset.sw);
   });
 }
 async function netBulk(on) {
-  await api('bulk', 'Networking', on);
-  STATE.tweaks.filter(t => t.category === 'Networking')
-    .forEach(t => t.applied = on);
-  pageNetworking(); refreshCounts();
+  return applyCategory('Networking', on);
 }
 const fmtSpeed = m => !m ? '—' : (m >= 1000 ? (m / 1000).toFixed(2) + ' Gbps' : Math.round(m) + ' Mbps');
 window.py_netprogress = d => {
