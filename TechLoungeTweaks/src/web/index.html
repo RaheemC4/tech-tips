@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <title>Tech Lounge Tweaks</title>
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="frosted.css">
 </head>
 <body class="booting">
 <div id="aurora"><span class="a"></span><span class="b"></span><span class="c"></span></div>
@@ -26,8 +27,8 @@
         cx="7.5" cy="11" r="1.1" fill="currentColor" stroke="none"/><circle cx="10.5" cy="7.5" r="1.1"
         fill="currentColor" stroke="none"/><circle cx="15" cy="8.5" r="1.1" fill="currentColor"
         stroke="none"/><circle cx="17.5" cy="12" r="1.1" fill="currentColor" stroke="none"/></svg></button>
-      <button aria-label="Minimize window" onclick="api('minimize')">&#8212;</button>
-      <button aria-label="Maximize or restore window" onclick="api('maximize')">&#9633;</button>
+      <button aria-label="Minimize window" onclick="changeAppWindow('minimize')">&#8212;</button>
+      <button aria-label="Maximize or restore window" onclick="changeAppWindow('maximize')">&#9633;</button>
       <button class="close" id="closeWindow" aria-label="Close app" onclick="closeAppWindow(this)">&#10005;</button>
     </div>
   </div>

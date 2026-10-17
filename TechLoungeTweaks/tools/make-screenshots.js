@@ -46,6 +46,12 @@ const TW={Performance:[['Disable GameDVR','Turns off Xbox Game Bar background re
   const b = await chromium.launch({ executablePath: CHROME, ignoreDefaultArgs: ['--hide-scrollbars'] });
   const p = await b.newPage({ viewport: { width: 1440, height: 1050 },
                               deviceScaleFactor: 2 });
+  // Document the standard frosted appearance independently of the capture PC's
+  // accessibility settings. The app still honours those settings at runtime.
+  const media = await p.context().newCDPSession(p);
+  await media.send('Emulation.setEmulatedMedia', {features: [
+    {name: 'prefers-reduced-transparency', value: 'no-preference'}
+  ]});
   const boot = async () => {
     await p.goto(PAGE);
     await p.waitForTimeout(2600);

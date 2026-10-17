@@ -4,12 +4,17 @@ A Windows 11 tweaking utility built for The Tech Lounge. Toggle performance,
 latency and privacy tweaks, apply a tuned NVIDIA driver profile in one tap,
 turn Defender on or off, install runtimes, browsers and game clients silently,
 test your connection for bufferbloat, clean up junk files and check your GPU
-drivers — all from one window.
+drivers â€” all from one window.
 
 The redesigned interface keeps every sidebar tab, the tweak-score ring and six
 accent themes, with an inset workspace, a clearer navigation hierarchy, hardware
 tiles and grouped setup controls. Cards, buttons and secondary text share a calmer
-charcoal design. Sidebar navigation, category cards and individual tweak switches
+frosted charcoal design with a static backdrop derived from the selected theme's
+primary accent. The blue theme uses the score ring's deeper blue rather than a
+pale cyan wash across the sidebar.
+The workspace uses a single blur layer, with solid surfaces when Windows requests
+reduced transparency or increased contrast. No animated wallpaper or idle rendering
+loop is added. Sidebar navigation, category cards and individual tweak switches
 support keyboard activation and visible focus. Reduced-motion preferences stop
 UI animation. Collapsible sidebar groups and compact headers/cards reduce scrolling without
 hiding descriptions or warnings. All 23 tabs remain accessible, including at
@@ -18,8 +23,18 @@ Screenshots and the feature-tour video use representative demonstration data.
 
 Each release serves its interface from a content-versioned local address, so
 WebView cannot show a previous release's cached design after an update. Saved
-themes are retained. Close the app before extracting an update into its folder.
+themes are retained. Installed releases update quietly through the tray companion when the app and quick actions are idle.
 Overview keeps one restore-point shortcut above the tweak controls.
+The Overview connection shortcut starts testing immediately. Tests continue when
+you visit another tab; returning to Networking restores progress and results for
+the current app session. The run button is hidden while a test is active.
+The existing feature-tour video predates the frosted surface update.
+Window controls add a brief 140 ms workspace transition for minimise, maximise/
+restore and accepted close requests. Reduced motion skips it; close waits for
+tool/save checks before playing it. These are interface transitions, not a
+replacement for Windows' native window animations. Screenshots show transparency
+enabled; actual appearance follows Windows accessibility preferences. The frost
+uses the app's theme backdrop, not a live blur of the desktop behind the window.
 
 Session undo is held in memory and ends when the app closes. It covers tweak
 registry values and the original active power plan, boot timer flag, memory
@@ -49,7 +64,7 @@ host once fitted. This keeps startup rendering hidden without repeatedly emptyin
 its window region; the extra fixed settling delay is skipped when staging succeeds.
 If initial ownership needs the region fallback, that region is restored once
 cloaked staging succeeds, so it cannot keep the fitted tool invisible.
-Its Open button shows **Opening…** until the subwindow is ready. Driver/profile
+Its Open button shows **Openingâ€¦** until the subwindow is ready. Driver/profile
 initialization still takes time. BCU and DLSS keep their existing launch paths.
 Saved maximization, splash and backdrop settings are normalized before launch;
 the startup guard also handles late titles and restored bounds. NVPI retains
@@ -78,33 +93,56 @@ preset, and individual pages explain the scope and undo options for their change
 
 ## Download
 
-**[⬇ Download TechLoungeTweaks.zip](https://github.com/RaheemC4/tech-tips/releases/latest/download/TechLoungeTweaks.zip)**
+**[â¬‡ Download TechLoungeTweaks.zip](https://github.com/RaheemC4/tech-tips/releases/latest/download/TechLoungeTweaks.zip)**
 
-1. Download the zip
-2. **Extract it** somewhere you keep programs — `C:\Tools\` is a good spot.
-   Do not run it from inside the zip.
-3. Open the extracted folder and run **TechLoungeTweaks.exe**
+1. Download and extract the ZIP, then run **TechLoungeTweaks-Setup.exe**.
+2. Setup installs for your Windows account and adds a Start menu shortcut and an uninstaller in Windows Settings.
+3. Open **Tech Lounge Tweaks** from Start, or click its tray icon for quick actions.
 
-Keep the whole folder together. What you will see inside it:
+The existing download URL is unchanged. The ZIP now contains a setup program,
+not a portable app folder. Existing portable users run setup once to migrate;
+the old portable copy can be kept until the installed version is verified.
 
-```
-TechLoungeTweaks\
-└─ TechLoungeTweaks.exe     ← run this
-```
+### Installed app and tray companion
 
-Only the launcher is visible with Explorer's normal hidden-file setting. Required
-`_internal` and `resources` folders are hidden, not removed. Keep them with the exe;
-moving the exe alone will not work. Logs live in
-`%LOCALAPPDATA%\TechLoungeTweaks\Logs\TL-api.log`. The whole distribution uses
-maximum standard ZIP Deflate compression and opens with Windows Explorer.
+The native tray companion runs without administrator rights. It opens a compact
+frosted-style popup using the full app's saved theme, with real power-plan selection
+(including creating and selecting Ultimate Performance when absent), disk cleanup,
+a connection test, a restore point and GPU driver checks. Actions run inside the
+popup; **Open app** opens the full interface directly. Work continues when the
+popup is dismissed, and results remain available until the companion exits.
+The screenshot below is rendered by the native companion using demonstration data.
+
+![Tray quick actions](docs/companion.png)
+
+Windows asks for elevation only for actions that need it. Cleanup scans first;
+**Clean selected** immediately cleans the selected categories.
+
+**Open on startup** schedules the tray for three minutes after sign-in. It does
+not launch the full app at sign-in. Automatic update checks begin fifteen minutes
+after the companion starts, then repeat every twelve hours. They validate release
+metadata and SHA-256 against GitHub's asset digest, and install quietly only while
+the full app and quick actions are idle. Offline or failed checks defer to the next
+check. Busy or failed checks retry after fifteen minutes. The Updates button can check immediately. Third-party tools retain their
+existing explicit update controls.
+
+Setup installs under `%LOCALAPPDATA%\Programs\TechLoungeTweaks` by default.
+Versioned payloads preserve the previous version during installation; older
+unused versions are pruned while the app is closed. Settings,
+theme and logs remain under the user's profile. The complete tools are bundled
+for offline installation; there is no second payload download during setup.
+The tray uses Windows' existing .NET Framework, and loads the Python/backend
+process only while a quick action is running. No WebView or full app stays open
+just to show the tray icon. Idle appearance has no animation loop.
 
 ### Packaging and first launch
 
-The standard release uses a PyInstaller folder build for Intel/AMD x64 Windows.
-It includes BCU's complete x64 runtime and omits its separate ARM64 payload to
-reduce the download and extracted size. Bundled tools remain available offline. Keep the entire extracted
-folder together. Folder packaging avoids extracting the runtime on every launch,
-but does not guarantee acceptance by antivirus or Windows reputation checks.
+The installer targets Intel/AMD x64 Windows 11. It contains the existing
+PyInstaller app and BCU's complete x64 runtime, omitting BCU's separate ARM64
+payload. Setup uses fast zlib decompression; the enclosing ZIP stores the already
+compressed installer without another compression pass. Installation speed depends
+on CPU, disk and antivirus scanning and is not guaranteed on every PC.
+The installed app does not extract its runtime on each launch.
 
 The Nuitka packaging experiment has been retired after testing did not resolve Defender detections. Use the standard download above.
 
@@ -122,7 +160,7 @@ also required, as described below.
 | | |
 |---|---|
 | **Windows 11** | Works out of the box |
-| **Windows 10** | Needs the [WebView2 runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (free, from Microsoft) — the app checks on launch and links you to it if it is missing |
+| **Windows 10** | Needs the [WebView2 runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (free, from Microsoft) â€” the app checks on launch and links you to it if it is missing |
 | **NVIDIA GPU** | Only needed for the NVIDIA Profile page; everything else works on any machine |
 | **App Installer / winget** | Optional. Install Apps prefers it, and falls back to direct vendor downloads when a debloated image has removed it |
 
@@ -130,16 +168,16 @@ also required, as described below.
 
 ## Before you start
 
-**Make a restore point.** There is a button for it under *Tools → System
+**Make a restore point.** There is a button for it under *Tools â†’ System
 Restore*. It takes about ten seconds and means any change here is reversible
 even if something goes wrong.
 
 Two tweaks will break games with kernel-level anti-cheat. They are marked
 with a yellow warning in the app, but to be explicit:
 
-- **Disable Memory Integrity** — Valorant (Vanguard) and FACEIT will refuse
+- **Disable Memory Integrity** â€” Valorant (Vanguard) and FACEIT will refuse
   to launch.
-- **Disable CPU Mitigations** — weakens Spectre/Meltdown protection.
+- **Disable CPU Mitigations** â€” weakens Spectre/Meltdown protection.
 
 Read each option before applying it. App removal and clearing Start pins are
 not reversed by the dashboard's Restore Session Changes button.
@@ -159,7 +197,7 @@ currently applied, and the toggle works both ways.
 |---|---|
 | **Performance** | GameDVR, Game Mode, fullscreen optimizations, power throttling, Ultimate Performance plan, CPU priority |
 | **Graphics** | Hardware GPU scheduling, variable refresh rate, windowed optimizations, mouse acceleration |
-| **GPU** | NVIDIA and AMD driver-level tweaks — only the ones for your card are shown |
+| **GPU** | NVIDIA and AMD driver-level tweaks â€” only the ones for your card are shown |
 | **Networking** | Nagle's algorithm, network throttling, offloads, firewall popups |
 | **Power** | Dynamic tick, timer coalescing, USB selective suspend and power management |
 | **Advanced** | Memory compression, page combining, CPU mitigations |
@@ -184,7 +222,7 @@ uses the same preset from the dashboard and the Debloat & Customization page.
 
 ### Pause Windows Updates
 
-**System → Pause Windows Updates** pauses feature and security updates until
+**System â†’ Pause Windows Updates** pauses feature and security updates until
 31 December 2051 using the pause-date settings from
 [Aetherinox/pause-windows-updates](https://github.com/Aetherinox/pause-windows-updates#registry-scripts).
 Both **Apply Recommended** and **Apply All** include it. The toggle reads the
@@ -247,7 +285,7 @@ cleared pins; reinstall wanted apps through Microsoft Store and repin them yours
 
 ![NVIDIA Profile](docs/nvidia.png)
 
-One toggle applies a tuned set of global NVIDIA driver settings — the same
+One toggle applies a tuned set of global NVIDIA driver settings â€” the same
 profile for everyone, so there is no "what did you set yours to" in chat.
 
 **NVIDIA Profile Inspector (Revamped) ships inside the zip**, in the
@@ -269,11 +307,11 @@ once per machine, is never overwritten, and is never shared.
 in the background at startup rather than trusting its own record, so anything
 you changed in the NVIDIA Control Panel, in Profile Inspector directly, or
 that a driver reinstall reset shows up correctly. If only part of the profile
-is live you get *"Partly applied — 7 of 39 settings match"* rather than a
+is live you get *"Partly applied â€” 7 of 39 settings match"* rather than a
 toggle that quietly lies. The read is warmed on startup, so the page is
 already filled in by the time you click the tab.
 
-Only NVIDIA driver settings are touched — nothing else on the PC.
+Only NVIDIA driver settings are touched â€” nothing else on the PC.
 
 **On a machine without an NVIDIA card** the page seals itself and names the GPU
 it actually found, so nobody applies a driver profile that cannot do anything.
@@ -288,8 +326,8 @@ Every other tab keeps working normally.
 One toggle for the whole of Microsoft Defender, with the live state of each
 component listed underneath.
 
-**Tamper Protection.** Since Windows 10 1903, Windows blocks *every* app —
-this one included — from switching real-time protection off while Tamper
+**Tamper Protection.** Since Windows 10 1903, Windows blocks *every* app â€”
+this one included â€” from switching real-time protection off while Tamper
 Protection is on. There is no legitimate way around that, and anything
 claiming otherwise is using a malware technique. So the toggle opens the exact
 Windows Security page for you to flip that one switch yourself, then finishes
@@ -297,7 +335,7 @@ the rest. The same toggle turns everything back on.
 
 **The antimalware service stays in memory.** With everything switched off you
 will still see `MsMpEng.exe` running, and Windows still reports the service as
-enabled. That is normal and not a failed toggle — Windows keeps the service
+enabled. That is normal and not a failed toggle â€” Windows keeps the service
 resident for as long as Defender is the installed antivirus, and nothing can
 unload it. What matters is real-time protection, which is what the toggle
 follows and what actually scans files. The page says as much underneath the
@@ -350,7 +388,7 @@ the development PC.
 
 ![Networking](docs/network.png)
 
-A proper bufferbloat test — it measures your idle ping, then measures it
+A proper bufferbloat test â€” it measures your idle ping, then measures it
 again while saturating the line in each direction. The gap between the two is
 what makes games feel laggy when someone else is streaming.
 
@@ -368,7 +406,7 @@ opens, so switching tabs is instant.
 
 ### Tools
 
-- **Windows setup** — under Resources, shows your current Windows name, edition,
+- **Windows setup** â€” under Resources, shows your current Windows name, edition,
   release, build and activation status. If the displayed status is already
   activated, **Activate Windows** immediately shows a dialog without loading MAS.
   Otherwise it checks licensing before opening the bundled MAS HWID tool.
@@ -381,23 +419,23 @@ opens, so switching tabs is instant.
   hidden helper. This does not upgrade Windows 10 to 11 or offer unsupported
   downgrade paths. Edition changes may need activation and a manual restart;
   the app never restarts the PC automatically. Use **Refresh status** to recheck.
-- **Boot Optimizer** — detects your CPU and GPU, then applies startup and
+- **Boot Optimizer** â€” detects your CPU and GPU, then applies startup and
   shutdown tuning that suits them. Preview shows exactly what would change
   before you commit. Secure Boot, TPM and VBS are never touched, so kernel
   anti-cheat keeps working. Every change is written to a rollback file.
-- **Disk Cleanup** — temp files, Windows Update cache, delivery optimization,
+- **Disk Cleanup** â€” temp files, Windows Update cache, delivery optimization,
   crash dumps, thumbnails. Shows size per item, you pick what goes.
-- **Drivers** — checks your installed NVIDIA driver against the latest
+- **Drivers** â€” checks your installed NVIDIA driver against the latest
   release from NVIDIA's own lookup service. Versions are compared as numbers,
   so a beta or hotfix that is *newer* than the public release is reported as
   ahead rather than as an update you are missing.
-- **Resources** — SFC, DISM and a read-only disk check, each with a clear
+- **Resources** â€” SFC, DISM and a read-only disk check, each with a clear
   verdict on whether anything was actually wrong.
-- **BIOS Info** — firmware version, boot mode, Secure Boot, TPM,
+- **BIOS Info** â€” firmware version, boot mode, Secure Boot, TPM,
   virtualization and memory speed.
-- **Install Apps** — runtimes, browsers and game clients, installed silently
+- **Install Apps** â€” runtimes, browsers and game clients, installed silently
   from the vendor. See below.
-- **Virtual Machines** — switch the CPU between VirtualBox and Windows'
+- **Virtual Machines** â€” switch the CPU between VirtualBox and Windows'
   hypervisor-backed security. See below.
 
 ### Extra Tools and updates
@@ -490,12 +528,11 @@ checks show a neutral label, never a raw release timestamp or false green versio
 
 Checks run in the background without blocking startup or navigation. Bundled tools
 remain available offline; failed checks do not claim that an update exists. Clicking
-Update starts a verified background download with progress and cancellation. App
-updates require an explicit **Restart & apply** after tracked jobs finish and tool
-windows close. The old
-app folder is retained beside the installation and restored if replacement fails.
-The last replacement result is in `%LOCALAPPDATA%\TechLoungeTweaks\Updates\last-update.txt`.
-Completed app downloads remain ready after closing the app.
+Update on a tool starts a verified background download with progress and cancellation.
+Installed app releases are handled by the tray companion automatically after the
+full app closes and quick actions finish. The previous version remains in the
+versioned installation folder. The initial move from portable to installed requires
+running setup once; the older portable updater cannot perform that migration.
 
 Official stable tool downloads verify publisher SHA-256 checksums and archive paths
 and sizes before activating a complete staged version. Unsupported packaging or
@@ -528,8 +565,8 @@ freezing a button. While one is going, the **Run** / **Download** button is
 replaced by **Cancel** and a progress bar showing the tool's own real
 percentage, with its current output line and an elapsed timer underneath.
 
-**Windows Image Repair legitimately takes 10–30 minutes** and will sit on one
-percentage for long stretches — that is DISM working, not the app hanging. The
+**Windows Image Repair legitimately takes 10â€“30 minutes** and will sit on one
+percentage for long stretches â€” that is DISM working, not the app hanging. The
 elapsed timer keeps ticking so you can tell the difference, and Cancel stops it
 cleanly at any point.
 
@@ -557,11 +594,11 @@ directly, but Windows runs its own hypervisor for Memory Integrity, WSL2,
 Docker and Sandbox. Whoever holds it, the other loses out.
 
 **Memory Integrity is left off by both modes.** Turning it on taxes every
-driver load — an earlier build enabled it and MSI installers slowed to a crawl
+driver load â€” an earlier build enabled it and MSI installers slowed to a crawl
 on a machine that had shipped with it off. Nothing here will ever switch it on
 behind your back. The one exception worth knowing: **Valorant can ask for
 Memory Integrity to be on**. If Vanguard complains, turn it on yourself in
-*Windows Security → Device security → Core isolation*, and the app will leave
+*Windows Security â†’ Device security â†’ Core isolation*, and the app will leave
 it alone.
 
 **Neither button touches Secure Boot or TPM.** Those are firmware settings and
@@ -570,7 +607,7 @@ this app has no business changing them.
 The hypervisor setting is recorded the first time you open the page, so
 switching back restores *your* machine's value rather than a Windows default.
 
-**Either choice needs a restart** — the hypervisor setting is applied at boot.
+**Either choice needs a restart** â€” the hypervisor setting is applied at boot.
 
 If CPU virtualisation is switched off in your BIOS the page says so in red, with
 what to turn on (Intel VT-x, or SVM Mode on AMD). No software setting can work
@@ -591,21 +628,21 @@ progress and cancellation when switching categories.
 
 ![Game clients with the purple theme](docs/apps-games-purple.png)
 
-File conversion tools, runtimes, browsers and game clients, installed silently — the useful half of a
+File conversion tools, runtimes, browsers and game clients, installed silently â€” the useful half of a
 toolbox like Ghost's, without the baggage.
 
 | Group | What's in it |
 |---|---|
 | **File tools** | Shiftd 1.0.0: offline conversion, compression, image resizing and audio/video trimming, with a desktop app and Explorer submenu |
 | **Chat & voice** | Discord with the latest OpenAsar nightly, Discord PTB |
-| **Tuning tools** | MSI Afterburner (GPU overclocking/monitoring — installed without RivaTuner/RTSS; overclocking done in the real tool, never by this app) |
-| **Runtimes** | Visual C++ Redistributables (2005–2022, x86 + x64), DirectX web installer, .NET Desktop Runtime 8 |
+| **Tuning tools** | MSI Afterburner (GPU overclocking/monitoring â€” installed without RivaTuner/RTSS; overclocking done in the real tool, never by this app) |
+| **Runtimes** | Visual C++ Redistributables (2005â€“2022, x86 + x64), DirectX web installer, .NET Desktop Runtime 8 |
 | **Browsers** | Edge & WebView2, Brave, Chrome, Firefox, Opera GX, Vivaldi |
 | **Game clients** | Steam, Epic, Ubisoft Connect, EA App, GOG Galaxy, Battle.net, Rockstar, Amazon Games |
 
 Each card shows how it will be installed. **WINGET** goes through the Windows
 Package Manager, which is built into Windows 11 and keeps its own download
-URLs and silent switches current — nothing to rot. **DIRECT** downloads
+URLs and silent switches current â€” nothing to rot. **DIRECT** downloads
 straight from the vendor's own domain. **MANUAL** means neither route is
 available and the vendor page is the way in.
 
@@ -669,8 +706,8 @@ is written too, so OpenAsar does not show its first-launch configuration window.
 OpenAsar is a third-party Discord modification and Discord updates can replace
 it.
 
-If the Windows Package Manager has been stripped out — debloated images
-usually remove it — the page says so and falls back to direct downloads.
+If the Windows Package Manager has been stripped out â€” debloated images
+usually remove it â€” the page says so and falls back to direct downloads.
 
 **Microsoft Store & Xbox apps** sit at the top of the same page: one button
 removes them, another restores them by re-registering the copy Windows keeps
@@ -687,7 +724,7 @@ listing so there is always a way through.
 ![Themes](docs/themes.png)
 
 The palette button in the title bar switches the whole app between blue,
-blurple, purple, red, green and cyan. Everything follows — the icon, the score
+blurple, purple, red, green and cyan. Everything follows â€” the icon, the score
 ring, buttons and selections. Your choice is remembered
 between launches.
 
@@ -706,7 +743,7 @@ The BIOS page is **read-only by design**.
 
 Dell, HP and Lenovo publish supported WMI interfaces for changing firmware
 settings from Windows, and the app will use them where it finds one.
-Consumer boards (ASUS, MSI, Gigabyte, ASRock) publish nothing equivalent —
+Consumer boards (ASUS, MSI, Gigabyte, ASRock) publish nothing equivalent â€”
 the only route in is writing firmware NVRAM through an undocumented driver,
 and a bad write bricks the board with no way back.
 
@@ -718,16 +755,16 @@ Change those settings in the firmware itself at POST.
 
 - Legacy tweaks: **Restore Session Changes** restores values captured before the first change in the current app session;
   **Windows Defaults** switches those tweaks off.
-- Debloat registry settings — use their individual **Undo** buttons. Removed
+- Debloat registry settings â€” use their individual **Undo** buttons. Removed
   apps and Start pins need manual reinstalling or repinning.
-- Any individual tweak — toggle it off.
-- A whole category — **Revert All** at the top of the page.
-- NVIDIA profile — toggle it off; your own pre-profile settings come back.
-- Defender — the same toggle turns it back on.
-- Microsoft Store / Xbox apps — the Install / restore button on the Install
+- Any individual tweak â€” toggle it off.
+- A whole category â€” **Revert All** at the top of the page.
+- NVIDIA profile â€” toggle it off; your own pre-profile settings come back.
+- Defender â€” the same toggle turns it back on.
+- Microsoft Store / Xbox apps â€” the Install / restore button on the Install
   Apps page, as long as the image still holds a copy to restore from.
-- Boot Optimizer — the **Undo** button restores from its rollback file.
-- Everything, including things this app never touched — Windows System
+- Boot Optimizer â€” the **Undo** button restores from its rollback file.
+- Everything, including things this app never touched â€” Windows System
   Restore, using the point you made before you started.
 
 ---
@@ -735,7 +772,7 @@ Change those settings in the firmware itself at POST.
 ## Something not working?
 
 `%LOCALAPPDATA%\TechLoungeTweaks\Logs\TL-api.log` records what the app did, in plain text.
-If something misbehaves, that file says why — send it over.
+If something misbehaves, that file says why â€” send it over.
 
 ---
 
@@ -790,7 +827,7 @@ The Discord installer downloads unmodified [OpenAsar](https://github.com/GooseMo
 on demand from its official nightly release. OpenAsar is licensed under AGPL-3.0
 and is not bundled with TechLoungeTweaks.
 
-Use at your own risk — read what a tweak does before applying it.
+Use at your own risk â€” read what a tweak does before applying it.
 
 ### Graphics memory reporting
 
@@ -818,3 +855,9 @@ only their own files. Direct installers discard unused console output so a
 verbose installer cannot stall on a full, unread output pipe. See the
 [code review and validation notes](docs/code-review-2026-10-09.md).
 
+
+### Installer build prerequisite
+
+The release workflow compiles the tray with Windows .NET Framework and requires
+NSIS 3.x. Set `MAKENSIS` to its compiler, put it on PATH, or keep it under
+`%LOCALAPPDATA%\TechLoungeBuildTools\nsis`. The personal build cache is not published.

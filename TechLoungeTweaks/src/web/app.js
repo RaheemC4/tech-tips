@@ -10,8 +10,10 @@ function currentTheme() {
   try { return localStorage.getItem('tl-theme') || 'blue'; } catch (e) { return 'blue'; }
 }
 function applyTheme(name) {
+  if (!THEMES.some(t => t[0] === name)) name = 'blue';
   document.documentElement.setAttribute('data-theme', name);
   try { localStorage.setItem('tl-theme', name); } catch (e) {}
+  if (window.pywebview?.api?.companion_theme) window.pywebview.api.companion_theme(name).catch(() => {});
   const pop = document.getElementById('themepop');
   if (pop) pop.querySelectorAll('.tsw').forEach(sw =>
     sw.classList.toggle('active', sw.dataset.theme === name));
@@ -585,7 +587,11 @@ function buildQuick() {
                 ['Clean Up Disk','Disk Cleanup'],
                 ['Check Drivers','Drivers']];
   document.getElementById('quickRow').innerHTML = acts.map(
-    ([l, t]) => `<button class="btn ghost" onclick="show('${t}')">${l}</button>`).join('');
+    ([l, t]) => `<button class="btn ghost" onclick="${t === 'Networking' ? 'openConnectionTest()' : `show('${t}')`}">${l}</button>`).join('');
+}
+function openConnectionTest() {
+  show('Networking');
+  if (!NET_JOB.running && !NET_JOB.result) runNetTest();
 }
 
 function renderSpecs(s) {
@@ -631,6 +637,10 @@ let boot = async function boot() {
     document.getElementById('footAdmin').style.color =
       info.admin ? 'var(--good)' : 'var(--warn)';
     renderSpecs(info.specs || {});
+  }
+  const sharedTheme = await api('companion_theme');
+  if (THEMES.some(t => t[0] === sharedTheme)) {
+    try { localStorage.setItem('tl-theme', sharedTheme); } catch (e) {}
   }
   buildNav(); show('Home'); refreshCounts(); wireTips(); wireTheme();
   buildQuick(); wireBulk();
@@ -1595,6 +1605,7 @@ function pageNetworking() {
     `<div class="row" style="padding:6px 0"><span style="font-size:12.5px">${a}</span>
      <div class="spacer"></div><span id="cr${i}" class="badge">—</span></div>`).join('');
   wireTips();
+  restoreNetView();
 }
 function renderTweaksInto(items, cat) {
   const g = H('netTweakGrid'); if (!g) return;
@@ -1614,11 +1625,23 @@ async function netBulk(on) {
   return applyCategory('Networking', on);
 }
 const fmtSpeed = m => !m ? '—' : (m >= 1000 ? (m / 1000).toFixed(2) + ' Gbps' : Math.round(m) + ' Mbps');
+const NET_JOB = { running:false, result:null, progress:null, partial:null };
+function restoreNetView() {
+  if (!H('netRun')) return;
+  H('netRun').hidden = NET_JOB.running;
+  if (NET_JOB.progress) {
+    H('netStatus').textContent = NET_JOB.progress.label + '…';
+    H('netBar').style.width = Math.min(100, NET_JOB.progress.frac * 100) + '%';
+  }
+  if (NET_JOB.partial) paintNet(NET_JOB.partial.res, NET_JOB.partial.stage);
+  if (NET_JOB.result) paintNetResult(NET_JOB.result);
+}
 window.py_netprogress = d => {
+  NET_JOB.progress = d;
   if (H('netStatus')) H('netStatus').textContent = d.label + '…';
   if (H('netBar')) H('netBar').style.width = Math.min(100, d.frac * 100) + '%';
 };
-window.py_netpartial = d => paintNet(d.res, d.stage);
+window.py_netpartial = d => { NET_JOB.partial = d; paintNet(d.res, d.stage); };
 function paintNet(r, stage) {
   const ms = v => v ? Math.round(v) + ' ms' : '—';
   if (r.idle && H('lat0')) H('lat0').textContent = ms(r.idle.med);
@@ -1634,11 +1657,25 @@ function paintNet(r, stage) {
   }
 }
 async function runNetTest() {
-  H('netRun').disabled = true; H('netRun').textContent = 'Running…';
+  if (NET_JOB.running) return;
+  Object.assign(NET_JOB, {running:true, result:null, progress:null, partial:null});
+  H('netRun').hidden = true;
+  H('netStatus').textContent = 'Starting connection test…';
+  H('netStatus').style.color = 'var(--muted)';
+  ['netBar','dlBar','ulBar'].forEach(id => { H(id).style.width = '0%'; });
   ['lat0','lat1','lat2','dl','ul','jit'].forEach(i => { if (H(i)) H(i).textContent = '—'; });
   H('grade').textContent = '—';
-  const r = await api('nettest');
-  H('netRun').disabled = false; H('netRun').textContent = 'Run Test';
+  let r;
+  try { r = await api('nettest'); }
+  catch (error) { r = {error:String(error)}; }
+  NET_JOB.running = false;
+  NET_JOB.result = r || {error:'Test failed'};
+  restoreNetView();
+}
+function paintNetResult(r) {
+  if (!H('netRun')) return;
+  H('netRun').hidden = false; H('netRun').textContent = 'Test again';
+  H('netStatus').style.color = 'var(--muted)';
   if (!r || r.error) { H('netStatus').textContent = (r && r.error) || 'Test failed';
     H('netStatus').style.color = 'var(--warn)'; return; }
   paintNet(r, 'all');
@@ -1689,7 +1726,7 @@ async function runNetTest() {
 
   tb.addEventListener('dblclick', e => {
     if (onControls(e)) return;
-    api('maximize');
+    changeAppWindow('maximize');
   });
 })();
 

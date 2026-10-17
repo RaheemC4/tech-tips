@@ -1,6 +1,34 @@
 'use strict';
 let WINDOWS_STATUS = null;
 let WINDOWS_BUSY = false;
+let windowActionBusy = false;
+function windowMotion(leaving = false) {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return Promise.resolve();
+  const target = document.getElementById('main');
+  if (!target) return Promise.resolve();
+  const frames = [{opacity: 1, transform: 'scale(1)'}, {opacity: .65, transform: 'scale(.992)'}];
+  const animation = target.animate(leaving ? frames : frames.reverse(), {
+    duration: 140, easing: 'cubic-bezier(.2,.7,.2,1)', fill: leaving ? 'forwards' : 'none'
+  });
+  // Hold the exit pose through native dispatch; always restore if closing fails
+  // or the user later restores the minimised window.
+  if (leaving) setTimeout(() => animation.cancel(), 350);
+  return animation.finished.catch(() => {});
+}
+async function changeAppWindow(action) {
+  if (windowActionBusy) return;
+  windowActionBusy = true;
+  try {
+    if (action === 'minimize') await windowMotion(true);
+    await api(action);
+    if (action === 'maximize') await windowMotion();
+  } finally { windowActionBusy = false; }
+}
+// Called by the host only after tool/save checks allow shutdown.
+function prepareWindowClose() {
+  windowMotion(true);
+  return matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 140;
+}
 async function closeAppWindow(button) {
   button.disabled = true;
   button.textContent = '…';

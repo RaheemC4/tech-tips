@@ -1,0 +1,35 @@
+/* Static theme backdrop and one frosted workspace. No idle animation. */
+body {
+  background:
+    radial-gradient(ellipse at 0% 10%, color-mix(in srgb,var(--accent) 42%,transparent),transparent 65%),
+    radial-gradient(ellipse at 100% 100%,color-mix(in srgb,var(--accent) 48%,transparent),transparent 70%),
+    #141d29;
+}
+#titlebar { background:rgba(18,25,35,.36); }
+#main {
+  background:rgba(27,35,46,.48);
+  backdrop-filter:blur(22px) saturate(1.15);
+  border-color:transparent;
+  box-shadow:0 12px 32px rgba(0,0,0,.16);
+}
+#sidebar { background:transparent; }
+#pagehead { background:rgba(255,255,255,.018); border-bottom-color:rgba(255,255,255,.04); }
+.card, .statgrid > .card:first-child, #bulkRow, .extra-tool {
+  background:rgba(255,255,255,.045);
+  border-color:transparent;
+  box-shadow:none;
+}
+.btn, .bulkbtn, .apps-categories, .nav.active { border-color:transparent; }
+.btn.ghost, .apps-categories, .nav.active { background:rgba(255,255,255,.065); }
+.card:hover { border-color:transparent; }
+.btn:active:not(:disabled) { transform:translateY(1px); }
+#themepop, .modalbox, #updatesPanel { background:color-mix(in srgb,var(--accent) 5%,#252d39); }
+@media(prefers-reduced-transparency:reduce), (prefers-contrast:more) {
+  #main { backdrop-filter:none; background:#202731; }
+  .card,.statgrid > .card:first-child,#bulkRow,.extra-tool { background:#2a323e; }
+}
+@media(prefers-reduced-motion:reduce) { .btn:active:not(:disabled) { transform:none; } }
+@media(forced-colors:active) {
+  body,#main { background:Canvas; }
+  .card,.btn,.bulkbtn,.extra-tool { border:1px solid ButtonText; }
+}

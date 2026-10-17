@@ -100,6 +100,11 @@ def traced(fn):
 
 
 class Api:
+    @traced
+    def companion_theme(self, value=None):
+        from companion_worker import theme
+        return theme(value)
+
     def __init__(self):
         self._updates = UpdateManager()
         self._tool_launch_lock = threading.Lock()
@@ -235,6 +240,13 @@ class Api:
                 if not closed:
                     self._window.evaluate_js("banner('A tool is waiting to close. Finish its save or busy prompt, then close TechLoungeTweaks again.')")
                     return
+                # Visual feedback is optional and must never prevent shutdown.
+                try:
+                    delay = self._window.evaluate_js('typeof prepareWindowClose === "function" ? prepareWindowClose() : 0')
+                    if isinstance(delay, (int, float)) and 0 < delay <= 200:
+                        time.sleep(delay / 1000)
+                except Exception:
+                    pass
                 self._shutdown_complete=True
                 # Post the close to WinForms instead of synchronously invoking
                 # it from a timer while the WebView bridge is still unwinding.
@@ -1826,4 +1838,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 1 and sys.argv[1] == '--companion-worker':
+        from companion_worker import entry
+        sys.exit(entry(sys.argv[2:]))
+    else:
+        main()

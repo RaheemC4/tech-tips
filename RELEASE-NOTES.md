@@ -1,3 +1,23 @@
+Installed edition and native tray companion.
+
+- Replace the portable ZIP contents with an offline per-user setup EXE, retaining the same public ZIP URL.
+- Add a native theme-matched quick-actions popup, on-demand backend workers and results retained across popup navigation.
+- Add delayed sign-in startup, quiet idle-only installer updates and Windows uninstall registration.
+- Keep every existing full-app feature and bundled tool.
+
+Frosted workspace and connection tests that survive navigation.
+
+- Tint the frosted backdrop with the primary theme accent, replacing the pale cyan sidebar wash with the score ring's deeper blue.
+
+- Make the theme backdrop more visible through the frosted workspace and capture screenshots with transparency enabled.
+- Add short workspace transitions to window controls, respecting reduced motion and preserving close/save checks.
+
+- Preserve all six themes and existing functionality with a static accent backdrop and one frosted workspace layer.
+- Use solid fallback surfaces for reduced transparency and increased contrast; avoid idle animation loops.
+- Start the Overview connection test directly, hide the redundant run button while testing, and retain progress/results across tab navigation.
+- Add regression coverage for navigating away, completing off-screen and returning without duplicate tests.
+- Preserve the existing download URL.
+
 Fix the downloaded app showing an older cached interface.
 
 - Give the packaged interface a content-versioned address and explicit no-store responses.

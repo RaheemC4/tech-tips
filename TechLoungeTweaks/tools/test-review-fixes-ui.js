@@ -44,6 +44,36 @@ const assert=require('assert');
  await page.evaluate(()=>{window.calls=[];show('Disk Cleanup');CLEAN=[{id:'user_temp',name:'Temp',bytes:1,human:'1 B',default:true,desc:'Temp'}];renderClean();window.api=async(n,...a)=>{calls.push([n,...a]);return{ok:false,message:'Rejected'};};});
  await page.evaluate(()=>runClean());
  assert.deepStrictEqual(await page.evaluate(()=>calls.find(c=>c[0]==='clean_run')),['clean_run',['user_temp']]);
- console.log('PASS: authoritative bulk states, unknown state, restore scope, category IDs, all navigation groups and keyboard access at minimum size.');
+ await page.evaluate(()=>{
+   window.netCalls=0;
+   window.api=async name=>{
+     if(name==='nettest'){netCalls++;return new Promise(resolve=>window.finishNet=resolve);}
+     return null;
+   };
+   openConnectionTest();
+ });
+ assert(await page.locator('#netRun').isHidden());
+ await page.evaluate(()=>{show('Home');py_netprogress({label:'Uploading',frac:.75});openConnectionTest();});
+ assert.strictEqual(await page.evaluate(()=>netCalls),1);
+ assert.match(await page.locator('#netStatus').innerText(),/Uploading/);
+ await page.evaluate(()=>{show('Home');finishNet({download_mbps:482,upload_mbps:71,idle:{med:12},down:{med:24},up:{med:23},idle_ms:12,loaded_ms:24,idle_jitter:2,jitter_ms:3,grade:'A',verdict:'Good connection',increase_ms:12,activities:[]});});
+ await page.waitForFunction(()=>!NET_JOB.running);
+ await page.evaluate(()=>openConnectionTest());
+ assert.strictEqual(await page.locator('#dl').innerText(),'482 Mbps');
+ assert.strictEqual(await page.locator('#grade').innerText(),'A');
+ assert.strictEqual(await page.evaluate(()=>netCalls),1);
+ await page.emulateMedia({reducedMotion:'no-preference'});
+ const windowCalls=await page.evaluate(async()=>{
+   const calls=[];window.api=async name=>{calls.push(name);return true;};
+   await Promise.all([changeAppWindow('minimize'),changeAppWindow('minimize')]);
+   await changeAppWindow('maximize');
+   return calls;
+ });
+ assert.deepStrictEqual(windowCalls,['minimize','maximize']);
+ await page.waitForFunction(()=>getComputedStyle(document.getElementById('main')).opacity==='1');
+ await page.emulateMedia({reducedMotion:'reduce'});
+ assert.strictEqual(await page.evaluate(()=>prepareWindowClose()),0);
+ console.log('PASS: window transitions, reduced motion and duplicate-click guard.');
+ console.log('PASS: bulk states, restore scope, cleanup boundaries, navigation and persistent connection results.');
  } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

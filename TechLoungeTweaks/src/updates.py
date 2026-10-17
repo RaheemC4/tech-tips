@@ -405,6 +405,10 @@ class UpdateManager:
                     row['action'] = 'Update' if getattr(sys, 'frozen', False) else None
                     if not getattr(sys, 'frozen', False):
                         row['message'] = 'App replacement is available in the packaged app only.'
+                if manifest.get('distribution') == 'installer':
+                    offers.pop('app', None)
+                    row['action'] = None
+                    row['message'] = 'Installed app releases update quietly through the tray companion when the app is closed. Portable users: run the installer from the existing GitHub download link once.'
             except Exception as exc:
                 row['message'] = 'App check unavailable: ' + str(exc)
                 row.update(status='unavailable', check_error=True, available=None)

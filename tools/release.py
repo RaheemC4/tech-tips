@@ -31,7 +31,7 @@ def run(args, cwd=None, env=None):
 
 def digest(path):
     data = path.read_bytes()
-    if path.suffix.lower() in {'.py', '.js', '.html', '.css', '.md', '.json', '.txt', '.ps1', '.bat', '.spec'} or path.name in {'.gitignore', '.gitattributes', 'LICENSE'}:
+    if path.suffix.lower() in {'.py', '.js', '.html', '.css', '.md', '.json', '.txt', '.ps1', '.bat', '.spec', '.cs', '.nsi'} or path.name in {'.gitignore', '.gitattributes', 'LICENSE'}:
         # Git may change text line endings on another development PC. Content
         # review stays valid, while ZIP and upstream CMD hashes remain exact.
         data = data.replace(b'\r\n', b'\n')
@@ -204,6 +204,17 @@ def verify_release():
     with zipfile.ZipFile(ARCHIVE) as archive:
         if archive.testzip():
             raise RuntimeError('ZIP integrity check failed.')
+        if manifest.get('distribution') == 'installer':
+            if set(archive.namelist()) != {'TechLoungeTweaks-Setup.exe', 'installer.json', 'INSTALL.txt'}:
+                raise RuntimeError('Installer ZIP has unexpected contents.')
+            setup = archive.read('TechLoungeTweaks-Setup.exe')
+            info = json.loads(archive.read('installer.json'))
+            if not setup.startswith(b'MZ') or hashlib.sha256(setup).hexdigest() != info['sha256']:
+                raise RuntimeError('Installer checksum mismatch.')
+            if any(info[k] != manifest[k] for k in ('version', 'built_utc', 'app_revision')):
+                raise RuntimeError('Installer identity mismatch.')
+            print('Release hashes and installer ZIP integrity verified.')
+            return
         for name in ('_internal', 'resources'):
             if not archive.getinfo('TechLoungeTweaks/' + name + '/').external_attr & 2:
                 raise RuntimeError('Support folders must be hidden in the distribution.')
@@ -265,7 +276,7 @@ def replace_archive(pending, destination):
             print(f'Updated ZIP saved. Windows still holds the old backup: {backup}')
 
 
-def prepare():
+def prepare(background_only=False):
     check_review()
     if app_revision() != json.loads((APP / 'src/build-info.json').read_text())['app_revision']:
         raise RuntimeError('App or bundled resources changed since review. Review and record the updated release before preparing.')
@@ -280,25 +291,50 @@ def prepare():
     run([node, APP / 'tools/test-defender-removal-ui.js'], env=env)
     run([node, APP / 'tools/test-debloat-ui.js'], env=env)
     run([node, APP / 'tools/test-review-fixes-ui.js'], env=env)
-    run([sys.executable, APP / 'tools/smoke-close.py'])
-    run([sys.executable, APP / 'tools/smoke-floating-tools.py'])
-    run([sys.executable, APP / 'tools/smoke-nvpi-startup.py'])
+    if background_only:
+        print('DEFERRED: three foreground native window smoke tests (--background-only).', flush=True)
+    else:
+        run([sys.executable, APP / 'tools/smoke-close.py'])
+        run([sys.executable, APP / 'tools/smoke-floating-tools.py'])
+        run([sys.executable, APP / 'tools/smoke-nvpi-startup.py'])
     run([node, APP / 'tools/make-screenshots.js'], env=env)
     readme = APP / 'README.md'
-    for relative in re.findall(r'!\[[^\]]*\]\((docs/[^)]+)\)', readme.read_text(encoding='utf-8')):
-        if not (APP / relative).is_file():
-            raise RuntimeError(f'README screenshot missing: {relative}')
     shutil.copy2(readme, ROOT / 'README.md')
     run([sys.executable, '-m', 'PyInstaller', '--noconfirm', 'TechLoungeTweaks.spec'], APP / 'src')
     built = APP / 'src/dist/TechLoungeTweaks'
     copy_resources(built)
+    sys.path.insert(0, str(APP / 'tools'))
+    from build_companion import build as build_companion
+    from build_installer import build as build_installer
+    build_companion(built)
+    check = build_companion(built, checks=True)
+    report = APP / 'src/build/companion-check.txt'
+    try:
+        run([check, report])
+        print(report.read_text(), flush=True)
+    finally:
+        check.unlink(missing_ok=True)
+    if background_only:
+        print('DEFERRED: native screenshot refresh; retaining the previously captured companion image.', flush=True)
+    else:
+        run([built / 'TechLounge.exe', '--preview', APP / 'docs/companion.png'])
+    for relative in re.findall(r'!\[[^\]]*\]\((docs/[^)]+)\)', readme.read_text(encoding='utf-8')):
+        if not (APP / relative).is_file():
+            raise RuntimeError(f'README screenshot missing: {relative}')
+    setup = build_installer(built, APP / 'TechLoungeTweaks-Setup.exe')
     temporary = ARCHIVE.with_suffix('.zip.tmp')
-    write_distribution(built, temporary)
+    identity = json.loads((APP / 'src/build-info.json').read_text())
+    with zipfile.ZipFile(temporary, 'w', zipfile.ZIP_STORED) as archive:
+        archive.write(setup, 'TechLoungeTweaks-Setup.exe')
+        archive.writestr('installer.json', json.dumps({**identity, 'sha256': digest(setup)}))
+        archive.writestr('INSTALL.txt', 'Run TechLoungeTweaks-Setup.exe to install Tech Lounge Tweaks.\r\n'
+                          'This is an installer, not a portable app. Windows 11 x64.\r\n'
+                          'The Start menu shortcut opens the installed app.\r\n')
     with zipfile.ZipFile(temporary) as archive:
         if archive.testzip():
             raise RuntimeError('New ZIP failed validation; previous archive retained.')
     replace_archive(temporary, ARCHIVE)
-    manifest = {**json.loads((APP / 'src/build-info.json').read_text()),
+    manifest = {**json.loads((APP / 'src/build-info.json').read_text()), 'distribution': 'installer',
                 'notes': (ROOT / 'RELEASE-NOTES.md').read_text(encoding='utf-8').strip(),
                 'files': {p.relative_to(ROOT).as_posix(): digest(p)
                           for p in publish_files() if p != MANIFEST}}
@@ -313,7 +349,7 @@ def prepare():
         pending_personal = personal.with_suffix('.zip.tmp')
         shutil.copyfile(ARCHIVE, pending_personal)
         replace_archive(pending_personal, personal)
-    print(f'READY: {ARCHIVE}\nExtract the whole folder on each personal PC.')
+    print(f'READY: {ARCHIVE}\nRun TechLoungeTweaks-Setup.exe to install on each PC.')
 
 
 def prepare_for_push():
@@ -374,9 +410,13 @@ if __name__ == '__main__':
     for name in ('record-doc-review', 'prepare', 'push', 'verify', 'push-prepared'):
         modes.add_argument('--' + name, action='store_true')
     parser.add_argument('--remote', default=REMOTE, help='Override Git destination, including a local test repo.')
+    parser.add_argument('--background-only', action='store_true',
+                        help='Prepare without foreground native window smoke tests; reports them as deferred.')
     parser.add_argument('--resources-zip', type=Path,
                         help='Use bundled resources from this existing distribution ZIP instead of local resource folders.')
     args = parser.parse_args()
+    if args.background_only and not args.prepare:
+        parser.error('--background-only requires --prepare')
     try:
         if args.resources_zip:
             RESOURCE_ARCHIVE = args.resources_zip.resolve(strict=True)
@@ -390,7 +430,7 @@ if __name__ == '__main__':
             if args.push:
                 prepare_for_push()
             elif not args.push_prepared:
-                prepare()
+                prepare(background_only=args.background_only)
             if args.push or args.push_prepared:
                 push(args.remote)
     except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError) as exc:
