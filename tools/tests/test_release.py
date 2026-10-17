@@ -13,6 +13,34 @@ spec.loader.exec_module(release)
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_explicit_resource_zip_drives_identity_and_packaged_bytes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            app = root / 'app'
+            (app / 'src').mkdir(parents=True)
+            (app / 'resources').mkdir()
+            (app / 'requirements-build.txt').write_text('requirements')
+            local = app / 'resources/TechLoungeProfile.nip'
+            local.write_bytes(b'local source')
+            archive = root / 'previous.zip'
+            def bundle(data):
+                with zipfile.ZipFile(archive, 'w') as output:
+                    output.writestr('TechLoungeTweaks/resources/TechLoungeProfile.nip', data)
+            bundle(b'packaged source')
+            with patch.object(release, 'APP', app), patch.object(release, 'ROOT', root), patch.object(release, 'RESOURCE_ARCHIVE', archive):
+                revision = release.app_revision()
+                local.write_bytes(b'changed unused local source')
+                self.assertEqual(release.app_revision(), revision)
+                release.copy_resources(root / 'built')
+                self.assertEqual((root / 'built/resources/TechLoungeProfile.nip').read_bytes(), b'packaged source')
+                bundle(b'changed packaged source')
+                self.assertNotEqual(release.app_revision(), revision)
+                with zipfile.ZipFile(archive, 'a') as output:
+                    output.writestr('TechLoungeTweaks/resources/../../escape.txt', b'no')
+                with self.assertRaisesRegex(RuntimeError, 'Invalid resource path'):
+                    release.copy_resources(root / 'rejected')
+                self.assertFalse((root / 'escape.txt').exists())
+
     def test_distribution_has_only_launcher_and_hidden_support_folders(self):
         import zipfile
         with tempfile.TemporaryDirectory() as temp:

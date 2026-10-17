@@ -34,6 +34,7 @@ from updates import UpdateManager, open_mouse
 from tool_windows import FloatingTools
 from windows_setup import WindowsSetup
 from package_layout import log_path, hide_support_folders
+from ui_assets import create_ui_app
 from tweaks_engine import (build_tweaks, CATEGORY_ORDER, CATEGORY_ICONS, run, ps)
 
 ICON_FOR = {
@@ -1796,8 +1797,10 @@ def main():
     api = Api()
     window = webview.create_window(
         "Tech Lounge Tweaks",
-        here("web", "index.html"),
+        create_ui_app(here("web")),
         js_api=api,
+        # Keep the existing origin so saved themes survive the asset URL change.
+        http_port=webview.settings['DEFAULT_HTTP_PORT'],
         width=1380, height=900, min_size=(940, 640),
         resizable=True,
         frameless=True, easy_drag=False,

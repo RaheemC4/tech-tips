@@ -579,7 +579,7 @@ function animateNum(el, to) {
 }
 
 function buildQuick() {
-  const acts = [['Create Restore Point','System Restore'],
+  const acts = [
                 ['Run Boot Optimizer','Boot Optimizer'],
                 ['Test Connection','Networking'],
                 ['Clean Up Disk','Disk Cleanup'],

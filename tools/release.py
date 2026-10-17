@@ -21,6 +21,7 @@ SKIP = {'build', 'dist', '__pycache__', '_to_delete', 'node_modules', '.build-ve
 REVIEW = APP / 'docs-review.json'
 MANIFEST = APP / 'release.json'
 ARCHIVE = APP / 'TechLoungeTweaks.zip'
+RESOURCE_ARCHIVE = None
 
 
 def run(args, cwd=None, env=None):
@@ -38,9 +39,15 @@ def digest(path):
 
 
 def files(folder):
-    return sorted(p for p in folder.rglob('*') if p.is_file()
-                  and not (set(p.relative_to(folder).parts) & SKIP)
-                  and p.suffix not in {'.pyc', '.log', '.tmp'})
+    result = []
+    for current, directories, names in os.walk(folder):
+        # Prune build trees before traversal, including cloud-backed files.
+        directories[:] = [name for name in directories if name not in SKIP]
+        for name in names:
+            path = Path(current) / name
+            if name not in SKIP and path.suffix not in {'.pyc', '.log', '.tmp'} and path.is_file():
+                result.append(path)
+    return sorted(result)
 
 
 def doc_inputs():
@@ -54,12 +61,13 @@ def app_revision():
               if p.name != 'build-info.json'}
     inputs['requirements-build.txt'] = digest(APP / 'requirements-build.txt')
     sources = [APP / 'resources', ROOT.parent / 'TechLoungeTweaks/resources']
-    resource_dir = next((p for p in sources if p.is_dir()), None)
+    resource_dir = None if RESOURCE_ARCHIVE else next((p for p in sources if p.is_dir()), None)
+    resource_archive = RESOURCE_ARCHIVE or ARCHIVE
     if resource_dir:
         inputs.update({'resources/' + p.relative_to(resource_dir).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
                        for p in files(resource_dir)})
-    elif ARCHIVE.exists():
-        with zipfile.ZipFile(ARCHIVE) as archive:
+    elif resource_archive.exists():
+        with zipfile.ZipFile(resource_archive) as archive:
             prefix = 'TechLoungeTweaks/resources/'
             inputs.update({n.removeprefix('TechLoungeTweaks/'): hashlib.sha256(archive.read(n)).hexdigest()
                            for n in archive.namelist() if n.startswith(prefix) and not n.endswith('/')})
@@ -117,11 +125,12 @@ def browser_env():
 
 def copy_resources(destination):
     sources = [APP / 'resources', ROOT.parent / 'TechLoungeTweaks/resources']
-    source = next((p for p in sources if p.is_dir()), None)
+    source = None if RESOURCE_ARCHIVE else next((p for p in sources if p.is_dir()), None)
+    resource_archive = RESOURCE_ARCHIVE or ARCHIVE
     if source:
         shutil.copytree(source, destination / 'resources', dirs_exist_ok=True)
-    elif ARCHIVE.exists():
-        with zipfile.ZipFile(ARCHIVE) as archive:
+    elif resource_archive.exists():
+        with zipfile.ZipFile(resource_archive) as archive:
             prefix = 'TechLoungeTweaks/resources/'
             for entry in archive.infolist():
                 if entry.is_dir() or not entry.filename.startswith(prefix):
@@ -365,8 +374,14 @@ if __name__ == '__main__':
     for name in ('record-doc-review', 'prepare', 'push', 'verify', 'push-prepared'):
         modes.add_argument('--' + name, action='store_true')
     parser.add_argument('--remote', default=REMOTE, help='Override Git destination, including a local test repo.')
+    parser.add_argument('--resources-zip', type=Path,
+                        help='Use bundled resources from this existing distribution ZIP instead of local resource folders.')
     args = parser.parse_args()
     try:
+        if args.resources_zip:
+            RESOURCE_ARCHIVE = args.resources_zip.resolve(strict=True)
+            if RESOURCE_ARCHIVE == ARCHIVE.resolve():
+                raise ValueError('Use a separate resource ZIP, not the distribution being rebuilt.')
         if args.record_doc_review:
             record_review(update_build=True)
         elif args.verify:

@@ -16,6 +16,11 @@ hiding descriptions or warnings. All 23 tabs remain accessible, including at
 940 x 640. The app catalogue retains its compact category layout.
 Screenshots and the feature-tour video use representative demonstration data.
 
+Each release serves its interface from a content-versioned local address, so
+WebView cannot show a previous release's cached design after an update. Saved
+themes are retained. Close the app before extracting an update into its folder.
+Overview keeps one restore-point shortcut above the tweak controls.
+
 Session undo is held in memory and ends when the app closes. It covers tweak
 registry values and the original active power plan, boot timer flag, memory
 features, service state, firewall/offload settings, USB power settings and NVIDIA
@@ -42,6 +47,8 @@ The NVPI covers use the selected publisher theme's original header colour.
 NVPI starts under a hidden host-owned staging window, then transfers to the main
 host once fitted. This keeps startup rendering hidden without repeatedly emptying
 its window region; the extra fixed settling delay is skipped when staging succeeds.
+If initial ownership needs the region fallback, that region is restored once
+cloaked staging succeeds, so it cannot keep the fitted tool invisible.
 Its Open button shows **Opening…** until the subwindow is ready. Driver/profile
 initialization still takes time. BCU and DLSS keep their existing launch paths.
 Saved maximization, splash and backdrop settings are normalized before launch;

@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'src'))
 from tool_startup import StartupGuard
 from tool_windows import FloatingTools
@@ -14,9 +15,16 @@ guard=StartupGuard('nvpi')
 child=subprocess.Popen([sys.executable,str(Path(__file__).with_name('smoke-floating-tools.py')),'--child','--nvpi'],stdout=subprocess.PIPE,text=True,creationflags=4)
 guard.pid=child.pid
 resume=ctypes.WinDLL('ntdll').NtResumeProcess;resume.argtypes=[w.HANDLE]
-assert resume(int(child._handle))==0
 try:
-    hwnd=int(child.stdout.readline());child.stdout.readline()
+    # Force the real fallback-to-cloak transition instead of relying on a race
+    # during publisher window creation to exercise it.
+    with patch.object(guard,'stage_hwnd',None):
+        assert resume(int(child._handle))==0
+        hwnd=int(child.stdout.readline());child.stdout.readline()
+        until=time.monotonic()+3
+        while hwnd not in guard.handles and time.monotonic()<until:time.sleep(.01)
+        assert hwnd in guard.handles,'Fixture did not enter region fallback'
+    with guard.lock:guard.suppress(hwnd)
     u.ShowWindow(hwnd,4)
     until=time.monotonic()+3
     while not guard.is_cloaked(hwnd) and time.monotonic()<until:time.sleep(.01)

@@ -142,6 +142,14 @@ class StartupGuard:
         u=FloatingTools._native()
         with self.lock:
             if hwnd in self.cloaked:
+                # Early ownership can fail while the publisher creates its
+                # window. If a later event successfully stages it, release the
+                # earlier region fallback while DWM still keeps it hidden.
+                if hwnd in self.handles:
+                    u.SetWindowRgn.argtypes=[w.HWND,w.HANDLE,w.BOOL]
+                    if not u.SetWindowRgn(hwnd,self.handles[hwnd],False):
+                        raise ctypes.WinError(ctypes.get_last_error())
+                    del self.handles[hwnd]
                 self.prepared=hwnd
                 # Keep its compositor surface hidden until layout is fitted.
                 return

@@ -181,10 +181,17 @@ try:
         if cycle%2:
             native.SetWindowPos(owner,None,100+cycle*5,100,1000+cycle*20,750,0x0014)
             settle(.2)
-        native.GetWindowRect(owner,ctypes.byref(parent))
-        native.GetWindowRect(hwnd,ctypes.byref(rect))
-        border,top,bottom=chrome_insets(native,hwnd,'nvpi',native.GetDpiForWindow(owner) or 96)
-        expected=inset_rect((parent.left,parent.top,parent.right,parent.bottom),native.GetDpiForWindow(owner) or 96)
+        deadline=time.monotonic()+1
+        while True:
+            native.GetWindowRect(owner,ctypes.byref(parent))
+            native.GetWindowRect(hwnd,ctypes.byref(rect))
+            border,top,bottom=chrome_insets(native,hwnd,'nvpi',native.GetDpiForWindow(owner) or 96)
+            expected=inset_rect((parent.left,parent.top,parent.right,parent.bottom),native.GetDpiForWindow(owner) or 96)
+            if ((rect.left+border,rect.top+top)==expected[:2]
+                    and abs((rect.right-rect.left-2*border)-expected[2])<=2):
+                break
+            if time.monotonic()>=deadline:break
+            settle(.01)
         assert (rect.left+border,rect.top+top)==expected[:2], f'NVPI shifted after maximize/resize: cycle={cycle}, actual={(rect.left+border,rect.top+top)}, expected={expected}, owner={(parent.left,parent.top,parent.right,parent.bottom)}'
         assert abs((rect.right-rect.left-2*border)-expected[2])<=2, 'NVPI width did not follow host'
     native.GetWindowRect(hwnd,ctypes.byref(rect))

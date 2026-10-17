@@ -1,3 +1,13 @@
+Fix the downloaded app showing an older cached interface.
+
+- Give the packaged interface a content-versioned address and explicit no-store responses.
+- Preserve the existing local origin and saved theme without clearing the WebView profile.
+- Test upgrades with identical extraction timestamps and verify asset paths remain inside the web folder.
+- Release an earlier NVIDIA window-region fallback when startup subsequently succeeds with DWM cloaking.
+- Keep the revamped design, all features and the existing latest-download URL.
+- Keep one restore-point shortcut at the top of Overview and remove the duplicate from Quick Actions.
+- Prune excluded build folders during release scans; allow an explicit existing distribution ZIP as the bundled-resource input when local source folders are unavailable.
+
 Fix the three review findings and reduce scrolling.
 
 - Capture original tweak values before mutation and restore session changes without resetting untouched tweaks.
