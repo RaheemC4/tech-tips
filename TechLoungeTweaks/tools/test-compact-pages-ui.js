@@ -91,6 +91,8 @@ const assert=require('assert');
   assert((await page.locator('.grade-legend').innerText()).includes('Added latency (ms)'));
   await page.setViewportSize({width:1320,height:832});
   await page.evaluate(()=>show('Home'));
+  // Measure the settled layout, not the page entrance's temporary translateY.
+  await page.evaluate(async()=>{await document.fonts.ready;await Promise.all(document.getElementById('page-home').getAnimations().map(animation=>animation.finished.catch(()=>{})));});
   assert(await page.locator('.statgrid').evaluate(e=>e.getBoundingClientRect().height<215));
   for (const viewport of [{width:1280,height:800},{width:1320,height:832},{width:1370,height:856}]) {
     await page.setViewportSize(viewport);

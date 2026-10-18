@@ -1,5 +1,6 @@
 """Foreground, synthetic native popup checks. No app actions are invoked."""
 import os
+import sys
 from pathlib import Path
 import subprocess
 from build_companion import APP, REFERENCES
@@ -14,6 +15,6 @@ subprocess.run([str(compiler), '/nologo', '/target:winexe', '/platform:x64',
                 *['/reference:' + name for name in REFERENCES],
                 *map(str, sorted((APP / 'src/companion').glob('*.cs'))),
                 str(APP / 'tools/PopupMotionChecks.cs')], check=True)
-result = subprocess.run([str(target), str(report)], timeout=20)
+result = subprocess.run([str(target), str(report), *sys.argv[1:]], timeout=20)
 print(report.read_text(), flush=True)
 result.check_returncode()

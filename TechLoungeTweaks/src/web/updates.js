@@ -22,12 +22,16 @@ function startUpdateMonitor() {
   updateTimer = setTimeout(poll, 1500);
 }
 
+function toggleUpdates() {
+  if (H('updatesButton')?.getAttribute('aria-expanded') === 'true') closeUpdates();
+  else openUpdates();
+}
 function closeUpdates() {
   const panel = H('updatesPanel');
-  if (panel) {
-    const restoreFocus = panel.contains(document.activeElement);
-    panel.hidden = true;
-    if (restoreFocus) H('updatesButton')?.focus();
+  if (panel && !panel.hidden && !panel.inert) {
+    if (panel.contains(document.activeElement)) H('updatesButton')?.focus();
+    panel.inert = true;
+    animatePanel(panel, false, () => { panel.hidden = true; });
   }
   H('updatesButton')?.setAttribute('aria-expanded', 'false');
 }
@@ -38,7 +42,7 @@ async function openUpdates() {
     panel = document.createElement('aside');
     panel.id = 'updatesPanel'; panel.hidden = true;
     panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'Updates');
-    panel.innerHTML = `<header><div class="update-heading"><span class="update-emblem">${UPDATE_ICON}</span><div><div class="update-eyebrow">APP + TOOLS</div><h3>Updates</h3></div></div><button class="update-close" id="closeUpdates" aria-label="Close updates">×</button></header>
+    panel.innerHTML = `<header><div class="update-heading"><span class="update-emblem">${UPDATE_ICON}</span><div><div class="update-eyebrow">APP + TOOLS</div><h3>Updates</h3></div></div><button class="update-close" id="closeUpdates" aria-label="Close updates">${svg('close')}</button></header>
       <div class="update-summary"><i aria-hidden="true"></i><span id="updateSummary" role="status" aria-live="polite">Checking for updates...</span></div>
       <div class="update-body">
       <div id="updateAppRow"></div><div id="updateToolRows"></div>
@@ -54,8 +58,9 @@ async function openUpdates() {
     H('updateCancel').onclick = () => updateAction('updates_cancel');
     H('updateRestart').onclick = () => updateAction('updates_restart');
   }
-  const wasHidden = panel.hidden;
-  panel.hidden = false;
+  const wasHidden = panel.hidden || panel.inert;
+  panel.hidden = false; panel.inert = false;
+  if (wasHidden) animatePanel(panel, true);
   if (wasHidden) H('closeUpdates')?.focus();
   H('updatesButton')?.setAttribute('aria-expanded', 'true');
   if (updateLast) paintUpdates(updateLast);

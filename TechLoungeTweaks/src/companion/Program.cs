@@ -107,7 +107,7 @@ static class Program {
     }
 }
 
-sealed class Job {public bool Running;public string Message;public Dictionary<string,object> Result;}
+sealed class Job {public bool Running,Failed;public string Message;public Dictionary<string,object> Result;}
 sealed class Tray : ApplicationContext {
     public readonly Dictionary<string,Job> Jobs=new Dictionary<string,Job>();
     public bool Preview; public Popup Window; public Color Accent;
@@ -203,14 +203,19 @@ sealed class Tray : ApplicationContext {
                                 if(line.Length>1024*1024)throw new IOException("Action result too large.");
                                 var message=Program.Json.Deserialize<Dictionary<string,object>>(line);
                                 var data=message["data"] as Dictionary<string,object>;
-                                if(message.ContainsKey("done")) {Post(()=>{job.Result=data;job.Running=false;job.Message=Describe(action,data);if(action=="power"&&data.ContainsKey("plans"))Jobs["plans"]=job;RefreshJob(action);});break;}
-                                if(data!=null&&data.ContainsKey("label")) {string label=Convert.ToString(data["label"]);Post(()=>{if(job.Message!=label){job.Message=label;RefreshJob(action);}});}
+                                if(message.ContainsKey("done")) {Post(()=>{job.Failed=data.ContainsKey("error")||data.ContainsKey("__error__");if(!job.Failed||job.Result==null)job.Result=data;job.Running=false;job.Message=Describe(action,data);if(action=="power"&&data.ContainsKey("plans"))Jobs["plans"]=job;RefreshJob(action);});break;}
+                                if(data!=null)Post(()=>ApplyProgress(action,job,data));
                             }
                         }
                     }
                 }
-            }catch(Exception ex){Post(()=>{job.Running=false;job.Message=ex is System.ComponentModel.Win32Exception?"Action cancelled or Windows permission was denied.":ex.Message;RefreshJob(action);});}
+            }catch(Exception ex){Post(()=>{job.Running=false;job.Failed=true;job.Message=ex is System.ComponentModel.Win32Exception?"Action cancelled or Windows permission was denied.":ex.Message;RefreshJob(action);});}
         });
+    }
+    internal void ApplyProgress(string action,Job job,Dictionary<string,object> data){
+        bool changed=false;object raw;if(action=="connection"&&data.TryGetValue("res",out raw)&&raw is Dictionary<string,object>){job.Result=(Dictionary<string,object>)raw;changed=true;}
+        if(data.TryGetValue("label",out raw)){string label=Convert.ToString(raw);if(job.Message!=label){job.Message=label;changed=true;}}
+        if(changed)RefreshJob(action);
     }
     static string Describe(string action,Dictionary<string,object> data){
         foreach(string key in new[]{"error","__error__","message"})if(data.ContainsKey(key))return Convert.ToString(data[key]);
@@ -233,7 +238,7 @@ sealed class Tray : ApplicationContext {
 }
 
 sealed class GlassButton:Button {
-    public Color Tint; public bool Primary;
+    public Color Tint; public bool Primary;public string Symbol;
     protected override void WndProc(ref Message message){TrayGeometry.DiscardCopiedPixels(ref message,true);base.WndProc(ref message);}
     public GlassButton(){FlatStyle=FlatStyle.Flat;FlatAppearance.BorderSize=0;ForeColor=Color.FromArgb(232,238,248);Font=Popup.FontFor(10,true);Cursor=Cursors.Hand;SetStyle(ControlStyles.UserPaint|ControlStyles.OptimizedDoubleBuffer|ControlStyles.AllPaintingInWmPaint,true);}
     protected override void OnPaint(PaintEventArgs e){
@@ -266,10 +271,15 @@ sealed class GlassButton:Button {
             return;
         }
         var flags=TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.WordBreak|TextFormatFlags.NoPrefix|TextFormatFlags.PreserveGraphicsClipping|TextFormatFlags.PreserveGraphicsTranslateTransform;
+        if(Symbol!=null&&popup!=null){
+            TraySymbols.Draw(e.Graphics,Symbol,new Rectangle((Width-popup.Pixels(25))/2,popup.Pixels(12),popup.Pixels(25),popup.Pixels(25)),Tint);
+            var text=Text.Split('\n');TextRenderer.DrawText(e.Graphics,text[0],Font,new Rectangle(0,popup.Pixels(43),Width,popup.Pixels(24)),ForeColor,flags);
+            if(text.Length>1)TextRenderer.DrawText(e.Graphics,text[1],popup.FontAt(9,false),new Rectangle(0,popup.Pixels(68),Width,popup.Pixels(22)),Color.FromArgb(176,191,212),flags);return;
+        }
         var lines=Text.Split('\n');
         if(lines.Length==2&&popup!=null){
             TextRenderer.DrawText(e.Graphics,lines[0],Font,new Rectangle(0,Height/2-popup.Pixels(21),Width,popup.Pixels(24)),Enabled?ForeColor:Color.Gray,flags);
-            TextRenderer.DrawText(e.Graphics,lines[1],Popup.FontFor(9,false),new Rectangle(0,Height/2+popup.Pixels(2),Width,popup.Pixels(22)),Enabled?Color.FromArgb(176,191,212):Color.Gray,flags);
+            TextRenderer.DrawText(e.Graphics,lines[1],popup.FontAt(9,false),new Rectangle(0,Height/2+popup.Pixels(2),Width,popup.Pixels(22)),Enabled?Color.FromArgb(176,191,212):Color.Gray,flags);
         }else TextRenderer.DrawText(e.Graphics,Text,Font,box,Enabled?ForeColor:Color.Gray,flags);
         if(Focused&&ShowFocusCues)ControlPaint.DrawFocusRectangle(e.Graphics,Rectangle.Inflate(box,-5,-5),ForeColor,BackColor);
     }
@@ -277,13 +287,15 @@ sealed class GlassButton:Button {
 sealed class Popup:Form {
     [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr window);
     static readonly Dictionary<string,Font> fonts=new Dictionary<string,Font>();
-    internal static Font FontFor(int size,bool bold){string key=size+":"+bold;Font font;if(!fonts.TryGetValue(key,out font)){int points=size==9?10:size==10?11:size;string family=bold?"Segoe UI Variable Text Semibold":"Segoe UI Variable Text";font=new Font(family,points,FontStyle.Regular);if(!font.Name.StartsWith("Segoe UI Variable",StringComparison.Ordinal)){font.Dispose();font=new Font("Segoe UI",points,bold?FontStyle.Bold:FontStyle.Regular);}fonts[key]=font;}return font;}
+    internal static Font FontFor(int size,bool bold,float scale=0){if(scale==0)scale=PopupDpi.PointerScale();string key=size+":"+bold+":"+scale;Font font;if(!fonts.TryGetValue(key,out font)){int points=size==9?10:size==10?11:size;string family=bold?"Segoe UI Variable Text Semibold":"Segoe UI Variable Text";font=new Font(family,points*4f/3f*scale,FontStyle.Regular,GraphicsUnit.Pixel);if(!font.Name.StartsWith("Segoe UI Variable",StringComparison.Ordinal)){font.Dispose();font=new Font("Segoe UI",points*4f/3f*scale,bold?FontStyle.Bold:FontStyle.Regular,GraphicsUnit.Pixel);}fonts[key]=font;}return font;}
     readonly Tray tray; readonly TrayScrollPanel body=new TrayScrollPanel();string page="home";
     readonly PopupMotion motion;
     readonly GlassButton secondaryFooter,openFooter,settingsButton;bool splitFooter;
     readonly TrayPageMotion pageMotion;string renderedPage;
     Label detailMessage,homeStatus;
+    readonly Dictionary<string,TrayMetricCard> connectionCards=new Dictionary<string,TrayMetricCard>();GlassButton connectionRetry;
     float uiScale;
+    internal Font FontAt(int size,bool bold){return FontFor(size,bold,uiScale);}
     internal int Pixels(int value){return (int)Math.Round(value*uiScale);}
     int LayoutWidth {get{return (int)Math.Round(ClientSize.Width/uiScale);}}
     int LayoutHeight {get{return (int)Math.Round(ClientSize.Height/uiScale);}}
@@ -291,7 +303,7 @@ sealed class Popup:Form {
     protected override void WndProc(ref Message message){TrayGeometry.DiscardCopiedPixels(ref message,false);base.WndProc(ref message);}
     public Popup(Tray owner){
         tray=owner;Text="Tech Lounge quick actions";FormBorderStyle=FormBorderStyle.None;ShowInTaskbar=false;TopMost=true;StartPosition=FormStartPosition.Manual;
-        uiScale=PopupDpi.PointerScale();AutoScaleMode=AutoScaleMode.None;DoubleBuffered=true;SetStyle(ControlStyles.ResizeRedraw|ControlStyles.AllPaintingInWmPaint,true);BackColor=Color.FromArgb(24,35,53);ForeColor=Color.FromArgb(242,244,248);Font=FontFor(10,false);KeyPreview=true;
+        uiScale=PopupDpi.PointerScale();AutoScaleMode=AutoScaleMode.None;DoubleBuffered=true;SetStyle(ControlStyles.ResizeRedraw|ControlStyles.AllPaintingInWmPaint,true);BackColor=Color.FromArgb(24,35,53);ForeColor=Color.FromArgb(242,244,248);Font=FontAt(10,false);KeyPreview=true;
         KeyDown+=(s,e)=>{if(e.KeyCode==Keys.Escape)Close();};
         var area=Screen.FromPoint(Cursor.Position).WorkingArea;ClientSize=new Size(Math.Min(Pixels(380),area.Width-Pixels(28)),Math.Min(Pixels(600),area.Height-Pixels(28)));Location=new Point(area.Right-Width-Pixels(14),area.Bottom-Height-Pixels(14));
         body.SetBounds(Pixels(24),Pixels(94),ClientSize.Width-Pixels(48),ClientSize.Height-Pixels(172));body.BackColor=Color.Transparent;body.AutoScroll=false;Controls.Add(body);
@@ -322,8 +334,8 @@ sealed class Popup:Form {
         using(var b=new LinearGradientBrush(bounds,Color.FromArgb(28+tray.Accent.R/4,35+tray.Accent.G/4,48+tray.Accent.B/4),Color.FromArgb(20,29,41),70))graphics.FillRectangle(b,bounds);
     }
     protected override void OnResize(EventArgs e){base.OnResize(e);if(Width>0&&Height>0)using(var p=Round(ClientRectangle,Math.Max(1,Pixels(20)))){var old=Region;Region=new Region(p);if(old!=null)old.Dispose();}}
-    Label Label(string text,int x,int y,int width,int height,int size,bool bold,Control parent){var l=new Label{Text=text,BackColor=Color.Transparent,ForeColor=ForeColor,Font=FontFor(size,bold),UseCompatibleTextRendering=false};l.SetBounds(Pixels(x),Pixels(y),Pixels(width),Pixels(height));parent.Controls.Add(l);return l;}
-    GlassButton Button(string text,int x,int y,int w,int h,Action click,Control parent,bool primary=false){var b=new GlassButton{Text=text,Tint=tray.Accent,Primary=primary,BackColor=BackColor};b.SetBounds(Pixels(x),Pixels(y),Pixels(w),Pixels(h));b.Click+=(s,e)=>click();parent.Controls.Add(b);return b;}
+    Label Label(string text,int x,int y,int width,int height,int size,bool bold,Control parent){var l=new Label{Text=text,BackColor=Color.Transparent,ForeColor=ForeColor,Font=FontAt(size,bold),UseCompatibleTextRendering=false};l.SetBounds(Pixels(x),Pixels(y),Pixels(width),Pixels(height));parent.Controls.Add(l);return l;}
+    GlassButton Button(string text,int x,int y,int w,int h,Action click,Control parent,bool primary=false){var b=new GlassButton{Text=text,Tint=tray.Accent,Primary=primary,BackColor=BackColor,Font=FontAt(10,true)};b.SetBounds(Pixels(x),Pixels(y),Pixels(w),Pixels(h));b.Click+=(s,e)=>click();parent.Controls.Add(b);return b;}
     void LayoutPageChrome(){
         int margin=Pixels(24),gap=Pixels(12),top=ClientSize.Height-Pixels(64);
         body.Width=Math.Max(1,ClientSize.Width-margin*2);
@@ -362,13 +374,13 @@ sealed class Popup:Form {
         if(ClientSize.Height!=height){if(Visible)motion.Settle();int bottom=Bottom;ClientSize=new Size(ClientSize.Width,height);Top=Math.Max(work.Top+Pixels(14),bottom-Height);if(Visible)motion.Reanchor();}
         body.Height=ClientSize.Height-Pixels(172);
         body.ResetScroll();
-        foreach(Control c in Children(body))c.Dispose();body.Controls.Clear();detailMessage=null;homeStatus=null;
+        foreach(Control c in Children(body))c.Dispose();body.Controls.Clear();detailMessage=null;homeStatus=null;connectionCards.Clear();connectionRetry=null;
         splitFooter=page=="scan"||(page=="home"&&tray.UpdateAvailable);
         settingsButton.Tint=tray.Accent;secondaryFooter.Tint=tray.Accent;openFooter.Tint=tray.Accent;
         secondaryFooter.Visible=splitFooter;secondaryFooter.Enabled=false;
         secondaryFooter.Text=page=="scan"?"Clean selected":splitFooter?"● Update available":"";
         secondaryFooter.Primary=page=="scan";secondaryFooter.Height=Pixels(page=="scan"?40:28);
-        secondaryFooter.Font=FontFor(page=="scan"?10:9,page=="scan");
+        secondaryFooter.Font=FontAt(page=="scan"?10:9,page=="scan");
         secondaryFooter.AccessibleName=page=="scan"?"Clean selected":"Update available. Open full app update details";
         if(page=="home"&&splitFooter)secondaryFooter.Enabled=true;
         openFooter.Primary=page!="scan";
@@ -382,7 +394,7 @@ sealed class Popup:Form {
     }
     static List<Control> Children(Control parent){var result=new List<Control>();foreach(Control c in parent.Controls)result.Add(c);return result;}
     void Home(){
-        Label("Power plan",0,0,BodyWidth,24,10,true,body);
+        AddSymbol("power",0,0,22,tray.Accent);Label("Power plan",30,0,BodyWidth-30,24,10,true,body);
         var choices=tray.CreateMenu();
         string active="Loading plans…";bool ultimate=false;Job planJob;
         if(tray.Jobs.TryGetValue("plans",out planJob)&&planJob.Result!=null&&planJob.Result.ContainsKey("plans"))foreach(var raw in (System.Collections.IEnumerable)planJob.Result["plans"]){
@@ -406,11 +418,11 @@ sealed class Popup:Form {
         plans.AccessibleName="Power plan";plans.ContextMenuStrip=choices;choices.Closed+=(s,e)=>QueueDismiss();plans.Disposed+=(s,e)=>choices.Dispose();Job powerJob;bool switching=tray.Jobs.TryGetValue("power",out powerJob)&&powerJob.Running;plans.Enabled=!tray.Updating&&!switching;
         Label("QUICK ACTIONS",0,88,BodyWidth,20,8,true,body).ForeColor=Color.FromArgb(176,191,212);
         int half=(BodyWidth-12)/2;
-        Button("Disk cleanup\nReview & clean",0,114,half,68,()=>Open("scan"),body);
-        Button("Connection\nSpeed & latency",half+12,114,half,68,()=>Open("connection"),body);
-        Button("Restore point\nCreate checkpoint",0,194,half,68,()=>Open("restore"),body);
-        Button("GPU drivers\nCheck versions",half+12,194,half,68,()=>Open("drivers"),body);
-        homeStatus=Label("",0,280,BodyWidth,36,9,false,body);UpdateHomeStatus();
+        Button("Disk cleanup\nReview & clean",0,114,half,96,()=>Open("scan"),body).Symbol="clean";
+        Button("Connection\nSpeed & latency",half+12,114,half,96,()=>Open("connection"),body).Symbol="network";
+        Button("Restore point\nCreate checkpoint",0,222,half,96,()=>Open("restore"),body).Symbol="restore";
+        Button("GPU drivers\nCheck versions",half+12,222,half,96,()=>Open("drivers"),body).Symbol="gpu";
+        homeStatus=Label("",0,336,BodyWidth,36,9,false,body);UpdateHomeStatus();
     }
     void UpdateHomeStatus(){
         if(homeStatus==null||homeStatus.IsDisposed)return;
@@ -425,6 +437,7 @@ sealed class Popup:Form {
             return;
         }
         if(page!=action)return;
+        if(page=="connection"&&connectionCards.Count==4){UpdateConnection();return;}
         Job job;if(tray.Jobs.TryGetValue(action,out job)&&job.Running&&detailMessage!=null&&!detailMessage.IsDisposed){
             detailMessage.Text=job.Message??"Working…";FitMessage(detailMessage);return;
         }
@@ -433,18 +446,31 @@ sealed class Popup:Form {
     void FitMessage(Label message){message.Height=Math.Max(Pixels(28),TextRenderer.MeasureText(message.Text,message.Font,new Size(message.Width,int.MaxValue),TextFormatFlags.WordBreak|TextFormatFlags.NoPrefix).Height+Pixels(12));}
     void Open(string action){page=action;if(!tray.Jobs.ContainsKey(action)){tray.Run(action,null,action=="restore");return;}Render();}
     void Back(){Button("‹  Back",0,0,88,30,()=>{page="home";Render();},body).AccessibleName="Back to Quick actions";}
-    void Settings(){Back();Label("Companion settings",0,62,BodyWidth-14,35,15,true,body);Label("Small when idle. Active when you need it.",0,105,BodyWidth,45,10,false,body);
-        var check=new TrayCheckBox{Tint=tray.Accent,Text="Open on startup",Checked=Program.Setting("Startup","1")=="1",AutoSize=false,BackColor=Color.Transparent,ForeColor=ForeColor};check.SetBounds(0,Pixels(170),Pixels(BodyWidth-14),Pixels(44));check.CheckedChanged+=(s,e)=>{try{if(!tray.Preview)Program.Startup(check.Checked);}catch(Exception ex){MessageBox.Show(ex.Message,"Startup setting");}};body.Controls.Add(check);
-        Label("Updates install automatically when the app and quick actions are idle.",0,226,BodyWidth,70,10,false,body);
+    void Settings(){Back();PageTitle("Companion settings","startup",62);Label("Small when idle. Active when you need it.",0,105,BodyWidth,45,10,false,body);
+        var check=new TrayCheckBox{Tint=tray.Accent,Font=FontAt(10,false),Text="Open on startup",Checked=Program.Setting("Startup","1")=="1",AutoSize=false,BackColor=Color.Transparent,ForeColor=ForeColor};check.SetBounds(0,Pixels(170),Pixels(BodyWidth-14),Pixels(44));check.CheckedChanged+=(s,e)=>{try{if(!tray.Preview)Program.Startup(check.Checked);}catch(Exception ex){MessageBox.Show(ex.Message,"Startup setting");}};body.Controls.Add(check);
+        AddSymbol("restore",0,238,28,tray.Accent);Label("Automatic updates",40,232,BodyWidth-40,30,12,true,body);Label("Updates install when the app and quick actions are idle.",40,268,BodyWidth-40,70,10,false,body);
     }
+    void AddSymbol(string symbol,int x,int y,int size,Color tint){var badge=new TraySymbolBadge(symbol,tint);badge.SetBounds(Pixels(x),Pixels(y),Pixels(size),Pixels(size));body.Controls.Add(badge);}
+    void PageTitle(string title,string symbol,int y){AddSymbol(symbol,0,y,28,tray.Accent);Label(title,38,y,BodyWidth-38,32,15,true,body);}
     void ConnectionCard(Dictionary<string,object> data,string key,string title,string unit,string icon,int x,int y,int width){
-        object raw;data.TryGetValue(key,out raw);var card=new TrayMetricCard(title,raw,unit,icon,tray.Accent);card.SetBounds(Pixels(x),Pixels(y),Pixels(width),Pixels(116));body.Controls.Add(card);
+        object raw;data.TryGetValue(key,out raw);var card=new TrayMetricCard(title,raw,unit,icon,tray.Accent);card.SetBounds(Pixels(x),Pixels(y),Pixels(width),Pixels(116));body.Controls.Add(card);connectionCards[key]=card;
     }
-    void Detail(){Back();string title=new Dictionary<string,string>{{"scan","Disk cleanup"},{"clean","Disk cleanup"},{"connection","Your connection"},{"restore","Restore point"},{"drivers","GPU drivers"},{"power","Power plan"}}[page];Label(title,0,42,BodyWidth-14,28,15,true,body);
+    void UpdateConnection(){
+        Job job;if(!tray.Jobs.TryGetValue("connection",out job))return;
+        foreach(var pair in connectionCards){object value=null;bool found=job.Result!=null&&job.Result.TryGetValue(pair.Key,out value);string unit=pair.Key=="idle_ms"?"ms · Idle":pair.Key=="grade"?"":"Mbps";if(pair.Key=="download_mbps"&&job.Result!=null&&job.Result.ContainsKey("download_server"))unit+=" · "+Convert.ToString(job.Result["download_server"]).Replace("Clouvider ","");string phase=pair.Key=="download_mbps"?"download":pair.Key=="upload_mbps"?"upload":pair.Key=="idle_ms"?"idle":"grade";bool live=false;object fields;if(job.Running&&job.Result!=null&&job.Result.TryGetValue("live_fields",out fields)&&fields is System.Collections.IEnumerable)foreach(object field in (System.Collections.IEnumerable)fields)if(Convert.ToString(field)==pair.Key)live=true;pair.Value.UpdateValue(value,unit,job.Running&&!found,(job.Message??"").ToLowerInvariant().Contains(phase),live);}
+        string status="Bufferbloat measures lag under load. A+ is best.";
+        if(job.Running)status=job.Message??"Testing connection…";
+        else if(job.Failed||job.Result==null)status=job.Message;
+        else if(job.Result.ContainsKey("error"))status=Convert.ToString(job.Result["error"]);
+        else if(job.Result.ContainsKey("download_error"))status="Download unavailable. Other completed results remain usable.";
+        if(detailMessage!=null)detailMessage.Text=status;
+        if(connectionRetry!=null){connectionRetry.Enabled=!job.Running;connectionRetry.Text=job.Running?"Testing…":"Test again";}
+    }
+    void Detail(){Back();string title=new Dictionary<string,string>{{"scan","Disk cleanup"},{"clean","Disk cleanup"},{"connection","Your connection"},{"restore","Restore point"},{"drivers","GPU drivers"},{"power","Power plan"}}[page];PageTitle(title,page=="connection"?"network":page=="drivers"?"gpu":page=="restore"?"restore":page=="power"?"power":"clean",42);
         Job job;if(!tray.Jobs.TryGetValue(page,out job)){Label("Ready.",0,82,BodyWidth-14,36,10,false,body);return;}
         if(page=="scan"&&job.Result!=null&&job.Result.ContainsKey("items")){
             int y=78;
-            foreach(var raw in (System.Collections.IEnumerable)job.Result["items"]){var item=(Dictionary<string,object>)raw;var check=new TrayCheckBox{Tint=tray.Accent,Text=item["name"]+" · "+item["human"],Tag=item["id"],Checked=Convert.ToBoolean(item["default"]),BackColor=Color.Transparent,ForeColor=ForeColor};check.SetBounds(0,Pixels(y),Pixels(BodyWidth-14),Pixels(34));check.CheckedChanged+=(s,e)=>UpdateCleanupSelection();body.Controls.Add(check);y+=38;}
+            foreach(var raw in (System.Collections.IEnumerable)job.Result["items"]){var item=(Dictionary<string,object>)raw;var check=new TrayCheckBox{Tint=tray.Accent,Font=FontAt(10,false),Text=item["name"]+" · "+item["human"],Tag=item["id"],Checked=Convert.ToBoolean(item["default"]),BackColor=Color.Transparent,ForeColor=ForeColor};check.SetBounds(0,Pixels(y),Pixels(BodyWidth-14),Pixels(34));check.CheckedChanged+=(s,e)=>UpdateCleanupSelection();body.Controls.Add(check);y+=38;}
             UpdateCleanupSelection();return;
         }
         if(page=="drivers"&&job.Result!=null&&job.Result.ContainsKey("gpus")){
@@ -453,16 +479,19 @@ sealed class Popup:Form {
             if(y==78)Label("No supported GPU detected.",0,y,BodyWidth-14,36,10,false,body);
             Button("Check again",0,y==78?124:y+2,BodyWidth-14,36,()=>tray.Run("drivers",null,false),body);return;
         }
-        if(page=="connection"&&!job.Running&&job.Result!=null&&!job.Result.ContainsKey("error")&&!job.Result.ContainsKey("__error__")){
-            var data=job.Result;int half=(BodyWidth-12)/2;
+        if(page=="connection"){
+            var data=job.Result??new Dictionary<string,object>();int half=(BodyWidth-12)/2;
             ConnectionCard(data,"download_mbps","Download","Mbps","download",0,78,half);
             ConnectionCard(data,"upload_mbps","Upload","Mbps","upload",half+12,78,half);
             ConnectionCard(data,"idle_ms","Latency","ms","latency",0,206,half);
             ConnectionCard(data,"grade","Bufferbloat","","grade",half+12,206,half);
-            Label("Bufferbloat measures lag under load. A+ is best.",0,336,BodyWidth,32,9,false,body).ForeColor=Color.FromArgb(176,191,212);
-            Button("Test again",0,378,BodyWidth,40,()=>tray.Run("connection",null,false),body);return;
+            detailMessage=Label("",0,336,BodyWidth,32,9,false,body);detailMessage.ForeColor=Color.FromArgb(176,191,212);
+            connectionRetry=Button("Test again",0,378,BodyWidth,40,()=>tray.Run("connection",null,false),body);UpdateConnection();return;
         }
-        var message=Label(job.Message??"Working…",0,82,BodyWidth-14,28,10,false,body);detailMessage=message;FitMessage(message);
+        bool failed=job.Failed||(job.Result!=null&&(job.Result.ContainsKey("error")||(job.Result.ContainsKey("ok")&&!Convert.ToBoolean(job.Result["ok"]))));
+        if(job.Running){var loading=new TrayActivityIndicator(tray.Accent);loading.SetBounds(0,Pixels(90),Pixels(22),Pixels(22));body.Controls.Add(loading);}
+        if(!job.Running)AddSymbol(failed?"notice":"check",0,82,48,failed?Color.FromArgb(255,190,61):Color.FromArgb(61,220,151));
+        var message=Label(job.Message??"Working…",job.Running?32:0,job.Running?86:144,BodyWidth-(job.Running?46:14),28,10,true,body);detailMessage=message;FitMessage(message);
         if(!job.Running && page!="power")Button(page=="clean"?"Review cleanup":"Run again",0,(int)Math.Ceiling(message.Bottom/uiScale)+12,BodyWidth-14,44,()=>{if(page=="clean")page="scan";tray.Run(page,null,page=="restore");Render();},body);
     }
 }

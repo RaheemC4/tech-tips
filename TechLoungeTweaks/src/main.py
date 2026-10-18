@@ -736,7 +736,9 @@ class Api:
                 progress=lambda label, frac: self._emit(
                     "netprogress", {"label": label, "frac": frac}),
                 on_partial=lambda stage, r: self._emit(
-                    "netpartial", {"stage": stage, "res": _clean(r)}))
+                    "netpartial", {"stage": stage, "res": _clean(r)}),
+                on_live=lambda stage, r: self._emit(
+                    "netlive", {"stage": stage, "res": _clean(r)}))
             return _clean(res)
         except Exception as e:
             return {"error": str(e)}

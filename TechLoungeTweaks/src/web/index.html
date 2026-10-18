@@ -20,16 +20,16 @@
   <div id="titlebar" class="pywebview-drag-region">
     <div class="brand pywebview-drag-region"><i></i> Tech Lounge Tweaks</div>
     <div id="winbtns">
-      <button id="updatesButton" aria-haspopup="dialog" aria-expanded="false" onclick="openUpdates()"><svg class="update-sync" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 6.1a8 8 0 0 1 13.2 3.1M4.7 14.8a8 8 0 0 0 13.2 3.1"/></svg><span id="updatesButtonLabel">Updates</span><span id="updatesButtonCount" hidden></span></button>
+      <button id="updatesButton" aria-haspopup="dialog" aria-expanded="false" onclick="toggleUpdates()"><svg class="update-sync" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 6.1a8 8 0 0 1 13.2 3.1M4.7 14.8a8 8 0 0 0 13.2 3.1"/></svg><span id="updatesButtonLabel">Updates</span><span id="updatesButtonCount" hidden></span></button>
       <button id="themebtn" title="Switch theme"><svg viewBox="0 0 24 24" fill="none"
         stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path
         d="M12 3a9 9 0 1 0 0 18c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1a1.5 1.5 0 0 1 1.11-2.5H16a5 5 0 0 0 5-5c0-4.42-4.03-8-9-8Z"/><circle
         cx="7.5" cy="11" r="1.1" fill="currentColor" stroke="none"/><circle cx="10.5" cy="7.5" r="1.1"
         fill="currentColor" stroke="none"/><circle cx="15" cy="8.5" r="1.1" fill="currentColor"
         stroke="none"/><circle cx="17.5" cy="12" r="1.1" fill="currentColor" stroke="none"/></svg></button>
-      <button aria-label="Minimize window" onclick="changeAppWindow('minimize')">&#8212;</button>
-      <button aria-label="Maximize or restore window" onclick="changeAppWindow('maximize')">&#9633;</button>
-      <button class="close" id="closeWindow" aria-label="Close app" onclick="closeAppWindow(this)">&#10005;</button>
+      <button aria-label="Minimize window" onclick="changeAppWindow('minimize')"><svg aria-hidden="true" viewBox="0 0 12 12"><path d="M1 6h10"/></svg></button>
+      <button aria-label="Maximize or restore window" onclick="changeAppWindow('maximize')"><svg aria-hidden="true" viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="9" height="9" rx=".5"/></svg></button>
+      <button class="close" id="closeWindow" aria-label="Close app" onclick="closeAppWindow(this)"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>
   </div>
 

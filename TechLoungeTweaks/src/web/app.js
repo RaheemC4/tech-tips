@@ -1,5 +1,39 @@
 'use strict';
 
+const panelAnimations = new WeakMap();
+function animatePanel(element, opening, onClosed = () => {}, fadeOnly = false) {
+  const previous = panelAnimations.get(element);
+  const current = getComputedStyle(element);
+  const start = previous ? {opacity: current.opacity, transform: current.transform} :
+    {opacity: opening ? 0 : 1, transform: opening && !fadeOnly ? 'translateY(-10px) scale(.975)' : 'none'};
+  previous?.cancel();
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches || !element.animate) {
+    panelAnimations.delete(element);
+    if (!opening) onClosed();
+    return;
+  }
+  const end = {opacity: opening ? 1 : 0,
+    transform: opening || fadeOnly ? 'none' : 'translateY(-6px) scale(.98)'};
+  const animation = element.animate([start, end], {
+    duration: opening ? 320 : 180, easing: opening ? 'cubic-bezier(.2,.8,.2,1)' : 'cubic-bezier(.4,0,.8,.4)', fill: 'both'
+  });
+  panelAnimations.set(element, animation);
+  animation.finished.then(() => {
+    if (panelAnimations.get(element) !== animation) return;
+    if (!opening) onClosed();
+    animation.cancel();
+    panelAnimations.delete(element);
+  }).catch(() => {});
+}
+function setThemeVisible(pop, btn, open) {
+  if (!open && (pop.inert || !pop.classList.contains('show'))) return;
+  pop.inert = !open;
+  btn.classList.toggle('open', open);
+  btn.setAttribute('aria-expanded', String(open));
+  if (open) pop.classList.add('show');
+  animatePanel(pop, open, () => pop.classList.remove('show'));
+}
+
 /* ---------- theme switcher ---------- */
 const THEMES = [
   ['blue','#2f7dff','#34c6ff'], ['blurple','#5865f2','#8b5cf6'],
@@ -44,8 +78,7 @@ function wireTheme() {
     document.body.appendChild(pop);
     watchShellOverlay(pop);
     pop.querySelectorAll('.tsw').forEach(sw =>
-      sw.onclick = () => { applyTheme(sw.dataset.theme); pop.classList.remove('show');
-                           btn.classList.remove('open'); btn.setAttribute('aria-expanded','false'); btn.focus(); });
+      sw.onclick = () => { applyTheme(sw.dataset.theme); setThemeVisible(pop, btn, false); btn.focus(); });
   }
   const place = () => {
     // Hang it off the button itself so it stays put when the window resizes.
@@ -56,19 +89,17 @@ function wireTheme() {
   btn.setAttribute('aria-expanded','false');
   btn.setAttribute('aria-controls','themepop');
   pop.onkeydown = e => {
-    if (e.key === 'Escape') { e.preventDefault(); pop.classList.remove('show');
-      btn.classList.remove('open'); btn.setAttribute('aria-expanded','false'); btn.focus(); }
+    if (e.key === 'Escape') { e.preventDefault(); setThemeVisible(pop, btn, false); btn.focus(); }
   };
   pop.onfocusout = () => queueMicrotask(() => {
     if (!pop.contains(document.activeElement) && document.activeElement !== btn) {
-      pop.classList.remove('show'); btn.classList.remove('open'); btn.setAttribute('aria-expanded','false');
+      setThemeVisible(pop, btn, false);
     }
   });
   btn.onclick = e => {
     e.stopPropagation();
-    const open = pop.classList.toggle('show');
-    btn.classList.toggle('open', open);
-    btn.setAttribute('aria-expanded',String(open));
+    const open = btn.getAttribute('aria-expanded') !== 'true';
+    setThemeVisible(pop, btn, open);
     if (open) { place(); (pop.querySelector('.active') || pop.querySelector('.tsw'))?.focus(); }
     applyTheme(currentTheme());
   };
@@ -78,8 +109,7 @@ function wireTheme() {
     // button by closest() rather than identity.
     if (pop.classList.contains('show') && !pop.contains(e.target) &&
         !(e.target.closest && e.target.closest('#themebtn'))) {
-      pop.classList.remove('show');
-      btn.classList.remove('open'); btn.setAttribute('aria-expanded','false');
+      setThemeVisible(pop, btn, false);
     }
   });
 }
@@ -164,6 +194,11 @@ function banner(msg) {
 }
 
 const ICONS = {
+  close:'<path d="M6 6l12 12M18 6L6 18"/>',
+  check:'<path d="M5 12l4 4L19 6"/>',
+  chevron:'<path d="m6 9 6 6 6-6"/>',
+  arrow:'<path d="M4 12h16m-6-6 6 6-6 6"/>',
+  help:'<path d="M9 8a3 3 0 1 1 5 2.2c-1.2.8-2 1.3-2 3.3M12 18h.01"/>',
   home:'<path d="M3 10.5 12 3l9 7.5V21a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/>',
   bolt:'<path d="M13 2 4 14h6l-1 8 9-12h-6z"/>',
   gpu:'<rect x="2" y="6" width="20" height="12" rx="2"/><rect x="6" y="10" width="5" height="4" rx="1"/>',
@@ -179,7 +214,7 @@ const ICONS = {
   restore:'<path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/>',
   box:'<path d="M21 8v8a2 2 0 0 1-1 1.7l-7 4a2 2 0 0 1-2 0l-7-4A2 2 0 0 1 3 16V8a2 2 0 0 1 1-1.7l7-4a2 2 0 0 1 2 0l7 4A2 2 0 0 1 21 8"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/>'
 };
-const svg = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+const svg = k => `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor"
   stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICONS[k]||ICONS.cpu}</svg>`;
 
 let STATE = { tweaks: [], cats: [], page: 'Home', specs: {}, admin: true };
@@ -214,7 +249,7 @@ function buildNav() {
         markup += `<section class="navgroup" data-navgroup="GENERAL"><div class="navsec">GENERAL</div><div id="nav-GENERAL" class="navitems">`;
         continue;
       }
-      markup += `<section class="navgroup" data-navgroup="${group}"><button type="button" class="navsec" aria-expanded="false" aria-controls="nav-${group}" data-navgroup-toggle="${group}">${group}<span aria-hidden="true">⌄</span></button><div id="nav-${group}" class="navitems" hidden>`;
+      markup += `<section class="navgroup" data-navgroup="${group}"><button type="button" class="navsec" aria-expanded="false" aria-controls="nav-${group}" data-navgroup-toggle="${group}">${group}<span aria-hidden="true">${svg('chevron')}</span></button><div id="nav-${group}" class="navitems" hidden>`;
       continue;
     }
     const chip = n[0] === 'cat' ? `<span class="chip" data-chip="${n[1]}">0/0</span>` : '';
@@ -441,12 +476,12 @@ function renderTweaks(cat) {
         <h3>${t.name}</h3>
       </div>
       <div class="desc">${t.desc}</div>
+      ${t.warning ? `<div class="warnpill">▲ ${t.warning}</div>` : ''}
       <div class="foot">
         <span class="badge ${t.applied ? 'on' : ''}">
           ${t.applied == null ? 'UNKNOWN' : t.applied ? 'APPLIED' : 'NOT APPLIED'}</span>
         <button type="button" class="sw ${t.applied ? 'on' : ''}" data-sw="${t.key}" role="switch" aria-checked="${t.applied === true}" aria-label="${t.name}"></button>
       </div>
-      ${t.warning ? `<div class="warnpill">▲ ${t.warning}</div>` : ''}
     </div>`).join('');
 
   document.querySelectorAll('[data-sw]').forEach(sw => {
@@ -656,6 +691,7 @@ const tip = document.getElementById('tip');
 tip.setAttribute('role','tooltip');
 function wireTips() {
   document.querySelectorAll('.info[data-t]').forEach(el => {
+    el.innerHTML = svg('help');
     el.onmouseenter = () => {
       const [t, b, g] = el.dataset.t.split('|');
       tip.innerHTML = `<b>${t}</b><p>${b}</p>${g ? `<div class="good">${g}</div>` : ''}`;
@@ -1699,10 +1735,11 @@ function renderTweaksInto(items, cat) {
     <div class="card tweak ${t.applied ? 'on' : ''}" data-key="${t.key}">
       <div class="top"><div class="ico">${svg(t.icon || 'net')}</div><h3>${t.name}</h3></div>
       <div class="desc">${t.desc}</div>
+      ${t.warning ? `<div class="warnpill">▲ ${t.warning}</div>` : ''}
       <div class="foot"><span class="badge ${t.applied ? 'on' : ''}">
         ${t.applied == null ? 'UNKNOWN' : t.applied ? 'APPLIED' : 'NOT APPLIED'}</span>
         <button type="button" class="sw ${t.applied ? 'on' : ''}" data-sw="${t.key}" role="switch" aria-checked="${t.applied === true}" aria-label="${t.name}"></button></div>
-      ${t.warning ? `<div class="warnpill">▲ ${t.warning}</div>` : ''}</div>`).join('');
+      </div>`).join('');
   document.querySelectorAll('[data-sw]').forEach(sw => {
     sw.onclick = () => setToggle(sw.dataset.sw);
   });
@@ -1774,7 +1811,8 @@ function paintNetResult(r) {
   H('jit').style.color = j == null ? 'var(--text)' : (j < 5 ? 'var(--good)' : j < 20 ? 'var(--warn)' : 'var(--bad)');
   (r.activities || []).forEach(([n, ok], i) => {
     const el = H('cr' + i); if (!el) return;
-    el.textContent = ok === null ? '?' : (ok ? '✓' : '✕');
+    el.innerHTML = svg(ok === null ? 'help' : ok ? 'check' : 'close');
+    el.setAttribute('aria-label', n + ': ' + (ok === null ? 'Not measured' : ok ? 'Suitable' : 'Not suitable'));
     el.className = 'badge ' + (ok ? 'on' : '');
     if (ok === false) el.style.cssText = 'background:rgba(255,93,108,.14);color:var(--bad)';
   });
@@ -1827,8 +1865,11 @@ function showModal(html) {
   let o = document.getElementById('modal');
   if (!o) { o = document.createElement('div'); o.id = 'modal';
             o.className = 'modal-overlay'; document.body.appendChild(o); }
-  if (!o.classList.contains('show')) modalReturnFocus = document.activeElement;
-  o.innerHTML = html; o.classList.add('show');
+  if (!o.classList.contains('show') || o.inert) modalReturnFocus = document.activeElement;
+  o.innerHTML = html; o.classList.add('show'); o.classList.remove('closing'); o.inert = false;
+  animatePanel(o, true, undefined, true);
+  const card = o.querySelector('.modal-card');
+  if (card) animatePanel(card, true);
   o.setAttribute('role','dialog'); o.setAttribute('aria-modal','true');
   o.setAttribute('aria-label',o.querySelector('h2,h3')?.textContent || 'Confirm action');
   H('shell').inert = true;
@@ -1847,7 +1888,12 @@ function showModal(html) {
 }
 function closeModal() {
   const o = document.getElementById('modal');
-  if (o) { o.classList.remove('show'); o.innerHTML = ''; }
+  if (o && !o.inert) {
+    o.inert = true; o.classList.add('closing');
+    const card = o.querySelector('.modal-card');
+    if (card) animatePanel(card, false);
+    animatePanel(o, false, () => { o.classList.remove('show', 'closing'); o.innerHTML = ''; }, true);
+  }
   H('shell').inert = false;
   if (modalReturnFocus?.isConnected) modalReturnFocus.focus();
   modalReturnFocus = null;
@@ -2126,7 +2172,7 @@ async function loadNvSettings() {
          <span class="nvname">${r.name}</span>
          ${r.current != null
             ? `<span class="nvcur ${changed ? 'chg' : ''}">${r.current}</span>
-               <span class="nvarrow">→</span>`
+               <span class="nvarrow">${svg('arrow')}</span>`
             : `<span class="nvcur"></span><span class="nvarrow">sets to</span>`}
          <span class="nvval">${r.target}</span>
        </div>`;

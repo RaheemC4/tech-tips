@@ -1,3 +1,21 @@
+- Keep tray latency on idle ping. Unify live/final throughput estimates after warm-up, scale parallel streams on fast links, prevent download caching and count upload blocks while sending. Smooth completed speed readings as well as live updates. Investigated current Speedtest.net/Fast.com browser assets with REA; retain the app's public test endpoints.
+
+- Make Updates toggle on repeat clicks with reversible entrance/exit motion. Apply matching motion to theme and confirmation panels, respect reduced motion, centre SVG control icons and align tweak-card footers.
+
+- Slow live number movement with continuous damped tracking, retaining velocity across samples. Show measured live idle/loaded latency with explicit phase labels while keeping the final idle baseline separate. Give loading indicators a constant-length clockwise arc and a calmer rotation speed.
+
+- Show live measured download/upload speeds in existing tray cards with smooth number transitions, and a provisional bufferbloat grade during load. Preserve independently completed results, exact final calculations, reduced motion and responsive navigation.
+
+- Restart the loading indicator after batched native page redraws restore visibility without a managed visibility event. Verify actual screen pixels change after navigating from Home into a running action, alongside timer shutdown and reduced-motion behaviour.
+
+- Improve gigabit download measurement with nearest-reachable Clouvider LibreSpeed node selection, large test responses and buffered reads. Display the selected city beside Mbps; retain rate-limit fallback and independent phase results.
+
+- Remove the duplicated large action icon while tray jobs run. Keep one heading icon and show a smooth, reduced-motion-aware loading indicator beside progress below it; retain distinct completion/warning symbols.
+
+- Carry drawn theme icons, larger type and status colours through all tray pages, with icon tiles on Home and matching cleanup/driver/restore/settings headings. Scale fonts with each popup monitor.
+- Keep all four connection metric cards visible during testing. Apply phase results and progress in place, retain navigation and completed readings, clear old results on retry and keep the stationary footer.
+- Fix silent zero download readings caused by Cloudflare HTTP 429 responses. Reduce download streams, read arriving bytes incrementally and switch shared streams to OVHcloud's HTTPS test file on rate limiting, with retry backoff and explicit unavailable errors.
+
 - Revamp tray connection results with four metric cards, drawn icons, large speed/latency values and coloured bufferbloat grades. Label unavailable/zero throughput honestly, retain retry/background navigation, enlarge shared tray typography and use explicit Segoe UI Variable Semibold faces. Preserve fixed footer geometry.
 
 - Keep tray popup height and footer position fixed across all pages. Preserve spring content navigation and opening/closing motion while removing the native height-change path implicated in repeated blue footer drawings. Check geometry throughout complete rapid-navigation transitions.

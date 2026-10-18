@@ -102,7 +102,7 @@ static class PopupMotionChecks {
                 tray.Jobs["clean"]=new Job{Message="Freed 1.6 GB. Skipped 514 files in use or protected by Windows."};
                 typeof(Popup).GetField("page",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance).SetValue(popup,"clean");popup.Render();Pump(30);
                 Button review=null;Label result=null;foreach(Control c in viewport.Controls){if(c is Button&&c.Text=="Review cleanup")review=(Button)c;if(c is Label&&c.Text.StartsWith("Freed 1.6"))result=(Label)c;}
-                Require(result!=null&&result.Height<=popup.Pixels(65),"Short result reserved an oversized empty text area");
+                Require(result!=null&&result.Height<=popup.Pixels(65),"Short result reserved an oversized empty text area: "+(result==null?"missing":result.Height+" width="+result.Width+" scale80="+popup.Pixels(80)+" font="+result.Font.Size));
                 Require(review!=null&&review.Bottom<=viewport.Height,"Review cleanup still required scrolling");Capture(popup,"tray-result.png");
                 var current=new Dictionary<string,object>{{"name","NVIDIA GeForce RTX 5090"},{"installed","617.42"},{"latest","617.42"},{"status","current"}};
                 var unknown=new Dictionary<string,object>{{"name","Intel UHD Graphics 770"},{"installed","32.0.101.7088"},{"latest",null},{"status","unknown"}};
@@ -117,13 +117,21 @@ static class PopupMotionChecks {
                 Require(FindButton(popup,"● Update available")!=null,"Available update lacked its compact indicator");Capture(popup,"tray-update-indicator.png");
                 tray.SetUpdateAvailable(false);Require(FindButton(popup,"● Update available")==null&&FindButton(popup,"Updates")==null,"Tray retained a redundant update control");
                 Require(FindButton(popup,"Open app").Width==popup.ClientSize.Width-popup.Pixels(48),"Normal footer retained the empty update column");Capture(popup,"companion.png");
+                var pageField=typeof(Popup).GetField("page",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance);
+                pageField.SetValue(popup,"settings");popup.Render();Pump(340);Capture(popup,"tray-settings.png");
+                tray.Jobs["restore"]=new Job{Message="Restore point created.",Result=new Dictionary<string,object>{{"ok",true}}};pageField.SetValue(popup,"restore");popup.Render();Pump(340);Capture(popup,"tray-restore.png");
+                foreach(Control control in viewport.Controls)Require(control.Bottom<=viewport.Height,"Secondary page overflowed the viewport");
+                Require(Math.Abs(Popup.FontFor(10,false,1.5f).Size/Popup.FontFor(10,false,1).Size-1.5)<.01,"Font scale did not match the popup DPI");
                 popup.Dispose();
             }
         }
     }
-    static void Capture(Popup popup,string name){
-        string directory=Environment.GetEnvironmentVariable("TLT_TRAY_FIXTURES");if(string.IsNullOrEmpty(directory))return;popup.Activate();popup.Refresh();Pump(420);using(var bitmap=new Bitmap(popup.Width,popup.Height,System.Drawing.Imaging.PixelFormat.Format24bppRgb)){using(var graphics=Graphics.FromImage(bitmap))graphics.CopyFromScreen(popup.Location,Point.Empty,popup.Size);bitmap.Save(Path.Combine(directory,name));}
+    static void SaveFixture(Popup popup,string path){
+        using(var raw=new Bitmap(popup.Width,popup.Height,System.Drawing.Imaging.PixelFormat.Format24bppRgb))using(var bitmap=new Bitmap(popup.Width,popup.Height,System.Drawing.Imaging.PixelFormat.Format32bppArgb)){
+            popup.DrawToBitmap(raw,popup.ClientRectangle);using(var graphics=Graphics.FromImage(bitmap)){graphics.Clear(Color.Transparent);if(popup.Region!=null)graphics.SetClip(popup.Region,System.Drawing.Drawing2D.CombineMode.Replace);graphics.DrawImageUnscaled(raw,0,0);}bitmap.Save(path);
+        }
     }
+    static void Capture(Popup popup,string name){string directory=Environment.GetEnvironmentVariable("TLT_TRAY_FIXTURES");if(string.IsNullOrEmpty(directory))return;Pump(340);SaveFixture(popup,Path.Combine(directory,name));}
     static Button FindButton(Control parent,string prefix){
         foreach(Control c in parent.Controls){if(c is Button&&c.Text.StartsWith(prefix))return (Button)c;var child=FindButton(c,prefix);if(child!=null)return child;}return null;
     }
@@ -196,9 +204,7 @@ static class PopupMotionChecks {
             Require(FindButton(popup,"Clean selected").Enabled,"Re-selecting a category did not restore cleanup");
             page.SetValue(popup,"home");popup.Render();Pump(55);page.SetValue(popup,"scan");popup.Render();Pump(350,verify);
             string screenshot=Environment.GetEnvironmentVariable("TLT_POPUP_SCREENSHOT");
-            if(!string.IsNullOrEmpty(screenshot))using(var bitmap=new Bitmap(popup.Width,popup.Height,System.Drawing.Imaging.PixelFormat.Format24bppRgb)){
-                popup.Activate();popup.Refresh();Pump(40);using(var graphics=Graphics.FromImage(bitmap))graphics.CopyFromScreen(popup.Location,Point.Empty,popup.Size);bitmap.Save(screenshot);
-            }
+            if(!string.IsNullOrEmpty(screenshot))SaveFixture(popup,screenshot);
             popup.Dispose();
         }
     }
@@ -224,7 +230,7 @@ static class PopupMotionChecks {
             var stableBounds=popup.Bounds;int stableFooterTop=original.Top;
             using(var resize=new ResizeProbe(popup)){
             foreach(string route in new[]{"scan","home","connection","scan","settings","drivers","scan","home"}){
-                page.SetValue(popup,route);popup.Render();Pump(340,()=>{Require(popup.Bounds==stableBounds&&original.Top==stableFooterTop,"Navigation moved the popup/footer during "+route);});
+                page.SetValue(popup,route);popup.Render();Pump(340,()=>{Require(popup.Bounds==stableBounds&&original.Top==stableFooterTop,"Navigation moved the popup/footer during "+route+" expected="+stableBounds+" actual="+popup.Bounds+" footer="+original.Top+" expectedFooter="+stableFooterTop);});
                 Require(object.ReferenceEquals(original,FindButton(popup,"Open app"))&&original.Handle==handle,"Navigation recreated the footer HWND");
                 Require(popup.Controls.Count==6,"Navigation duplicated native header/footer controls");
                 using(var actual=new Bitmap(popup.Width,popup.Height,System.Drawing.Imaging.PixelFormat.Format24bppRgb))
@@ -256,12 +262,63 @@ static class PopupMotionChecks {
             var body=(TrayScrollPanel)typeof(Popup).GetField("body",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance).GetValue(popup);int cards=0;
             foreach(Control control in body.Controls){Require(control.Bottom<=body.Height,"Connection results require scrolling");var card=control as TrayMetricCard;if(card==null)continue;cards++;if(card.AccessibleName.StartsWith("Download"))Require(card.Caption=="Not measured","Zero download shown as success");if(card.AccessibleName.StartsWith("Bufferbloat"))Require(card.Value=="A+"&&card.StatusColor==Color.FromArgb(61,220,151),"A+ lost green status");}
             Require(cards==4&&FindButton(popup,"Test again")!=null,"Connection metrics/retry missing");
-            string screenshot=Environment.GetEnvironmentVariable("TLT_CONNECTION_SCREENSHOT");if(!string.IsNullOrEmpty(screenshot))using(var bitmap=new Bitmap(popup.Width,popup.Height,System.Drawing.Imaging.PixelFormat.Format24bppRgb)){popup.Activate();popup.Refresh();Pump(40);using(var graphics=Graphics.FromImage(bitmap))graphics.CopyFromScreen(popup.Location,Point.Empty,popup.Size);bitmap.Save(screenshot);}
+            var before=new List<TrayMetricCard>();foreach(Control control in body.Controls)if(control is TrayMetricCard)before.Add((TrayMetricCard)control);
+            var running=new Job{Running=true,Message="Measuring idle latency"};tray.Jobs["connection"]=running;popup.JobChanged("connection");Require(before.TrueForAll(card=>card.Value=="…"),"Retry retained old results instead of placeholders");Capture(popup,"tray-connection-testing.png");
+            tray.ApplyProgress("connection",running,new Dictionary<string,object>{{"label","Testing download"},{"res",new Dictionary<string,object>{{"idle_ms",7.43}}}});
+            Require(before[2].Value==7.43.ToString("0.##")&&before[0].Value=="…"&&before[0].Caption=="Testing…"&&before[1].Value=="…","Idle partial did not populate independently");Capture(popup,"tray-connection-partial.png");
+            tray.ApplyProgress("connection",running,new Dictionary<string,object>{{"res",new Dictionary<string,object>{{"idle_ms",7.43},{"download_mbps",850.4}}}});
+            Require(before[0].Value==850.4.ToString("0.0")&&before[1].Value=="…","Download partial waited for upload");
+            foreach(var card in before)Require(body.Controls.Contains(card)&&!card.IsDisposed,"Partial results replaced native cards");
+            Require(!FindButton(popup,"Testing…").Enabled,"Running connection allowed duplicate tests");
+            tray.ApplyProgress("connection",running,new Dictionary<string,object>{{"res",new Dictionary<string,object>{{"idle_ms",7.43},{"download_mbps",850.4},{"upload_mbps",90.0},{"grade","A+"},{"live_fields",new[]{"upload_mbps","grade"}}}}});
+            Require(before[1].Caption.Contains("Live")&&before[3].Caption=="Live estimate","Live fields were not marked provisional");
+            tray.ApplyProgress("connection",running,new Dictionary<string,object>{{"res",new Dictionary<string,object>{{"idle_ms",7.43},{"latency_live_ms",12.0},{"latency_phase","Upload"},{"download_mbps",850.4},{"upload_mbps",150.0},{"grade","A+"},{"live_fields",new[]{"upload_mbps","grade","idle_ms"}}}}});
+            Require(before[2].Caption=="ms · Idle"&&before[2].Value==7.43.ToString("0.##"),"Latency card displayed loaded latency instead of idle ping");
+            var speeds=new List<double>();Pump(230,()=>{double speed;if(double.TryParse(before[1].Value,out speed))speeds.Add(speed);});
+            if(PopupMotion.Enabled())Require(speeds.Exists(speed=>speed>90&&speed<150),"Live speed jumped directly to its next value");
+            if(PopupMotion.Enabled())Require(double.Parse(before[1].Value)<145,"Live number transition is still too abrupt");
+            Pump(1300);Require(Math.Abs(double.Parse(before[1].Value)-150)<.2,"Live speed failed to approach its target: "+before[1].Value);
+            running.Running=false;running.Result=new Dictionary<string,object>{{"download_mbps",850.4},{"upload_mbps",119.48},{"idle_ms",7.43},{"grade","A+"}};popup.JobChanged("connection");
+            Require(before[2].Value==7.43.ToString("0.##")&&before[2].Caption=="ms · Idle","Final latency failed to restore the idle baseline");
+            Require(before[3].Value=="A+"&&FindButton(popup,"Test again").Enabled,"Completed results lost grade/retry");
+            var open=FindButton(popup,"Open app");Require(open!=null&&open.Visible&&open.Bottom<=popup.ClientSize.Height,"Connection lost its Open app footer");
+            string screenshot=Environment.GetEnvironmentVariable("TLT_CONNECTION_SCREENSHOT");if(!string.IsNullOrEmpty(screenshot))SaveFixture(popup,screenshot);
             popup.Dispose();
         }
     }
+    static void LoadingNavigation(){
+        using(var tray=new Tray(true))using(var popup=new Popup(tray)){
+            tray.Window=popup;popup.Show();Pump(420);
+            tray.Jobs["restore"]=new Job{Running=true,Message="Working…"};typeof(Popup).GetField("page",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance).SetValue(popup,"restore");popup.Render();Pump(360);
+            var body=(Control)typeof(Popup).GetField("body",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance).GetValue(popup);TrayActivityIndicator indicator=null;foreach(Control control in body.Controls)if(control is TrayActivityIndicator)indicator=(TrayActivityIndicator)control;
+            Require(indicator!=null,"Running action has no spinner");var timer=(Timer)typeof(TrayActivityIndicator).GetField("frames",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance).GetValue(indicator);
+            if(PopupMotion.Enabled()){
+                Require(timer.Enabled,"Navigation redraw left the visible spinner timer stopped");
+                using(var first=new Bitmap(indicator.Width,indicator.Height))using(var second=new Bitmap(indicator.Width,indicator.Height)){
+                    using(var graphics=Graphics.FromImage(first))graphics.CopyFromScreen(indicator.PointToScreen(Point.Empty),Point.Empty,indicator.Size);Pump(130);using(var graphics=Graphics.FromImage(second))graphics.CopyFromScreen(indicator.PointToScreen(Point.Empty),Point.Empty,indicator.Size);
+                    int changed=0;for(int y=0;y<first.Height;y++)for(int x=0;x<first.Width;x++)if(first.GetPixel(x,y)!=second.GetPixel(x,y))changed++;Require(changed>5,"Visible spinner pixels did not animate after page navigation");
+                }
+            }
+        }
+    }
+    static void LoadingIcons(){
+        using(var tray=new Tray(true))foreach(string action in new[]{"scan","drivers","restore"})using(var popup=new Popup(tray)){
+            tray.Window=popup;tray.Jobs[action]=new Job{Running=true,Message="Working…"};typeof(Popup).GetField("page",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance).SetValue(popup,action);popup.Render();popup.Show();
+            var body=(Control)typeof(Popup).GetField("body",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance).GetValue(popup);
+            int symbols=0,spinners=0;Label progress=null;TrayActivityIndicator indicator=null;
+            foreach(Control control in body.Controls){if(control is TraySymbolBadge)symbols++;if(control is TrayActivityIndicator){spinners++;indicator=(TrayActivityIndicator)control;}if(control is Label&&control.Text=="Working…")progress=(Label)control;}
+            Require(symbols==1&&spinners==1,"Running "+action+" must have one heading icon and one spinner");Require(progress!=null&&progress.Top==popup.Pixels(86),"Progress did not sit directly below the heading");
+            var timer=(Timer)typeof(TrayActivityIndicator).GetField("frames",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance).GetValue(indicator);
+            if(PopupMotion.Enabled()){
+                Require(timer.Enabled,"Visible loading animation did not start");
+                using(var first=new Bitmap(indicator.Width,indicator.Height))using(var second=new Bitmap(indicator.Width,indicator.Height)){indicator.DrawToBitmap(first,indicator.ClientRectangle);System.Threading.Thread.Sleep(80);indicator.DrawToBitmap(second,indicator.ClientRectangle);int changed=0;for(int y=0;y<first.Height;y++)for(int x=0;x<first.Width;x++)if(first.GetPixel(x,y)!=second.GetPixel(x,y))changed++;Require(changed>5,"Loading frames did not visibly advance");}
+            }
+            indicator.Visible=false;Require(!timer.Enabled,"Hidden spinner kept its animation timer running");indicator.Visible=true;
+            string directory=Environment.GetEnvironmentVariable("TLT_TRAY_FIXTURES");if(!string.IsNullOrEmpty(directory))SaveFixture(popup,Path.Combine(directory,"tray-"+action+"-loading.png"));
+        }
+    }
     [STAThread] static int Main(string[] args){
-        try{PopupDpi.Enable();Application.EnableVisualStyles();Motion();PageMotion();AtomicRedraw();Dropdown();Appearance();CleanupFooter();TransitionPixels();ResponsiveProgress();ConnectionResults();File.WriteAllText(args[0],"PASS: native opening overshoot, opacity frames, exact settling, close/reopen continuity, reduced motion, dropdown dismissal-click guard, rounded menu sizing, cleanup focus scrolling, stable non-overlapping footer through loading and animated reversal, selection enablement, scroll reset, inline power selection, 200 progress updates without replacing navigation controls, background navigation, page spring frames, animated height, rapid reversal, reduced page motion, atomic redraw without intermediate paints, persistent chrome HWNDs, native footer/page pixel comparisons during rapid navigation, fixed popup and footer geometry throughout every navigation frame, theme updates and outside dismissal. No app actions ran.");return 0;}
+        try{PopupDpi.Enable();Application.EnableVisualStyles();if(args.Length>1&&args[1]=="--pages-only"){LoadingNavigation();LoadingIcons();Appearance();CleanupFooter();TransitionPixels();ResponsiveProgress();ConnectionResults();File.WriteAllText(args[0],"PASS: one correct heading icon on every running action, compact progress, cleanup layout, persistent footer geometry/pixels, background navigation and independent connection results. No app actions ran.");return 0;}LoadingNavigation();LoadingIcons();Motion();PageMotion();AtomicRedraw();Dropdown();Appearance();CleanupFooter();TransitionPixels();ResponsiveProgress();ConnectionResults();File.WriteAllText(args[0],"PASS: native opening overshoot, opacity frames, exact settling, close/reopen continuity, reduced motion, dropdown dismissal-click guard, rounded menu sizing, cleanup focus scrolling, stable non-overlapping footer through loading and animated reversal, selection enablement, scroll reset, inline power selection, 200 progress updates without replacing navigation controls, background navigation, page spring frames, animated height, rapid reversal, reduced page motion, atomic redraw without intermediate paints, persistent chrome HWNDs, native footer/page pixel comparisons during rapid navigation, fixed popup and footer geometry throughout every navigation frame, theme updates, partial connection results without replacing cards, pending/retry/error states, mixed-DPI fonts and outside dismissal. No app actions ran.");return 0;}
         catch(Exception error){File.WriteAllText(args[0],error.ToString());return 1;}
     }
 }

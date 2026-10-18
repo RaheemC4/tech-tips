@@ -1,5 +1,7 @@
 # Tech Lounge Tweaks
 
+Updates toggles from the toolbar with smooth reversible opening and closing. Theme and confirmation panels share the same motion, respect reduced motion and retain keyboard focus. Drawn control icons stay centred across display scales.
+
 A Windows 11 tweaking utility built for The Tech Lounge. Toggle performance,
 latency and privacy tweaks, apply a tuned NVIDIA driver profile in one tap,
 turn Defender on or off, install runtimes, browsers and game clients silently,
@@ -998,3 +1000,23 @@ NSIS 3.x. Set `MAKENSIS` to its compiler, put it on PATH, or keep it under
 Connection results use four rounded metric cards with drawn download/upload/pulse/status icons, large values, units and a green A+ grade. Missing or zero throughput is labelled Unavailable / Not measured, never a successful 0 Mbps result. Shared tray typography uses explicit Semibold faces and larger reading/action text.
 
 ![Tray connection results with synthetic preview data](docs/tray-connection.png)
+
+All tray pages share theme-coloured drawn icons, larger semibold actions and clear success/warning states. Home uses icon tiles, and cleanup, drivers, restore points and settings use matching page symbols. Text scales with the popup monitor rather than the system-wide GDI font DPI.
+
+Connection cards are present from the start. Idle latency, download, upload and grade populate as their phases finish; Waiting/Testing labels remain on unfinished cards. Updates change the existing controls in place, and Back stays usable while the worker continues. Retry clears old readings.
+
+The shared download test selects the lowest-latency reachable node from six public Clouvider LibreSpeed servers. Four streams use buffered 256 KiB reads and large test responses to avoid tiny TLS-read and repeated-request overhead. The download card identifies the selected city. If no node is reachable it uses Cloudflare; HTTP 429 switches streams to OVHcloud's public HTTPS test file with an interruptible retry delay. No received data remains an explicit unavailable result. These are measured transfer rates to the test server, including the backup server when used.
+
+![Tray connection test with an independently completed latency field, synthetic data](docs/tray-connection-partial.png)
+![Tray settings preview](docs/tray-settings.png)
+![Tray restore-point result with synthetic data](docs/tray-restore.png)
+
+Running tray actions keep only the small page-heading icon, with a smooth rotating progress indicator beneath it beside the activity text. The indicator respects reduced motion and stops when hidden or disposed. Larger symbols are reserved for completed success/warning states.
+
+The loading indicator replaces repeated large action icons. It is drawn in the selected theme, respects reduced motion, and stops while hidden or disposed.
+
+The loading indicator resumes on its first paint after batched page redraws, so navigating from Home to a running action keeps it animated. Native checks compare actual on-screen spinner frames after this navigation path.
+
+Tray connection speeds use one time-weighted byte-rate estimate during testing and at completion, excluding connection warm-up. Parallel connections scale up on fast links. Download requests prevent caching; upload progress counts blocks as they are sent instead of waiting for whole requests. The bufferbloat card shows a labelled Live estimate while testing and a measured final grade. Reduced motion skips number interpolation.
+
+Live number movement uses a slower critically damped follow that preserves velocity between samples. Latency updates while idle samples are collected, then stays on the completed idle ping throughout download and upload. Loaded latency is measured separately for bufferbloat and never replaces the tray latency card. Final speed updates use the same smooth number movement as live samples. The loading arc rotates clockwise at a steady pace without expanding or reversing.

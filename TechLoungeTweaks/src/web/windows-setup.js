@@ -32,11 +32,11 @@ async function closeAppWindow(button) {
   button.textContent = '...';
   const result = await api('close');
   if (!result || result.ok === false) {
-    button.disabled = false; button.textContent = '×';
+    button.disabled = false; button.innerHTML = svg('close');
     banner(result?.message || 'Could not reach the window. Try Alt+F4.');
   }
   // Permit retry if the host failed to destroy the native window.
-  setTimeout(() => { button.disabled = false; button.textContent = '×'; }, 2500);
+  setTimeout(() => { button.disabled = false; button.innerHTML = svg('close'); }, 2500);
 }
 function setupMessage(message = '', loading = false, ok = null) {
   const target = H('windowsSetupMessage'); if (!target) return;

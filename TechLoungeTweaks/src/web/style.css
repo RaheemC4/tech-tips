@@ -1004,3 +1004,22 @@ select:focus-visible, summary:focus-visible {
 #updatesPanel #updateCancel { padding:8px 12px; }
 
 #updatesPanel button:focus-visible { outline-offset:-2px; }
+
+/* Shared geometry for symbols: no dependence on font baselines. */
+#winbtns button:not(#updatesButton), .update-close { display:grid; place-items:center; padding:0; line-height:1; }
+#winbtns button:not(#updatesButton):not(#themebtn) svg { display:block; width:14px; height:14px; fill:none; stroke:currentColor; stroke-width:1.2; stroke-linecap:round; }
+#winbtns #closeWindow svg { width:18px!important; height:18px!important; stroke-width:1.7!important; }
+.update-close svg { display:block; width:18px; height:18px; }
+.info { flex-shrink:0; line-height:1; }
+.info svg { display:block; width:12px; height:12px; stroke-width:2; }
+.navgroup .navsec span { display:grid; place-items:center; width:16px; height:16px; flex:0 0 16px; transform-origin:center; }
+.navgroup .navsec span svg,.nvarrow svg { display:block; width:16px; height:16px; }
+.nvarrow { display:grid; place-items:center; }
+#page-generic [id^="cr"].badge { display:inline-grid; place-items:center; min-width:26px; min-height:24px; padding:4px 6px; line-height:1; }
+#page-generic [id^="cr"].badge svg { display:block; width:14px; height:14px; }
+.tweak { display:flex; flex-direction:column; }
+.tweak .desc { flex:1; }
+#updatesPanel,#themepop { transform-origin:top right; }
+.modal-overlay,.modal-card { animation:none; }
+
+.modal-overlay.closing { pointer-events:none; }
