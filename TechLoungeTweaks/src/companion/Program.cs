@@ -234,6 +234,7 @@ sealed class Tray : ApplicationContext {
 
 sealed class GlassButton:Button {
     public Color Tint; public bool Primary;
+    protected override void WndProc(ref Message message){TrayGeometry.DiscardCopiedPixels(ref message,true);base.WndProc(ref message);}
     public GlassButton(){FlatStyle=FlatStyle.Flat;FlatAppearance.BorderSize=0;ForeColor=Color.FromArgb(232,238,248);Font=Popup.FontFor(10,true);Cursor=Cursors.Hand;SetStyle(ControlStyles.UserPaint|ControlStyles.OptimizedDoubleBuffer|ControlStyles.AllPaintingInWmPaint,true);}
     protected override void OnPaint(PaintEventArgs e){
         // ButtonBase is opaque and can skip OnPaintBackground. Paint the complete
@@ -279,7 +280,7 @@ sealed class Popup:Form {
     internal static Font FontFor(int size,bool bold){string key=size+":"+bold;Font font;if(!fonts.TryGetValue(key,out font)){font=new Font("Segoe UI Variable Text",size,bold?FontStyle.Bold:FontStyle.Regular);if(!font.Name.StartsWith("Segoe UI Variable",StringComparison.Ordinal)){font.Dispose();font=new Font("Segoe UI",size,bold?FontStyle.Bold:FontStyle.Regular);}fonts[key]=font;}return font;}
     readonly Tray tray; readonly TrayScrollPanel body=new TrayScrollPanel();string page="home";
     readonly PopupMotion motion;
-    GlassButton secondaryFooter,openFooter;
+    readonly GlassButton secondaryFooter,openFooter,settingsButton;bool splitFooter;
     readonly TrayPageMotion pageMotion;string renderedPage;
     Label detailMessage,homeStatus;
     float uiScale;
@@ -287,13 +288,18 @@ sealed class Popup:Form {
     int LayoutWidth {get{return (int)Math.Round(ClientSize.Width/uiScale);}}
     int LayoutHeight {get{return (int)Math.Round(ClientSize.Height/uiScale);}}
     int BodyWidth {get{return (int)Math.Round(body.ClientSize.Width/uiScale);}}
-    protected override CreateParams CreateParams {get{var value=base.CreateParams;value.ExStyle|=0x02000000;return value;}}
+    protected override void WndProc(ref Message message){TrayGeometry.DiscardCopiedPixels(ref message,false);base.WndProc(ref message);}
     public Popup(Tray owner){
         tray=owner;Text="Tech Lounge quick actions";FormBorderStyle=FormBorderStyle.None;ShowInTaskbar=false;TopMost=true;StartPosition=FormStartPosition.Manual;
-        uiScale=PopupDpi.PointerScale();AutoScaleMode=AutoScaleMode.None;DoubleBuffered=true;BackColor=Color.FromArgb(24,35,53);ForeColor=Color.FromArgb(242,244,248);Font=FontFor(10,false);KeyPreview=true;
+        uiScale=PopupDpi.PointerScale();AutoScaleMode=AutoScaleMode.None;DoubleBuffered=true;SetStyle(ControlStyles.ResizeRedraw|ControlStyles.AllPaintingInWmPaint,true);BackColor=Color.FromArgb(24,35,53);ForeColor=Color.FromArgb(242,244,248);Font=FontFor(10,false);KeyPreview=true;
         KeyDown+=(s,e)=>{if(e.KeyCode==Keys.Escape)Close();};
-        var area=Screen.FromPoint(Cursor.Position).WorkingArea;ClientSize=new Size(Math.Min(Pixels(380),area.Width-Pixels(28)),Math.Min(Pixels(510),area.Height-Pixels(28)));Location=new Point(area.Right-Width-Pixels(14),area.Bottom-Height-Pixels(14));
+        var area=Screen.FromPoint(Cursor.Position).WorkingArea;ClientSize=new Size(Math.Min(Pixels(380),area.Width-Pixels(28)),Math.Min(Pixels(600),area.Height-Pixels(28)));Location=new Point(area.Right-Width-Pixels(14),area.Bottom-Height-Pixels(14));
         body.SetBounds(Pixels(24),Pixels(94),ClientSize.Width-Pixels(48),ClientSize.Height-Pixels(172));body.BackColor=Color.Transparent;body.AutoScroll=false;Controls.Add(body);
+        // Keep native chrome handles alive across page changes. Only the content changes.
+        Label("Tech Lounge",24,22,260,30,17,true,this);Label("Quick actions",24,54,260,24,10,false,this).ForeColor=Color.FromArgb(176,191,212);
+        settingsButton=Button("⚙",LayoutWidth-64,24,40,38,()=>{page="settings";Render();},this);settingsButton.AccessibleName="Companion settings";
+        secondaryFooter=Button("",24,LayoutHeight-64,160,40,()=>{if(page=="scan")CleanSelected();else if(page=="home"&&tray.UpdateAvailable)tray.OpenApp(true);},this);secondaryFooter.Visible=false;
+        openFooter=Button("Open app",24,LayoutHeight-64,LayoutWidth-48,40,()=>tray.OpenApp(),this,true);
         motion=new PopupMotion(this,Pixels(12),PopupMotion.Enabled());
         pageMotion=new TrayPageMotion(this,body,Pixels(24),LayoutPageChrome,()=>motion.Running);
         Shown+=(s,e)=>{Update();motion.Show();SetForegroundWindow(Handle);};
@@ -319,10 +325,30 @@ sealed class Popup:Form {
     Label Label(string text,int x,int y,int width,int height,int size,bool bold,Control parent){var l=new Label{Text=text,BackColor=Color.Transparent,ForeColor=ForeColor,Font=FontFor(size,bold),UseCompatibleTextRendering=false};l.SetBounds(Pixels(x),Pixels(y),Pixels(width),Pixels(height));parent.Controls.Add(l);return l;}
     GlassButton Button(string text,int x,int y,int w,int h,Action click,Control parent,bool primary=false){var b=new GlassButton{Text=text,Tint=tray.Accent,Primary=primary,BackColor=BackColor};b.SetBounds(Pixels(x),Pixels(y),Pixels(w),Pixels(h));b.Click+=(s,e)=>click();parent.Controls.Add(b);return b;}
     void LayoutPageChrome(){
-        body.Height=Math.Max(1,ClientSize.Height-Pixels(172));
-        if(openFooter!=null&&!openFooter.IsDisposed)openFooter.Top=ClientSize.Height-Pixels(64);
-        if(secondaryFooter!=null&&!secondaryFooter.IsDisposed)secondaryFooter.Top=ClientSize.Height-Pixels(secondaryFooter.Height==Pixels(28)?58:64);
+        int margin=Pixels(24),gap=Pixels(12),top=ClientSize.Height-Pixels(64);
+        body.Width=Math.Max(1,ClientSize.Width-margin*2);
+        body.Height=Math.Max(1,top-Pixels(16)-body.Top);
+        if(openFooter!=null&&!openFooter.IsDisposed){
+            if(secondaryFooter!=null&&!secondaryFooter.IsDisposed&&splitFooter){
+                int width=(ClientSize.Width-margin*2-gap)/2;
+                secondaryFooter.SetBounds(margin,top+(Pixels(40)-secondaryFooter.Height)/2,width,secondaryFooter.Height);
+                openFooter.SetBounds(margin+width+gap,top,ClientSize.Width-margin*2-gap-width,Pixels(40));
+            }else openFooter.SetBounds(margin,top,ClientSize.Width-margin*2,Pixels(40));
+        }
+        settingsButton.Left=ClientSize.Width-Pixels(64);
+        // Clear the previous footer backing when the animated window changes height.
+        Invalidate();
         if(!motion.Running)motion.Reanchor();
+    }
+    void UpdateCleanupSelection(){
+        if(page!="scan"||secondaryFooter==null||secondaryFooter.IsDisposed)return;
+        bool selected=false;foreach(Control c in body.Controls)if(c is CheckBox&&((CheckBox)c).Checked)selected=true;
+        Job scan;secondaryFooter.Enabled=selected&&tray.Jobs.TryGetValue("scan",out scan)&&!scan.Running&&scan.Result!=null;
+    }
+    void CleanSelected(){
+        var ids=new List<string>();foreach(Control c in body.Controls)if(c is CheckBox&&((CheckBox)c).Checked)ids.Add(Convert.ToString(c.Tag));
+        if(ids.Count==0)return;
+        page="clean";tray.Run("clean",ids.ToArray(),true);tray.Jobs.Remove("scan");Render();
     }
     public void Render(){
         bool continuing=pageMotion.Running;int offset=pageMotion.Offset;var previous=Bounds;
@@ -332,19 +358,22 @@ sealed class Popup:Form {
         SuspendLayout();try{
         if(animate)motion.Settle();
         var work=Screen.FromPoint(new Point(Left+Width/2,Top+Height/2)).WorkingArea;
-        int height=Math.Min(Pixels(page=="scan"?600:510),work.Height-Pixels(28));
+        int height=Math.Min(Pixels(600),work.Height-Pixels(28));
         if(ClientSize.Height!=height){if(Visible)motion.Settle();int bottom=Bottom;ClientSize=new Size(ClientSize.Width,height);Top=Math.Max(work.Top+Pixels(14),bottom-Height);if(Visible)motion.Reanchor();}
         body.Height=ClientSize.Height-Pixels(172);
-        body.ResetScroll();foreach(Control c in new List<Control>(Children(this)))if(c!=body){Controls.Remove(c);c.Dispose();}
+        body.ResetScroll();
         foreach(Control c in Children(body))c.Dispose();body.Controls.Clear();detailMessage=null;homeStatus=null;
-        Label("Tech Lounge",24,22,260,30,17,true,this);Label("Quick actions",24,54,260,24,10,false,this).ForeColor=Color.FromArgb(176,191,212);
-        Button("⚙",LayoutWidth-64,24,40,38,()=>{page="settings";Render();},this).AccessibleName="Companion settings";
-        int footerWidth=(LayoutWidth-60)/2;
-        secondaryFooter=null;
-        bool splitFooter=page=="scan"||(page=="home"&&tray.UpdateAvailable);
-        if(page=="home"&&tray.UpdateAvailable){secondaryFooter=Button("● Update available",24,LayoutHeight-58,footerWidth,28,()=>tray.OpenApp(true),this);secondaryFooter.Font=FontFor(9,false);secondaryFooter.AccessibleName="Update available. Open full app update details";}
-        openFooter=Button("Open app",splitFooter?36+footerWidth:24,LayoutHeight-64,splitFooter?footerWidth:LayoutWidth-48,40,()=>tray.OpenApp(),this,true);
+        splitFooter=page=="scan"||(page=="home"&&tray.UpdateAvailable);
+        settingsButton.Tint=tray.Accent;secondaryFooter.Tint=tray.Accent;openFooter.Tint=tray.Accent;
+        secondaryFooter.Visible=splitFooter;secondaryFooter.Enabled=false;
+        secondaryFooter.Text=page=="scan"?"Clean selected":splitFooter?"● Update available":"";
+        secondaryFooter.Primary=page=="scan";secondaryFooter.Height=Pixels(page=="scan"?40:28);
+        secondaryFooter.Font=FontFor(page=="scan"?10:9,page=="scan");
+        secondaryFooter.AccessibleName=page=="scan"?"Clean selected":"Update available. Open full app update details";
+        if(page=="home"&&splitFooter)secondaryFooter.Enabled=true;
+        openFooter.Primary=page!="scan";
         if(page=="home")Home();else if(page=="settings")Settings();else Detail();
+        LayoutPageChrome();
         var destination=Bounds;
         pageMotion.Start(previous,destination,continuing?offset:Pixels(page=="home"?-14:14),animate);
         renderedPage=page;Invalidate();
@@ -411,9 +440,9 @@ sealed class Popup:Form {
     void Detail(){Back();string title=new Dictionary<string,string>{{"scan","Disk cleanup"},{"clean","Disk cleanup"},{"connection","Your connection"},{"restore","Restore point"},{"drivers","GPU drivers"},{"power","Power plan"}}[page];Label(title,0,42,BodyWidth-14,28,15,true,body);
         Job job;if(!tray.Jobs.TryGetValue(page,out job)){Label("Ready.",0,82,BodyWidth-14,36,10,false,body);return;}
         if(page=="scan"&&job.Result!=null&&job.Result.ContainsKey("items")){
-            var selected=new List<CheckBox>();int y=78;
-            foreach(var raw in (System.Collections.IEnumerable)job.Result["items"]){var item=(Dictionary<string,object>)raw;var check=new TrayCheckBox{Tint=tray.Accent,Text=item["name"]+" · "+item["human"],Tag=item["id"],Checked=Convert.ToBoolean(item["default"]),BackColor=Color.Transparent,ForeColor=ForeColor};check.SetBounds(0,Pixels(y),Pixels(BodyWidth-14),Pixels(34));body.Controls.Add(check);selected.Add(check);y+=38;}
-            if(secondaryFooter!=null)secondaryFooter.Dispose();secondaryFooter=Button("Clean selected",24,LayoutHeight-64,(LayoutWidth-60)/2,40,()=>{var ids=new List<string>();foreach(var c in selected)if(c.Checked)ids.Add(Convert.ToString(c.Tag));if(ids.Count==0)return;page="clean";tray.Run("clean",ids.ToArray(),true);tray.Jobs.Remove("scan");Render();},this,true);return;
+            int y=78;
+            foreach(var raw in (System.Collections.IEnumerable)job.Result["items"]){var item=(Dictionary<string,object>)raw;var check=new TrayCheckBox{Tint=tray.Accent,Text=item["name"]+" · "+item["human"],Tag=item["id"],Checked=Convert.ToBoolean(item["default"]),BackColor=Color.Transparent,ForeColor=ForeColor};check.SetBounds(0,Pixels(y),Pixels(BodyWidth-14),Pixels(34));check.CheckedChanged+=(s,e)=>UpdateCleanupSelection();body.Controls.Add(check);y+=38;}
+            UpdateCleanupSelection();return;
         }
         if(page=="drivers"&&job.Result!=null&&job.Result.ContainsKey("gpus")){
             int y=78;

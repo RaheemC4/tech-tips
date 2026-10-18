@@ -1,4 +1,12 @@
+- Keep tray popup height and footer position fixed across all pages. Preserve spring content navigation and opening/closing motion while removing the native height-change path implicated in repeated blue footer drawings. Check geometry throughout complete rapid-navigation transitions.
+
+- Fix the one-frame repeated footer strips visible during animated tray resizing. Disable Win32 saved-client pixel copying for popup resizing and moving footer/page controls; verify final native resize flags alongside pixel and rapid-navigation checks.
+
 Installed edition and native tray companion.
+
+- Keep tray header/footer native controls alive across menu changes. Replace cached child-window composition with complete buffered animation-frame repainting. Verify native footer and page pixels during rapid navigation, hidden-to-visible cleanup, late results and theme changes to catch duplicate/stale drawings.
+
+- Give tray Disk Cleanup a single footer layout through scanning, results and page animation. Keep both buttons equal and separated from the list, clear the moving footer backdrop, disable empty/pending cleanup, and distinguish Clean selected from Open app.
 
 - Enlarge the Home score ring and centre its value and caption. Remove negative numeral spacing so score digits do not collide, while retaining the dashboard fit.
 

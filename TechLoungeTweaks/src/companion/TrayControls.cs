@@ -6,6 +6,7 @@ namespace TechLounge {
 // A clipped viewport with one slim scroll thumb, never native horizontal chrome.
 sealed class TrayScrollPanel:Panel {
     int offset,maximum,dragY,dragOffset;bool moving,dragging;
+    protected override void WndProc(ref Message message){TrayGeometry.DiscardCopiedPixels(ref message,true);base.WndProc(ref message);}
     public TrayScrollPanel(){AutoScroll=false;DoubleBuffered=true;SetStyle(ControlStyles.ResizeRedraw,true);}
     int P(int n){var popup=FindForm() as Popup;return popup==null?n:popup.Pixels(n);}
     public void ResetScroll(){ScrollTo(0);}

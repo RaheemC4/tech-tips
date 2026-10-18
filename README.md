@@ -65,6 +65,10 @@ The ten NVIDIA comparison rows and all four network tweaks fit without scrolling
 at the same desktop sizes as Home. Updates uses a wider, compact panel with inline
 version labels so the app and all five bundled tools fit, including download/cancel
 and restart-ready states. Smaller windows keep normal scrolling as needed.
+The tray cleanup footer keeps two equal buttons in a dedicated area throughout
+scanning and page animation. Clean selected stays disabled until a selection is
+ready, and Open app uses a quieter secondary style. The list stays separated
+from both actions at native display scaling.
 
 ![Compact full-app Disk Cleanup with demonstration data](docs/cleanup.png)
 Disk cleanup retries ordinary read-only files and continues past locked or
@@ -114,10 +118,16 @@ it does not capture or refract the desktop. Clicking the tray icon or opening
 its menu reloads the full app's saved theme and uses it for the active icon.
 The idle glyph continues to blend with the Windows taskbar.
 Tray pages and Back use a 300 ms spring entrance, with forward/back direction
-and smooth reversal from the current position on rapid navigation. The cleanup
-viewport grows and shrinks smoothly while keeping the footer anchored. Controls
-remain live during the motion. Native redraws are batched while replacing page
-controls so intermediate empty frames are not exposed. Background progress does
+and smooth reversal from the current position on rapid navigation. The popup keeps one height across pages, with the footer stationary throughout navigation. Controls
+remain live during the motion. Header and footer controls retain their native
+windows across navigation; only page content is replaced. Each animation frame
+repaints the complete popup instead of relying on cached child-window composition.
+Popup resizing and moving page/footer controls discard old Windows client pixels,
+reducing stale native drawings. Page navigation keeps the window and footer at fixed positions, eliminating the cleanup height-change path.
+Native checks verify stationary window/footer geometry throughout transitions as well as rendered layouts.
+Native redraws are batched while replacing content so intermediate empty frames
+are not exposed. Tests compare on-screen footer and page pixels with a clean
+render during rapid menu changes, including late background results. Background progress does
 not restart the transition, and reduced-motion preferences switch immediately.
 
 The tray popup opens with a restrained 320 ms spring settle and fades down on
@@ -125,7 +135,7 @@ close over 150 ms. Reopening during dismissal continues from the current pose;
 reduced motion remains instant. The power menu settles its anchor before opening,
 and clicking the selector again closes it without reopening on the same click.
 The active tray icon is updated before activation, unchanged icons are reused,
-and child controls are composited together to prevent flashing during refresh.
+and updates use complete buffered repainting with persistent header/footer controls.
 
 Each release serves its interface from a content-versioned local address, so
 WebView cannot show a previous release's cached design after an update. Saved

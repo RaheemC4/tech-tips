@@ -165,8 +165,87 @@ static class PopupMotionChecks {
             Pump(40);Require(probe.Frames>0&&window.Visible&&body.Visible,"Atomic redraw failed to restore the visible page");
         }
     }
+    static void CleanupFooter(){
+        using(var tray=new Tray(true))using(var popup=new Popup(tray)){
+            tray.Window=popup;popup.Show();Pump(420);
+            var page=typeof(Popup).GetField("page",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance);
+            var body=(TrayScrollPanel)typeof(Popup).GetField("body",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance).GetValue(popup);
+            Action verify=()=>{
+                var clean=FindButton(popup,"Clean selected");var open=FindButton(popup,"Open app");
+                Require(clean!=null&&open!=null,"Cleanup footer changed its button count while loading");
+                Require(!clean.Bounds.IntersectsWith(open.Bounds),"Cleanup footer buttons overlapped");
+                Require(open.Left-clean.Right==popup.Pixels(12),"Cleanup footer gap changed during animation");
+                Require(Math.Abs(clean.Width-open.Width)<=1&&clean.Top==open.Top&&clean.Height==open.Height,"Cleanup footer buttons lost equal sizing/alignment");
+                Require(body.Bottom<=clean.Top-popup.Pixels(16),"Cleanup rows overlapped the footer");
+                Require(open.Right<=popup.ClientSize.Width-popup.Pixels(24)&&open.Bottom<=popup.ClientSize.Height-popup.Pixels(24),"Footer left the popup bounds");
+                Require(((GlassButton)clean).Primary&&!((GlassButton)open).Primary,"Cleanup footer did not distinguish primary/secondary actions");
+            };
+            tray.Jobs["scan"]=new Job{Running=true,Message="Scanning disk"};page.SetValue(popup,"scan");popup.Render();
+            Pump(350,verify);Require(!FindButton(popup,"Clean selected").Enabled,"Cleanup was enabled before scan results");
+            var names=new[]{"Your temp files","Windows temp files","Windows Update cache","Delivery Optimization","Crash dumps","Thumbnail cache","Windows error reports","Prefetch data","Recycle Bin"};
+            var sizes=new[]{"285.2 MB","116 B","0 B","1.5 MB","0 B","0 B","0 B","0 B","3.2 MB"};
+            var entries=new List<object>();for(int i=0;i<names.Length;i++)entries.Add(new Dictionary<string,object>{{"id","fixture"+i},{"name",names[i]},{"human",sizes[i]},{"default",i<7}});
+            tray.Jobs["scan"]=new Job{Result=new Dictionary<string,object>{{"items",entries.ToArray()}}};popup.Render();Pump(80,verify);
+            Require(FindButton(popup,"Clean selected").Enabled,"Cleanup did not enable after a selected result");
+            foreach(Control c in body.Controls)if(c is CheckBox)((CheckBox)c).Checked=false;
+            Require(!FindButton(popup,"Clean selected").Enabled,"Empty cleanup selection remained actionable");
+            foreach(Control c in body.Controls)if(c is CheckBox){((CheckBox)c).Checked=true;break;}
+            Require(FindButton(popup,"Clean selected").Enabled,"Re-selecting a category did not restore cleanup");
+            page.SetValue(popup,"home");popup.Render();Pump(55);page.SetValue(popup,"scan");popup.Render();Pump(350,verify);
+            string screenshot=Environment.GetEnvironmentVariable("TLT_POPUP_SCREENSHOT");
+            if(!string.IsNullOrEmpty(screenshot))using(var bitmap=new Bitmap(popup.Width,popup.Height,System.Drawing.Imaging.PixelFormat.Format24bppRgb)){
+                popup.Activate();popup.Refresh();Pump(40);using(var graphics=Graphics.FromImage(bitmap))graphics.CopyFromScreen(popup.Location,Point.Empty,popup.Size);bitmap.Save(screenshot);
+            }
+            popup.Dispose();
+        }
+    }
+    sealed class ResizeProbe:NativeWindow,IDisposable {
+        internal int Sizes;internal bool Copied;
+        internal ResizeProbe(Control window){AssignHandle(window.Handle);}
+        protected override void WndProc(ref Message message){
+            if(message.Msg==0x47&&message.LParam!=IntPtr.Zero){var position=(TrayGeometry.WindowPosition)System.Runtime.InteropServices.Marshal.PtrToStructure(message.LParam,typeof(TrayGeometry.WindowPosition));if((position.Flags&1)==0){Sizes++;Copied|=(position.Flags&0x100)==0;}}
+            base.WndProc(ref message);
+        }
+        public void Dispose(){ReleaseHandle();}
+    }
+    static void TransitionPixels(){
+        using(var tray=new Tray(true))using(var popup=new Popup(tray)){
+            tray.Window=popup;
+            tray.Jobs["scan"]=new Job{Result=new Dictionary<string,object>{{"items",new object[]{new Dictionary<string,object>{{"id","fixture"},{"name","Your temp files"},{"human","225 MB"},{"default",true}}}}}};
+            tray.Jobs["connection"]=new Job{Running=true,Message="Testing download"};
+            var page=typeof(Popup).GetField("page",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance);
+            // A scan rendered before Show must use the same split layout.
+            page.SetValue(popup,"scan");popup.Render();popup.Show();Pump(420);
+            var original=FindButton(popup,"Open app");IntPtr handle=original.Handle;
+            Require(!original.Bounds.IntersectsWith(FindButton(popup,"Clean selected").Bounds),"Hidden-to-visible cleanup overlapped its footer");
+            var stableBounds=popup.Bounds;int stableFooterTop=original.Top;
+            using(var resize=new ResizeProbe(popup)){
+            foreach(string route in new[]{"scan","home","connection","scan","settings","drivers","scan","home"}){
+                page.SetValue(popup,route);popup.Render();Pump(340,()=>{Require(popup.Bounds==stableBounds&&original.Top==stableFooterTop,"Navigation moved the popup/footer during "+route);});
+                Require(object.ReferenceEquals(original,FindButton(popup,"Open app"))&&original.Handle==handle,"Navigation recreated the footer HWND");
+                Require(popup.Controls.Count==6,"Navigation duplicated native header/footer controls");
+                using(var actual=new Bitmap(popup.Width,popup.Height,System.Drawing.Imaging.PixelFormat.Format24bppRgb))
+                using(var expected=new Bitmap(popup.Width,popup.Height,System.Drawing.Imaging.PixelFormat.Format24bppRgb)){
+                    using(var graphics=Graphics.FromImage(actual))graphics.CopyFromScreen(popup.Location,Point.Empty,popup.Size);
+                    popup.DrawToBitmap(expected,popup.ClientRectangle);
+                    long error=0;int count=0;
+                    for(int y=popup.ClientSize.Height-popup.Pixels(74);y<popup.ClientSize.Height-popup.Pixels(20);y+=2)for(int x=popup.Pixels(22);x<popup.ClientSize.Width-popup.Pixels(22);x+=2){var a=actual.GetPixel(x,y);var b=expected.GetPixel(x,y);error+=Math.Abs(a.R-b.R)+Math.Abs(a.G-b.G)+Math.Abs(a.B-b.B);count+=3;}
+                    long bodyError=0;int bodyCount=0;
+                    for(int y=popup.Pixels(94);y<popup.ClientSize.Height-popup.Pixels(80);y+=4)for(int x=popup.Pixels(24);x<popup.ClientSize.Width-popup.Pixels(24);x+=4){var a=actual.GetPixel(x,y);var b=expected.GetPixel(x,y);bodyError+=Math.Abs(a.R-b.R)+Math.Abs(a.G-b.G)+Math.Abs(a.B-b.B);bodyCount+=3;}
+                    Require((double)bodyError/bodyCount<.3,"Native page retained old pixels during "+route+": "+((double)bodyError/bodyCount).ToString("F3"));
+                    Require((double)error/count<.2,"Native footer retained old pixels during "+route+": "+((double)error/count).ToString("F3"));
+                }
+                // Late background messages must not recreate the chrome either.
+                if(route=="connection"){tray.Jobs["connection"].Running=false;tray.Jobs["connection"].Message="Test complete. Download 1684 Mbps.";}
+                tray.RefreshJob("connection");Require(original.Handle==handle,"Background result recreated the footer");
+            }
+            Require(resize.Sizes==0,"Page navigation resized the native popup");}
+            tray.Accent=Color.MediumPurple;popup.Render();Require(((GlassButton)original).Tint==tray.Accent,"Persistent footer lost selected theme tint");
+            popup.Dispose();
+        }
+    }
     [STAThread] static int Main(string[] args){
-        try{PopupDpi.Enable();Application.EnableVisualStyles();Motion();PageMotion();AtomicRedraw();Dropdown();Appearance();ResponsiveProgress();File.WriteAllText(args[0],"PASS: native opening overshoot, opacity frames, exact settling, close/reopen continuity, reduced motion, dropdown dismissal-click guard, rounded menu sizing, cleanup focus scrolling, scroll reset, inline power selection, 200 progress updates without replacing navigation controls, background navigation, page spring frames, animated height, rapid reversal, reduced page motion, atomic redraw without intermediate paints and outside dismissal. No app actions ran.");return 0;}
+        try{PopupDpi.Enable();Application.EnableVisualStyles();Motion();PageMotion();AtomicRedraw();Dropdown();Appearance();CleanupFooter();TransitionPixels();ResponsiveProgress();File.WriteAllText(args[0],"PASS: native opening overshoot, opacity frames, exact settling, close/reopen continuity, reduced motion, dropdown dismissal-click guard, rounded menu sizing, cleanup focus scrolling, stable non-overlapping footer through loading and animated reversal, selection enablement, scroll reset, inline power selection, 200 progress updates without replacing navigation controls, background navigation, page spring frames, animated height, rapid reversal, reduced page motion, atomic redraw without intermediate paints, persistent chrome HWNDs, native footer/page pixel comparisons during rapid navigation, fixed popup and footer geometry throughout every navigation frame, theme updates and outside dismissal. No app actions ran.");return 0;}
         catch(Exception error){File.WriteAllText(args[0],error.ToString());return 1;}
     }
 }
