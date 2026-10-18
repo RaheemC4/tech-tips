@@ -1,5 +1,5 @@
 {
-  "reviewed_utc": "2026-10-18T06:12:27.109928+00:00",
+  "reviewed_utc": "2026-10-18T06:20:55.969353+00:00",
   "inputs": {
     "TechLoungeTweaks/src/app.ico": "ae172401d71bc38d75cc23d6620a6377591c947b2cdea430def9e40f4b2d28a3",
     "TechLoungeTweaks/src/app.js": "8f7a9dda63c60443d686837b6ceca7e1cdc3536b9e67dfe6e6693a0866b9f070",
@@ -9,7 +9,7 @@
     "TechLoungeTweaks/src/biosinfo.py": "7086a9f9168848598223773b815affc72bb54ea483addc76bda865a0209e5403",
     "TechLoungeTweaks/src/boot_payload.py": "5958d124dcfc0dd4c2138732370771c9ee3d983c0dca324704519f41d94342cc",
     "TechLoungeTweaks/src/bootparse.py": "f9011256b70e266e1ecc510829c1e658314de3286ffd5b8e12a453636f052abe",
-    "TechLoungeTweaks/src/build-info.json": "c649ac39a2ae874c89b865216974765ca15ae458fcff382ad0eb0d2e1e41510b",
+    "TechLoungeTweaks/src/build-info.json": "d6a73a7250d14aaad6b641d10e36ea76dea036b2656d9b11690fb0cfa26bdd1f",
     "TechLoungeTweaks/src/BUILD.md": "a13023458ae4d3a792d6c872132c1d5963e2b1c4ef431ac9fcf5dfc9dec6a564",
     "TechLoungeTweaks/src/bundled-tools.json": "71f9fc9fc8d6f6a0e276a0af2c8256dcf5c30fa1ce669dbca6f634027a4f60db",
     "TechLoungeTweaks/src/chrome.py": "abc696a1bfbd3a0ce42334b7eaabadfa7276eb7740498a0588c20ed88843d419",
@@ -18,9 +18,9 @@
     "TechLoungeTweaks/src/companion/InstallerUpdates.cs": "d92c6d355e91dc61d7e657453864ff91f1e6d1234207c649bc4689e9fb7aa1a9",
     "TechLoungeTweaks/src/companion/PopupDpi.cs": "e286491fa416ec36980309772617ac0a6ad278eb1154282295a038b171be7e1f",
     "TechLoungeTweaks/src/companion/PopupMotion.cs": "7e6967f2c0217a28f3a00e32d6b1ae1d037682b1f8ae3efb8edbcbe6bd6ee23d",
-    "TechLoungeTweaks/src/companion/Program.cs": "d963e0ed43781d2bcbdefcbec4adb826aec0737d45cfd50a8968449f0910c1dd",
+    "TechLoungeTweaks/src/companion/Program.cs": "ce6dd509e096da7e0c07f49affe7817537c54ca433532561dd5d24441c6e2964",
     "TechLoungeTweaks/src/companion/ThemeMenu.cs": "d558474b930f448b0ae4820c46b92bd500a998896ba7285074eaf65a4276b692",
-    "TechLoungeTweaks/src/companion/TrayControls.cs": "6eacd63cc008f96d891b973c2dfb615437ba79eb441bf7309d74560f82139744",
+    "TechLoungeTweaks/src/companion/TrayControls.cs": "8d9a5968a207496443f95bd5574bca40fa1ad9d44b16fe807d8ebcdce60d1453",
     "TechLoungeTweaks/src/companion/TrayGeometry.cs": "7a4cb6742854664015137a65edca589f66160448d30ed94df2fb9d59ce718257",
     "TechLoungeTweaks/src/companion/TrayGlyph.cs": "f0d73f0a360e4b30391d6913659a60a98bf7fe988d522189cd39e7656260e8aa",
     "TechLoungeTweaks/src/companion/TrayPageMotion.cs": "2b2b2417ff030204dabd912d74f858b1d4d6c636333aea81f50b51e21994ca13",
@@ -438,7 +438,7 @@
     "TechLoungeTweaks/tools/InstallerChecks.cs": "33e16ba1e4ef9022d07f9b37c1c5f4562090aaf486ed1c22c499e4c8d4fbe0fb",
     "TechLoungeTweaks/tools/InstallerScreenshot.cs": "50c3d3e9b0f0558c3abe4201e4af6d56413e0908fce047ba3ea8c9b74fd872b0",
     "TechLoungeTweaks/tools/make-screenshots.js": "65b9014e991017a44bb36e248f27918dbfd87bd79817975054c98f348564168d",
-    "TechLoungeTweaks/tools/PopupMotionChecks.cs": "b4ac47311ffa194a9f646253790f990279eb2f68c82d89303e4a3b0d4d2d41c4",
+    "TechLoungeTweaks/tools/PopupMotionChecks.cs": "65a62f26286980040fd7e8d68cfbf2a64f7d05ab8101d10d198bd6a1bdf6a448",
     "TechLoungeTweaks/tools/smoke-close.py": "fdb5c0d7ed740696ba2810f5f1594c0c9c41adab2d05ac016bd697b54bdc3dcb",
     "TechLoungeTweaks/tools/smoke-floating-tools.py": "30a29b5531fc517997a6109e742adb8de6bfc91dd04095581b3bc5fafd0f796f",
     "TechLoungeTweaks/tools/smoke-nvpi-startup.py": "607dd4cb532b6c2d801cc2682920c0ea8183881f1362a6116182a424db089202",
@@ -477,7 +477,7 @@
     "TechLoungeTweaks/tests/test_update_handoff_integration.py": "0cf71452e6c6524c4f41a4e28e982a781636084323c81145de3619bd8228feb0",
     "TechLoungeTweaks/tests/test_updates.py": "b98721e196741e43da5e5fb3d07dac88ceb55f7577757db0a27bc150c8d6d41e",
     "TechLoungeTweaks/tests/test_windows_setup.py": "afbc65c606509800bbd4307563ebc2cba377c19d3b530df0dc56b9198ce92047",
-    "TechLoungeTweaks/README.md": "066de011fcd618a62936d87af9592fd4ed9cac4ff7e3befdd1c07a203ab5f1d0",
-    "RELEASE-NOTES.md": "0cfc373d6cb7736ffca7466c451230a873fd8d2cdb7fbe0f903f177436212600"
+    "TechLoungeTweaks/README.md": "46fb846355c9ba8134a56f101f6189d0fa67efe789dc3b53b3832565641e7b27",
+    "RELEASE-NOTES.md": "a704fcc04e6ac94add3b52860fd0e139ff698fade53ac60e1c27181feeb40940"
   }
 }

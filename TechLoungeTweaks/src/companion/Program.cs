@@ -277,7 +277,7 @@ sealed class GlassButton:Button {
 sealed class Popup:Form {
     [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr window);
     static readonly Dictionary<string,Font> fonts=new Dictionary<string,Font>();
-    internal static Font FontFor(int size,bool bold){string key=size+":"+bold;Font font;if(!fonts.TryGetValue(key,out font)){font=new Font("Segoe UI Variable Text",size,bold?FontStyle.Bold:FontStyle.Regular);if(!font.Name.StartsWith("Segoe UI Variable",StringComparison.Ordinal)){font.Dispose();font=new Font("Segoe UI",size,bold?FontStyle.Bold:FontStyle.Regular);}fonts[key]=font;}return font;}
+    internal static Font FontFor(int size,bool bold){string key=size+":"+bold;Font font;if(!fonts.TryGetValue(key,out font)){int points=size==9?10:size==10?11:size;string family=bold?"Segoe UI Variable Text Semibold":"Segoe UI Variable Text";font=new Font(family,points,FontStyle.Regular);if(!font.Name.StartsWith("Segoe UI Variable",StringComparison.Ordinal)){font.Dispose();font=new Font("Segoe UI",points,bold?FontStyle.Bold:FontStyle.Regular);}fonts[key]=font;}return font;}
     readonly Tray tray; readonly TrayScrollPanel body=new TrayScrollPanel();string page="home";
     readonly PopupMotion motion;
     readonly GlassButton secondaryFooter,openFooter,settingsButton;bool splitFooter;
@@ -437,6 +437,9 @@ sealed class Popup:Form {
         var check=new TrayCheckBox{Tint=tray.Accent,Text="Open on startup",Checked=Program.Setting("Startup","1")=="1",AutoSize=false,BackColor=Color.Transparent,ForeColor=ForeColor};check.SetBounds(0,Pixels(170),Pixels(BodyWidth-14),Pixels(44));check.CheckedChanged+=(s,e)=>{try{if(!tray.Preview)Program.Startup(check.Checked);}catch(Exception ex){MessageBox.Show(ex.Message,"Startup setting");}};body.Controls.Add(check);
         Label("Updates install automatically when the app and quick actions are idle.",0,226,BodyWidth,70,10,false,body);
     }
+    void ConnectionCard(Dictionary<string,object> data,string key,string title,string unit,string icon,int x,int y,int width){
+        object raw;data.TryGetValue(key,out raw);var card=new TrayMetricCard(title,raw,unit,icon,tray.Accent);card.SetBounds(Pixels(x),Pixels(y),Pixels(width),Pixels(116));body.Controls.Add(card);
+    }
     void Detail(){Back();string title=new Dictionary<string,string>{{"scan","Disk cleanup"},{"clean","Disk cleanup"},{"connection","Your connection"},{"restore","Restore point"},{"drivers","GPU drivers"},{"power","Power plan"}}[page];Label(title,0,42,BodyWidth-14,28,15,true,body);
         Job job;if(!tray.Jobs.TryGetValue(page,out job)){Label("Ready.",0,82,BodyWidth-14,36,10,false,body);return;}
         if(page=="scan"&&job.Result!=null&&job.Result.ContainsKey("items")){
@@ -449,6 +452,15 @@ sealed class Popup:Form {
             foreach(var raw in (System.Collections.IEnumerable)job.Result["gpus"]){var gpu=(Dictionary<string,object>)raw;var card=new TrayGpuCard(gpu);int h=Convert.ToString(gpu["status"])=="update"?110:92;card.SetBounds(0,Pixels(y),Pixels(BodyWidth-14),Pixels(h));body.Controls.Add(card);y+=h+10;}
             if(y==78)Label("No supported GPU detected.",0,y,BodyWidth-14,36,10,false,body);
             Button("Check again",0,y==78?124:y+2,BodyWidth-14,36,()=>tray.Run("drivers",null,false),body);return;
+        }
+        if(page=="connection"&&!job.Running&&job.Result!=null&&!job.Result.ContainsKey("error")&&!job.Result.ContainsKey("__error__")){
+            var data=job.Result;int half=(BodyWidth-12)/2;
+            ConnectionCard(data,"download_mbps","Download","Mbps","download",0,78,half);
+            ConnectionCard(data,"upload_mbps","Upload","Mbps","upload",half+12,78,half);
+            ConnectionCard(data,"idle_ms","Latency","ms","latency",0,206,half);
+            ConnectionCard(data,"grade","Bufferbloat","","grade",half+12,206,half);
+            Label("Bufferbloat measures lag under load. A+ is best.",0,336,BodyWidth,32,9,false,body).ForeColor=Color.FromArgb(176,191,212);
+            Button("Test again",0,378,BodyWidth,40,()=>tray.Run("connection",null,false),body);return;
         }
         var message=Label(job.Message??"Working…",0,82,BodyWidth-14,28,10,false,body);detailMessage=message;FitMessage(message);
         if(!job.Running && page!="power")Button(page=="clean"?"Review cleanup":"Run again",0,(int)Math.Ceiling(message.Bottom/uiScale)+12,BodyWidth-14,44,()=>{if(page=="clean")page="scan";tray.Run(page,null,page=="restore");Render();},body);

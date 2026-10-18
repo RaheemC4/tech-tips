@@ -1,3 +1,5 @@
+- Revamp tray connection results with four metric cards, drawn icons, large speed/latency values and coloured bufferbloat grades. Label unavailable/zero throughput honestly, retain retry/background navigation, enlarge shared tray typography and use explicit Segoe UI Variable Semibold faces. Preserve fixed footer geometry.
+
 - Keep tray popup height and footer position fixed across all pages. Preserve spring content navigation and opening/closing motion while removing the native height-change path implicated in repeated blue footer drawings. Check geometry throughout complete rapid-navigation transitions.
 
 - Fix the one-frame repeated footer strips visible during animated tray resizing. Disable Win32 saved-client pixel copying for popup resizing and moving footer/page controls; verify final native resize flags alongside pixel and rapid-navigation checks.

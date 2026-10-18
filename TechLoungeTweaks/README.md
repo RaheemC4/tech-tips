@@ -994,3 +994,7 @@ verbose installer cannot stall on a full, unread output pipe. See the
 The release workflow compiles the tray with Windows .NET Framework and requires
 NSIS 3.x. Set `MAKENSIS` to its compiler, put it on PATH, or keep it under
 `%LOCALAPPDATA%\TechLoungeBuildTools\nsis`. The personal build cache is not published.
+
+Connection results use four rounded metric cards with drawn download/upload/pulse/status icons, large values, units and a green A+ grade. Missing or zero throughput is labelled Unavailable / Not measured, never a successful 0 Mbps result. Shared tray typography uses explicit Semibold faces and larger reading/action text.
+
+![Tray connection results with synthetic preview data](docs/tray-connection.png)

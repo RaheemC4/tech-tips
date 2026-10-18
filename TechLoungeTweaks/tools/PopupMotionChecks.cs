@@ -103,23 +103,26 @@ static class PopupMotionChecks {
                 typeof(Popup).GetField("page",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance).SetValue(popup,"clean");popup.Render();Pump(30);
                 Button review=null;Label result=null;foreach(Control c in viewport.Controls){if(c is Button&&c.Text=="Review cleanup")review=(Button)c;if(c is Label&&c.Text.StartsWith("Freed 1.6"))result=(Label)c;}
                 Require(result!=null&&result.Height<=popup.Pixels(65),"Short result reserved an oversized empty text area");
-                Require(review!=null&&review.Bottom<=viewport.Height,"Review cleanup still required scrolling");
+                Require(review!=null&&review.Bottom<=viewport.Height,"Review cleanup still required scrolling");Capture(popup,"tray-result.png");
                 var current=new Dictionary<string,object>{{"name","NVIDIA GeForce RTX 5090"},{"installed","617.42"},{"latest","617.42"},{"status","current"}};
                 var unknown=new Dictionary<string,object>{{"name","Intel UHD Graphics 770"},{"installed","32.0.101.7088"},{"latest",null},{"status","unknown"}};
                 tray.Jobs["drivers"]=new Job{Result=new Dictionary<string,object>{{"gpus",new object[]{current,unknown}}}};
                 typeof(Popup).GetField("page",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance).SetValue(popup,"drivers");popup.Render();
                 int cards=0;bool unknownLabel=false;foreach(Control c in viewport.Controls)if(c is TrayGpuCard){var card=(TrayGpuCard)c;cards++;Require(card.Green,"Current or unknown GPU status lost its requested green treatment");unknownLabel|=card.StatusText=="Unknown";}
-                Require(cards==2&&unknownLabel,"Driver cards lost a GPU or misrepresented unknown status");
+                Require(cards==2&&unknownLabel,"Driver cards lost a GPU or misrepresented unknown status");Capture(popup,"tray-drivers.png");
                 Require(FindButton(popup,"Check again").Bottom<=viewport.Height,"Two GPU cards pushed Check again out of view");
-                Require(Popup.FontFor(10,true).Bold,"Tray emphasis still used a regular-weight font");
+                Require(Popup.FontFor(10,true).Bold||Popup.FontFor(10,true).Name.Contains("Semibold"),"Tray emphasis lost its semibold weight");
                 tray.Window=popup;tray.SetUpdateAvailable(true);Require(FindButton(popup,"● Update available")==null,"Update indicator appeared outside Quick actions");
                 typeof(Popup).GetField("page",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance).SetValue(popup,"home");popup.Render();
-                Require(FindButton(popup,"● Update available")!=null,"Available update lacked its compact indicator");
+                Require(FindButton(popup,"● Update available")!=null,"Available update lacked its compact indicator");Capture(popup,"tray-update-indicator.png");
                 tray.SetUpdateAvailable(false);Require(FindButton(popup,"● Update available")==null&&FindButton(popup,"Updates")==null,"Tray retained a redundant update control");
-                Require(FindButton(popup,"Open app").Width==popup.ClientSize.Width-popup.Pixels(48),"Normal footer retained the empty update column");
+                Require(FindButton(popup,"Open app").Width==popup.ClientSize.Width-popup.Pixels(48),"Normal footer retained the empty update column");Capture(popup,"companion.png");
                 popup.Dispose();
             }
         }
+    }
+    static void Capture(Popup popup,string name){
+        string directory=Environment.GetEnvironmentVariable("TLT_TRAY_FIXTURES");if(string.IsNullOrEmpty(directory))return;popup.Activate();popup.Refresh();Pump(420);using(var bitmap=new Bitmap(popup.Width,popup.Height,System.Drawing.Imaging.PixelFormat.Format24bppRgb)){using(var graphics=Graphics.FromImage(bitmap))graphics.CopyFromScreen(popup.Location,Point.Empty,popup.Size);bitmap.Save(Path.Combine(directory,name));}
     }
     static Button FindButton(Control parent,string prefix){
         foreach(Control c in parent.Controls){if(c is Button&&c.Text.StartsWith(prefix))return (Button)c;var child=FindButton(c,prefix);if(child!=null)return child;}return null;
@@ -244,8 +247,21 @@ static class PopupMotionChecks {
             popup.Dispose();
         }
     }
+    static void ConnectionResults(){
+        Require(TrayMetricCard.Number(0,true)=="Unavailable"&&TrayMetricCard.Number(null,true)=="Unavailable"&&TrayMetricCard.Number(double.NaN,false)=="Unavailable","Invalid speed became a measured result");
+        Require(TrayMetricCard.Number(119.48,true)==119.5.ToString("0.0")&&TrayMetricCard.Number(7.43,false)==7.43.ToString("0.##"),"Metric precision changed");
+        using(var tray=new Tray(true))using(var popup=new Popup(tray)){
+            tray.Window=popup;tray.Jobs["connection"]=new Job{Result=new Dictionary<string,object>{{"download_mbps",0.0},{"upload_mbps",119.48},{"idle_ms",7.43},{"grade","A+"}}};
+            typeof(Popup).GetField("page",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance).SetValue(popup,"connection");popup.Render();popup.Show();Pump(420);
+            var body=(TrayScrollPanel)typeof(Popup).GetField("body",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance).GetValue(popup);int cards=0;
+            foreach(Control control in body.Controls){Require(control.Bottom<=body.Height,"Connection results require scrolling");var card=control as TrayMetricCard;if(card==null)continue;cards++;if(card.AccessibleName.StartsWith("Download"))Require(card.Caption=="Not measured","Zero download shown as success");if(card.AccessibleName.StartsWith("Bufferbloat"))Require(card.Value=="A+"&&card.StatusColor==Color.FromArgb(61,220,151),"A+ lost green status");}
+            Require(cards==4&&FindButton(popup,"Test again")!=null,"Connection metrics/retry missing");
+            string screenshot=Environment.GetEnvironmentVariable("TLT_CONNECTION_SCREENSHOT");if(!string.IsNullOrEmpty(screenshot))using(var bitmap=new Bitmap(popup.Width,popup.Height,System.Drawing.Imaging.PixelFormat.Format24bppRgb)){popup.Activate();popup.Refresh();Pump(40);using(var graphics=Graphics.FromImage(bitmap))graphics.CopyFromScreen(popup.Location,Point.Empty,popup.Size);bitmap.Save(screenshot);}
+            popup.Dispose();
+        }
+    }
     [STAThread] static int Main(string[] args){
-        try{PopupDpi.Enable();Application.EnableVisualStyles();Motion();PageMotion();AtomicRedraw();Dropdown();Appearance();CleanupFooter();TransitionPixels();ResponsiveProgress();File.WriteAllText(args[0],"PASS: native opening overshoot, opacity frames, exact settling, close/reopen continuity, reduced motion, dropdown dismissal-click guard, rounded menu sizing, cleanup focus scrolling, stable non-overlapping footer through loading and animated reversal, selection enablement, scroll reset, inline power selection, 200 progress updates without replacing navigation controls, background navigation, page spring frames, animated height, rapid reversal, reduced page motion, atomic redraw without intermediate paints, persistent chrome HWNDs, native footer/page pixel comparisons during rapid navigation, fixed popup and footer geometry throughout every navigation frame, theme updates and outside dismissal. No app actions ran.");return 0;}
+        try{PopupDpi.Enable();Application.EnableVisualStyles();Motion();PageMotion();AtomicRedraw();Dropdown();Appearance();CleanupFooter();TransitionPixels();ResponsiveProgress();ConnectionResults();File.WriteAllText(args[0],"PASS: native opening overshoot, opacity frames, exact settling, close/reopen continuity, reduced motion, dropdown dismissal-click guard, rounded menu sizing, cleanup focus scrolling, stable non-overlapping footer through loading and animated reversal, selection enablement, scroll reset, inline power selection, 200 progress updates without replacing navigation controls, background navigation, page spring frames, animated height, rapid reversal, reduced page motion, atomic redraw without intermediate paints, persistent chrome HWNDs, native footer/page pixel comparisons during rapid navigation, fixed popup and footer geometry throughout every navigation frame, theme updates and outside dismissal. No app actions ran.");return 0;}
         catch(Exception error){File.WriteAllText(args[0],error.ToString());return 1;}
     }
 }

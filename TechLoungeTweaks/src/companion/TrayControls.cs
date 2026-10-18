@@ -69,4 +69,42 @@ sealed class TrayGpuCard:Control {
     }
 }
 
+// Result metrics remain semantic controls; icons are drawn paths, never font glyphs.
+sealed class TrayMetricCard:Control {
+    readonly string title,icon;readonly Color accent;
+    internal readonly string Value,Caption;internal readonly Color StatusColor;
+    internal static string Number(object raw,bool speed){
+        double value;if(raw==null||!double.TryParse(Convert.ToString(raw,System.Globalization.CultureInfo.InvariantCulture),System.Globalization.NumberStyles.Float,System.Globalization.CultureInfo.InvariantCulture,out value)||double.IsNaN(value)||double.IsInfinity(value)||value<0||(speed&&value==0))return "Unavailable";
+        return value.ToString(value>=1000?"0":value>=10?"0.0":"0.##",System.Globalization.CultureInfo.CurrentCulture);
+    }
+    internal TrayMetricCard(string title,object raw,string unit,string icon,Color accent){
+        this.title=title;this.icon=icon;this.accent=accent;
+        var good=Color.FromArgb(61,220,151);var warn=Color.FromArgb(255,190,61);var muted=Color.FromArgb(176,191,212);
+        if(icon=="grade"){
+            string grade=Convert.ToString(raw);Value=Array.IndexOf(new[]{"A+","A","B","C","D","F"},grade)>=0?grade:"Unavailable";
+            StatusColor=grade=="A+"||grade=="A"?good:grade=="B"||grade=="C"||grade=="D"?warn:grade=="F"?Color.FromArgb(255,93,108):muted;
+            Caption=grade=="A+"?"Excellent":grade=="A"?"Great":grade=="B"?"Good":grade=="C"?"Fair":grade=="D"?"Poor":grade=="F"?"Heavy lag":"Not measured";
+        }else{Value=Number(raw,icon=="download"||icon=="upload");StatusColor=Value=="Unavailable"?muted:Color.FromArgb(242,244,248);Caption=Value=="Unavailable"?"Not measured":unit;}
+        AccessibleRole=AccessibleRole.StaticText;AccessibleName=title+": "+Value+" "+Caption;TabStop=false;
+        SetStyle(ControlStyles.UserPaint|ControlStyles.OptimizedDoubleBuffer|ControlStyles.AllPaintingInWmPaint,true);
+    }
+    protected override void OnPaint(PaintEventArgs e){
+        var popup=FindForm() as Popup;if(popup==null)return;int pad=popup.Pixels(14);
+        var offset=popup.PointToClient(PointToScreen(Point.Empty));var state=e.Graphics.Save();e.Graphics.TranslateTransform(-offset.X,-offset.Y);popup.PaintBackdrop(e.Graphics,popup.ClientRectangle);e.Graphics.Restore(state);
+        e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;
+        using(var shape=Popup.Round(new Rectangle(0,0,Width-1,Height-1),popup.Pixels(14))){using(var fill=new SolidBrush(Color.FromArgb(28,180,200,235)))e.Graphics.FillPath(fill,shape);using(var rim=new Pen(Color.FromArgb(22,220,235,255)))e.Graphics.DrawPath(rim,shape);}
+        Color tint=icon=="grade"?StatusColor:accent;
+        var saved=e.Graphics.Save();e.Graphics.TranslateTransform(pad,popup.Pixels(13));e.Graphics.ScaleTransform(popup.Pixels(22)/22f,popup.Pixels(22)/22f);
+        using(var pen=new Pen(tint,1.8f)){pen.StartCap=pen.EndCap=LineCap.Round;pen.LineJoin=LineJoin.Round;
+            if(icon=="download"||icon=="upload"){bool down=icon=="download";e.Graphics.DrawLine(pen,11,down?3:17,11,down?17:3);e.Graphics.DrawLines(pen,down?new[]{new Point(6,12),new Point(11,17),new Point(16,12)}:new[]{new Point(6,8),new Point(11,3),new Point(16,8)});e.Graphics.DrawLine(pen,4,20,18,20);}
+            else if(icon=="latency")e.Graphics.DrawLines(pen,new[]{new Point(1,12),new Point(6,12),new Point(9,4),new Point(13,19),new Point(16,10),new Point(21,10)});
+            else {e.Graphics.DrawEllipse(pen,2,2,18,18);e.Graphics.DrawLines(pen,new[]{new Point(6,11),new Point(10,15),new Point(16,8)});}
+        }e.Graphics.Restore(saved);
+        var flags=TextFormatFlags.Left|TextFormatFlags.VerticalCenter|TextFormatFlags.SingleLine|TextFormatFlags.NoPrefix|TextFormatFlags.EndEllipsis|TextFormatFlags.PreserveGraphicsClipping|TextFormatFlags.PreserveGraphicsTranslateTransform;
+        TextRenderer.DrawText(e.Graphics,title,Popup.FontFor(9,true),new Rectangle(pad+popup.Pixels(29),popup.Pixels(12),Width-pad*2-popup.Pixels(29),popup.Pixels(24)),Color.FromArgb(208,220,238),flags);
+        TextRenderer.DrawText(e.Graphics,Value,Popup.FontFor(Value=="Unavailable"?12:26,true),new Rectangle(pad,popup.Pixels(42),Width-pad*2,popup.Pixels(40)),StatusColor,flags);
+        TextRenderer.DrawText(e.Graphics,Caption,Popup.FontFor(9,false),new Rectangle(pad,popup.Pixels(85),Width-pad*2,popup.Pixels(21)),Value=="Unavailable"?Color.FromArgb(255,190,61):Color.FromArgb(176,191,212),flags);
+    }
+}
+
 }
