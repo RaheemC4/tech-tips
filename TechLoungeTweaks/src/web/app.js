@@ -16,7 +16,8 @@ function applyTheme(name) {
   if (window.pywebview?.api?.companion_theme) window.pywebview.api.companion_theme(name).catch(() => {});
   const pop = document.getElementById('themepop');
   if (pop) pop.querySelectorAll('.tsw').forEach(sw =>
-    sw.classList.toggle('active', sw.dataset.theme === name));
+    { sw.classList.toggle('active', sw.dataset.theme === name);
+      sw.setAttribute('aria-pressed', String(sw.dataset.theme === name)); });
   // WebView2 does not resolve CSS vars inside SVG gradient stops, so set the
   // score-ring stop colours directly from the resolved accent values.
   requestAnimationFrame(() => {
@@ -36,14 +37,15 @@ function wireTheme() {
   if (!pop) {
     pop = document.createElement('div');
     pop.id = 'themepop';
+    pop.setAttribute('role','group'); pop.setAttribute('aria-label','Choose theme');
     pop.innerHTML = THEMES.map(t =>
-      `<div class="tsw" data-theme="${t[0]}" title="${t[0]}"
-        style="background:linear-gradient(135deg,${t[1]},${t[2]})"></div>`).join('');
+      `<button type="button" class="tsw" data-theme="${t[0]}" title="${t[0]}" aria-label="${t[0]} theme"
+        style="background:linear-gradient(135deg,${t[1]},${t[2]})"></button>`).join('');
     document.body.appendChild(pop);
     watchShellOverlay(pop);
     pop.querySelectorAll('.tsw').forEach(sw =>
       sw.onclick = () => { applyTheme(sw.dataset.theme); pop.classList.remove('show');
-                           btn.classList.remove('open'); });
+                           btn.classList.remove('open'); btn.setAttribute('aria-expanded','false'); btn.focus(); });
   }
   const place = () => {
     // Hang it off the button itself so it stays put when the window resizes.
@@ -51,11 +53,23 @@ function wireTheme() {
     pop.style.top = (r.bottom + 6) + 'px';
     pop.style.right = Math.max(8, window.innerWidth - r.right - 12) + 'px';
   };
+  btn.setAttribute('aria-expanded','false');
+  btn.setAttribute('aria-controls','themepop');
+  pop.onkeydown = e => {
+    if (e.key === 'Escape') { e.preventDefault(); pop.classList.remove('show');
+      btn.classList.remove('open'); btn.setAttribute('aria-expanded','false'); btn.focus(); }
+  };
+  pop.onfocusout = () => queueMicrotask(() => {
+    if (!pop.contains(document.activeElement) && document.activeElement !== btn) {
+      pop.classList.remove('show'); btn.classList.remove('open'); btn.setAttribute('aria-expanded','false');
+    }
+  });
   btn.onclick = e => {
     e.stopPropagation();
     const open = pop.classList.toggle('show');
     btn.classList.toggle('open', open);
-    if (open) place();
+    btn.setAttribute('aria-expanded',String(open));
+    if (open) { place(); (pop.querySelector('.active') || pop.querySelector('.tsw'))?.focus(); }
     applyTheme(currentTheme());
   };
   window.addEventListener('resize', () => { if (pop.classList.contains('show')) place(); });
@@ -65,7 +79,7 @@ function wireTheme() {
     if (pop.classList.contains('show') && !pop.contains(e.target) &&
         !(e.target.closest && e.target.closest('#themebtn'))) {
       pop.classList.remove('show');
-      btn.classList.remove('open');
+      btn.classList.remove('open'); btn.setAttribute('aria-expanded','false');
     }
   });
 }
@@ -196,6 +210,10 @@ function buildNav() {
     if (n[0] === 'sec') {
       if (group) markup += '</div></section>';
       group = n[1];
+      if (group === 'GENERAL') {
+        markup += `<section class="navgroup" data-navgroup="GENERAL"><div class="navsec">GENERAL</div><div id="nav-GENERAL" class="navitems">`;
+        continue;
+      }
       markup += `<section class="navgroup" data-navgroup="${group}"><button type="button" class="navsec" aria-expanded="false" aria-controls="nav-${group}" data-navgroup-toggle="${group}">${group}<span aria-hidden="true">⌄</span></button><div id="nav-${group}" class="navitems" hidden>`;
       continue;
     }
@@ -211,11 +229,42 @@ function buildNav() {
   revealNav(STATE.page);
 }
 
+const navAnimations = new WeakMap();
 function setNavGroup(name, open) {
   document.querySelectorAll('[data-navgroup]').forEach(group => {
+    if (group.dataset.navgroup === 'GENERAL') return;
     const expanded = group.dataset.navgroup === name ? open : false;
-    group.querySelector('.navsec').setAttribute('aria-expanded', String(expanded));
-    group.querySelector('.navitems').hidden = !expanded;
+    const heading = group.querySelector('.navsec');
+    const items = group.querySelector('.navitems');
+    // CSS height excludes the window's launch scale, preserving interruption position.
+    const height = items.hidden ? 0 : parseFloat(getComputedStyle(items).height);
+    const opacity = items.hidden ? 0 : Number(getComputedStyle(items).opacity);
+    navAnimations.get(items)?.cancel();
+    navAnimations.delete(items);
+    heading.setAttribute('aria-expanded', String(expanded));
+    items.inert = !expanded;
+    items.setAttribute('aria-hidden', String(!expanded));
+    if (!expanded && items.contains(document.activeElement)) heading.focus();
+    items.hidden = false;
+    items.style.overflow = 'hidden';
+    const targetHeight = expanded ? items.scrollHeight : 0;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches || height === targetHeight) {
+      items.hidden = !expanded;
+      items.style.overflow = '';
+      return;
+    }
+    const animation = items.animate([
+      {height: `${height}px`, opacity},
+      {height: `${targetHeight}px`, opacity: expanded ? 1 : 0}
+    ], {duration: 260, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'both'});
+    navAnimations.set(items, animation);
+    animation.finished.then(() => {
+      if (navAnimations.get(items) !== animation) return;
+      items.hidden = !expanded;
+      items.style.overflow = '';
+      animation.cancel();
+      navAnimations.delete(items);
+    }).catch(() => {});
   });
 }
 
@@ -442,7 +491,7 @@ async function runBulk(mode) {
   };
   const LABEL = {all: 'Applying every tweak', recommended: 'Applying the recommended tweaks',
                  revert: 'Restoring this session’s tweak changes', defaults: 'Restoring Windows defaults'}[mode];
-  setStatus(LABEL + '…', true);
+  setStatus(LABEL + '...', true);
 
   // 2) Write the tweaks.
   const r = await api('bulk_tweaks', mode, mode === 'all');
@@ -453,7 +502,7 @@ async function runBulk(mode) {
   let complete = r?.ok === true;
   if (!complete) extras.push(r?.message || 'Some tweaks failed or could not be verified. ' + Object.values(r?.errors || {}).join(' '));
   if (mode === 'all' || mode === 'recommended') {
-    setStatus('Applying debloat and customization…', true);
+    setStatus('Applying debloat and customization...', true);
     const started = await api('debloat_apply', mode, [], mode === 'all');
     const dr = started?.ok ? await waitForDebloat() : started;
     complete = complete && dr?.ok === true;
@@ -473,7 +522,7 @@ async function runBulk(mode) {
   }
 
   if (wantNvidiaOn && nvUsable) {
-    setStatus(LABEL + ' — applying NVIDIA profile…', true);
+    setStatus(LABEL + ' — applying NVIDIA profile...', true);
     const nr = await api('nvprofile_set', true);
     complete = complete && nr?.ok === true;
     extras.push(nr?.ok === true ? 'NVIDIA profile applied'
@@ -481,14 +530,14 @@ async function runBulk(mode) {
   } else if (wantNvidiaOn && nv && !nv.nvidia) {
     extras.push('No NVIDIA GPU — profile skipped');
   } else if (wantNvidiaOff && nvUsable) {
-    setStatus(LABEL + ' — restoring NVIDIA settings…', true);
+    setStatus(LABEL + ' — restoring NVIDIA settings...', true);
     const nr = await api('nvprofile_set', false);
     complete = complete && nr?.ok === true;
     extras.push(nr?.ok === true ? 'NVIDIA settings restored' : 'NVIDIA settings could not be restored');
   }
 
   if (wantDefenderOff || wantDefenderOn) {
-    setStatus(LABEL + ' — ' + (wantDefenderOff ? 'turning Defender off' : 'turning Defender on') + '…', true);
+    setStatus(LABEL + ' — ' + (wantDefenderOff ? 'turning Defender off' : 'turning Defender on') + '...', true);
     const dr = await api('defender_set', wantDefenderOn);
     complete = complete && dr?.ok === true;
     if (dr && dr.tamper && wantDefenderOff)
@@ -505,7 +554,7 @@ async function runBulk(mode) {
       const vs = await api('virt_status');
       if (!vs) { complete = false; extras.push('Virtualisation status could not be read.'); }
       if (vs && vs.mode !== 'gaming') {
-        setStatus(LABEL + ' — setting up for gaming…', true);
+        setStatus(LABEL + ' — setting up for gaming...', true);
         const vr = await api('virt_set', 'gaming');
         complete = complete && vr?.ok === true;
         if (vr && vr.ok) extras.push('Set up for gaming, Memory Integrity off (restart needed)');
@@ -566,7 +615,7 @@ function refreshCounts() {
 }
 
 function animateNum(el, to) {
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  if (document.body.classList.contains('booting') || matchMedia('(prefers-reduced-motion: reduce)').matches) {
     el.textContent = Math.round(to);
     return;
   }
@@ -585,7 +634,8 @@ function buildQuick() {
                 ['Run Boot Optimizer','Boot Optimizer'],
                 ['Test Connection','Networking'],
                 ['Clean Up Disk','Disk Cleanup'],
-                ['Check Drivers','Drivers']];
+                ['Check Drivers','Drivers'],
+                ['Create a restore point','System Restore']];
   document.getElementById('quickRow').innerHTML = acts.map(
     ([l, t]) => `<button class="btn ghost" onclick="${t === 'Networking' ? 'openConnectionTest()' : `show('${t}')`}">${l}</button>`).join('');
 }
@@ -596,12 +646,14 @@ function openConnectionTest() {
 
 function renderSpecs(s) {
   if (!s || typeof s !== 'object') return;
+  STATE.specs = s;
   document.getElementById('specs').innerHTML = Object.entries(s).map(
     ([k, v]) => `<div class="specrow"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('');
 }
 
 /* ---------- tooltips ---------- */
 const tip = document.getElementById('tip');
+tip.setAttribute('role','tooltip');
 function wireTips() {
   document.querySelectorAll('.info[data-t]').forEach(el => {
     el.onmouseenter = () => {
@@ -613,7 +665,17 @@ function wireTips() {
       tip.style.left = Math.min(r.left, innerWidth - tw - 14) + 'px';
       tip.style.top = (r.bottom + th + 14 > innerHeight ? r.top - th - 10 : r.bottom + 10) + 'px';
     };
-    el.onmouseleave = () => tip.classList.remove('show');
+    el.tabIndex = 0;
+    el.setAttribute('role','button');
+    el.setAttribute('aria-label','About ' + el.dataset.t.split('|')[0]);
+    el.setAttribute('aria-describedby','tip');
+    el.onfocus = el.onmouseenter;
+    el.onblur = () => tip.classList.remove('show');
+    el.onkeydown = e => {
+      if (e.key === 'Escape') { e.preventDefault(); tip.classList.remove('show'); }
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.onmouseenter(); }
+    };
+    el.onmouseleave = () => { if (document.activeElement !== el) tip.classList.remove('show'); };
   });
 }
 
@@ -627,8 +689,6 @@ let boot = async function boot() {
     await new Promise(r => setTimeout(r, 300));
     info = await api('init');
   }
-  document.body.classList.remove('booting');
-  document.body.classList.remove('booting-slow');
   if (info) {
     STATE.tweaks = info.tweaks; STATE.cats = info.categories;
     STATE.admin = info.admin;
@@ -636,7 +696,7 @@ let boot = async function boot() {
       info.admin ? 'Administrator' : 'Not elevated';
     document.getElementById('footAdmin').style.color =
       info.admin ? 'var(--good)' : 'var(--warn)';
-    renderSpecs(info.specs || {});
+    renderSpecs(Object.keys(STATE.specs).length ? STATE.specs : (info.specs || {}));
   }
   const sharedTheme = await api('companion_theme');
   if (THEMES.some(t => t[0] === sharedTheme)) {
@@ -644,10 +704,19 @@ let boot = async function boot() {
   }
   buildNav(); show('Home'); refreshCounts(); wireTips(); wireTheme();
   buildQuick(); wireBulk();
+  // Commit Home underneath the loader before beginning the handoff.
+  await new Promise(resolve => setTimeout(resolve, 0));
+  document.body.classList.add('launch-ready');
+  document.body.classList.remove('booting', 'booting-slow');
+  // The native host stays hidden until Home, rather than the centred loader,
+  // is the first frame it can reveal. Browser previews retain the same entrance.
+  await new Promise(resolve => setTimeout(resolve, 0));
+  await api('reveal');
   if (typeof startUpdateMonitor === 'function') startUpdateMonitor();
+  if (info?.open_updates && typeof openUpdates === 'function') openUpdates();
   if (info && info.scanning) {
-    H('scoreNote').textContent = 'Checking what is already applied…';
-    renderSpecs({ Status: 'Reading hardware…' });
+    H('scoreNote').textContent = info.tweaks?.length ? 'Refreshing last checked results...' : 'Checking what is already applied...';
+    if (!Object.keys(STATE.specs).length) renderSpecs({ Status: 'Reading hardware...' });
   } else {
     const later = await api('specs');
     if (later && typeof later === 'object') renderSpecs(later);
@@ -689,14 +758,12 @@ async function startWhenReady() {
 
   // Inside the real app the WebView2 bridge ALWAYS arrives - it can just be
   // slow on a freshly-extracted folder while Windows scans the files. So we
-  // wait for it indefinitely behind a calm "Starting…" splash and NEVER show
+  // wait for it indefinitely behind a calm "Starting..." splash and NEVER show
   // an error for slowness. The only job here is to look patient, not broken.
   document.body.classList.add('booting');
   const t0 = Date.now();
   (function poll() {
     if (bridgeReady()) {
-      document.body.classList.remove('booting');
-      document.body.classList.remove('booting-slow');
       boot();
       return;
     }
@@ -706,8 +773,6 @@ async function startWhenReady() {
   })();
   window.addEventListener('pywebviewready', () => {
     if (bridgeReady() && !window.__booted) {
-      document.body.classList.remove('booting');
-      document.body.classList.remove('booting-slow');
       boot();
     }
   }, { once: true });
@@ -811,7 +876,7 @@ async function pageSysInfo() {
        <button class="btn ghost" onclick="refreshAll()">Re-read hardware</button>
        <span style="color:var(--faint);font-size:11.5px">Read once when the app
        opens - components rarely change while it is running.</span></div>
-     <div class="grid g3" id="sysBody"><div class="card">Reading…</div></div>`);
+     <div class="grid g3" id="sysBody"><div class="card">Reading...</div></div>`);
   H('sysTabs').innerHTML = secs.map(sname =>
     `<button class="btn ghost" data-sec="${sname}">${sname}</button>`).join('');
   H('sysTabs').querySelectorAll('[data-sec]').forEach(b =>
@@ -824,7 +889,7 @@ async function loadSys(name) {
   document.querySelectorAll('[data-sec]').forEach(b =>
     b.className = 'btn ' + (b.dataset.sec === name ? '' : 'ghost'));
   if (SYSCACHE[name]) { paintSys(SYSCACHE[name]); return; }
-  H('sysBody').innerHTML = '<div class="card">Reading…</div>';
+  H('sysBody').innerHTML = '<div class="card">Reading...</div>';
   const groups = await api('sysinfo_section', name) || [];
   SYSCACHE[name] = groups;
   paintSys(groups);
@@ -848,44 +913,42 @@ async function refreshAll() {
 
 /* ---------------- Disk Cleanup ---------------- */
 let CLEAN = [];
+const CLEAN_JOB = {running:false, message:'', log:[], failed:false};
 async function pageClean() {
   pageShell('Disk Cleanup', {crumb:'System › Disk Cleanup',
     text:'Find and remove junk that is safe to delete.'},
-    `<div class="card" style="margin-bottom:15px">
-       <div class="row"><h3 id="cleanTotal" style="font-size:21px">Scanning…</h3>
+    `<div class="card clean-summary">
+       <div class="row clean-actions"><h3 id="cleanTotal">Scanning...</h3>
        <div class="spacer"></div>
-       <button class="btn ghost" onclick="pageClean()">Rescan</button>
-       <button class="btn" onclick="runClean()">Clean Up</button></div>
-       <div class="bar" style="height:9px"><i id="diskBar"></i></div>
-       <p id="diskLbl" style="color:var(--muted);font-size:11.5px;margin-top:8px"></p>
-       <p id="freedLbl" style="color:var(--good);font-size:12px;margin-top:5px;font-weight:600"></p>
+       <button class="btn ghost" id="cleanRescan" onclick="pageClean()">Rescan</button>
+       <button class="btn" id="cleanRun" onclick="runClean()">Clean Up</button></div>
+       <p id="cleanStatus" role="status" aria-live="polite"></p>
+       <div class="bar"><i id="diskBar"></i></div>
+       <p id="diskLbl"></p>
      </div>
-     <div id="cleanList"></div>
-     <div class="card" id="cleanLog" style="display:none;margin-top:14px;
-       font-family:ui-monospace,Consolas,monospace;font-size:11.5px;color:var(--muted);
-       max-height:190px;overflow:auto;white-space:pre-wrap"></div>`);
+     <div class="card clean-list" id="cleanList"></div>
+     <details id="cleanDetails" class="clean-details"><summary>Cleanup details</summary>
+       <div id="cleanLog"></div></details>`);
+  renderClean();
+  paintCleanJob();
+  if (CLEAN_JOB.running) return;
+  const list = H('cleanList');
   const d = await api('clean_scan');
-  if (!d) return;
+  if (!d || CLEAN_JOB.running || STATE.page !== 'Disk Cleanup' || H('cleanList') !== list) return;
   CLEAN = d.items;
   H('diskBar').style.width = (d.disk.used / d.disk.total * 100) + '%';
   H('diskLbl').textContent =
-    `Drive C:  ${d.disk.usedH} of ${d.disk.totalH} used  ·  ${d.disk.freeH} free`;
+    `Drive C: ${d.disk.usedH} of ${d.disk.totalH} used · ${d.disk.freeH} free`;
   renderClean();
 }
 function renderClean() {
   H('cleanList').innerHTML = CLEAN.map((it, i) => `
-    <div class="card" style="margin-bottom:10px;padding:15px">
-      <div class="row">
-        <input type="checkbox" ${it.default && it.bytes ? 'checked' : ''}
-          ${it.bytes ? '' : 'disabled'} data-cl="${i}"
-          style="width:17px;height:17px;accent-color:var(--accent);cursor:pointer">
-        <b style="font-size:13px">${it.name}</b>
-        <div class="spacer"></div>
-        <b style="color:${it.bytes ? 'var(--good)' : 'var(--faint)'}">${it.human}</b>
-      </div>
-      <p style="color:var(--muted);font-size:11.5px;margin:8px 0 0 29px">
-        ${it.desc}${it.files ? '   ·   ' + it.files.toLocaleString() + ' files' : ''}</p>
-    </div>`).join('');
+    <label class="clean-row">
+      <input type="checkbox" ${it.default && it.bytes ? 'checked' : ''}
+        ${!it.bytes || CLEAN_JOB.running ? 'disabled' : ''} data-cl="${i}">
+      <span class="clean-copy"><b>${it.name}</b><span>${it.desc}${it.files ? ' · ' + it.files.toLocaleString() + ' files' : ''}</span></span>
+      <b class="clean-size ${it.bytes ? 'available' : ''}">${it.human}</b>
+    </label>`).join('');
   document.querySelectorAll('[data-cl]').forEach(c => c.onchange = recalcClean);
   recalcClean();
 }
@@ -894,30 +957,52 @@ function recalcClean() {
   document.querySelectorAll('[data-cl]').forEach(c => {
     if (c.checked) t += CLEAN[+c.dataset.cl].bytes; });
   H('cleanTotal').textContent = human(t) + ' can be freed';
+  H('cleanRun').disabled = CLEAN_JOB.running || !t;
 }
 function human(n) {
   const u = ['B','KB','MB','GB','TB']; let i = 0;
   while (n >= 1024 && i < 4) { n /= 1024; i++; }
   return (i < 2 ? Math.round(n) : n.toFixed(1)) + ' ' + u[i];
 }
+function paintCleanJob() {
+  if (STATE.page !== 'Disk Cleanup' || !H('cleanRun')) return;
+  H('cleanRun').textContent = CLEAN_JOB.running ? 'Cleaning...' : 'Clean Up';
+  H('cleanRun').setAttribute('aria-busy', String(CLEAN_JOB.running));
+  H('cleanRescan').disabled = CLEAN_JOB.running;
+  H('cleanStatus').textContent = CLEAN_JOB.message;
+  H('cleanStatus').classList.toggle('working', CLEAN_JOB.running);
+  H('cleanStatus').classList.toggle('failed', CLEAN_JOB.failed);
+  H('cleanLog').textContent = CLEAN_JOB.log.join('\n');
+  H('cleanDetails').hidden = !CLEAN_JOB.log.length;
+  document.querySelectorAll('[data-cl]').forEach(c => {
+    c.disabled = CLEAN_JOB.running || !CLEAN[+c.dataset.cl].bytes;
+  });
+  recalcClean();
+}
 window.py_cleanlog = d => {
-  const el = H('cleanLog'); if (!el) return;
-  el.style.display = 'block';
-  el.textContent += `${d.name}: freed ${d.freed}${d.skipped ? `, ${d.skipped} in use` : ''}\n`;
-  el.scrollTop = el.scrollHeight;
+  if (!CLEAN_JOB.running) return;
+  const message = `${d.name}: freed ${d.freed}${d.skipped ? `, ${d.skipped} in use` : ''}`;
+  CLEAN_JOB.log.push(message);
+  CLEAN_JOB.message = 'Cleaning... ' + message;
+  paintCleanJob();
 };
 async function runClean() {
+  if (CLEAN_JOB.running) return;
   const sel = [];
   document.querySelectorAll('[data-cl]').forEach(c => {
     if (c.checked) sel.push(CLEAN[+c.dataset.cl].id); });
   if (!sel.length) return;
-  H('cleanLog').style.display = 'block';
-  H('cleanLog').textContent = '--- Cleaning ---\n';
+  Object.assign(CLEAN_JOB, {running:true, message:'Cleaning selected files. Files in use will be skipped.', log:[], failed:false});
+  paintCleanJob();
   const r = await api('clean_run', sel);
-  if (!r?.ok) { banner(r?.message || 'Cleanup could not finish.'); return; }
-  H('freedLbl').textContent =
-    `Freed ${r.freed}${r.skipped ? `  ·  ${r.skipped} file(s) locked by a running app` : ''}`;
-  setTimeout(pageClean, 1200);
+  CLEAN_JOB.running = false;
+  CLEAN_JOB.failed = !r?.ok;
+  CLEAN_JOB.message = r?.ok
+    ? `Freed ${r.freed}${r.skipped ? ` · ${r.skipped} file(s) in use or protected were skipped` : ''}`
+    : r?.message || 'Cleanup could not finish. Try again.';
+  paintCleanJob();
+  // Refresh sizes only if this page is still open; never navigate the user back.
+  if (STATE.page === 'Disk Cleanup') pageClean();
 }
 
 /* ---------------- Drivers ---------------- */
@@ -927,7 +1012,7 @@ async function pageDrivers() {
     `<div class="row" style="margin-bottom:15px">
       <button class="btn" onclick="pageDrivers()">Check for Updates</button>
       <span id="drvStatus" style="color:var(--muted);font-size:12px"></span></div>
-     <div id="drvList"><div class="card">Querying vendor…</div></div>
+     <div id="drvList"><div class="card">Querying vendor...</div></div>
      <div class="card" style="margin-top:14px"><p style="color:var(--muted);font-size:11.5px;line-height:1.6">
      Downloads come straight from the vendor's own servers over HTTPS, and the app
      refuses any link that is not on an nvidia.com or amd.com host. It saves the
@@ -994,7 +1079,7 @@ async function pageDrivers() {
         const p = (job.progress || 0) * 100;
         bar.classList.toggle('indet', !job.progress);
         bar.querySelector('i').style.width = p + '%';
-        H('dlp' + i).textContent = job.line || 'Downloading…';
+        H('dlp' + i).textContent = job.line || 'Downloading...';
       } else if (job && job.result) {
         const r = job.result;
         H('dlp' + i).textContent = r.ok ? 'Saved to Downloads'
@@ -1005,7 +1090,7 @@ async function pageDrivers() {
     if (JOBS[jobkey]) paint(JOBS[jobkey]);
 
     b.onclick = async () => {
-      paint({state: 'running', progress: 0, line: 'Starting…'});
+      paint({state: 'running', progress: 0, line: 'Starting...'});
       await api('download_driver', g.url, g.vendor, i);
     };
     cancel.onclick = () => api('cancel_download', jobkey);
@@ -1080,7 +1165,7 @@ function pageRes() {
     text:'Windows setup and repair tools.'},
     `<div class="card" style="margin-bottom:11px">
       <b style="font-size:15px">Windows setup</b>
-      <p id="windowsCurrentEdition" style="font-size:13px;margin-top:10px">Checking your Windows version…</p>
+      <p id="windowsCurrentEdition" style="font-size:13px;margin-top:10px">Checking your Windows version...</p>
       <p id="windowsActivationStatus" style="color:var(--muted);font-size:12px;margin-top:5px" aria-live="polite"></p>
       <p style="color:var(--muted);font-size:12px;margin-top:6px;line-height:1.6">
         Set up Windows after a reset using Microsoft Activation Scripts (MAS 3.12).
@@ -1134,7 +1219,7 @@ function pageRes() {
         const el = job.elapsed || 0;
         const mins = Math.floor(el / 60), secs = el % 60;
         const time = el ? '  ·  ' + (mins ? mins + 'm ' : '') + secs + 's' : '';
-        H('res_' + k).textContent = pctTxt + (job.line || 'Working…') + time;
+        H('res_' + k).textContent = pctTxt + (job.line || 'Working...') + time;
         H('verdict_' + k).innerHTML = '';
       } else if (job && job.result) {
         H('res_' + k).textContent = '';
@@ -1163,7 +1248,7 @@ function pageRes() {
     runBtn.onclick = async () => {
       H('verdict_' + k).innerHTML = '';
       // Optimistically show the running state at once.
-      paint({state: 'running', line: 'Starting…'});
+      paint({state: 'running', line: 'Starting...'});
       await api('resource_task', k);
     };
     cxBtn.onclick = () => api('cancel_task', jobkey);
@@ -1179,7 +1264,7 @@ function pageRes() {
 async function pageVirt() {
   pageShell('Virtual Machines', {crumb: 'Tools › Virtual Machines',
     text: 'Give VirtualBox and VMware direct access to the CPU, or hand it back to Windows.'},
-    `<div id="virtBody"><div class="card">Reading virtualisation state…</div></div>`);
+    `<div id="virtBody"><div class="card">Reading virtualisation state...</div></div>`);
   await refreshVirt();
 }
 
@@ -1283,7 +1368,7 @@ function confirmVirt(mode) {
   H('vtYes').onclick = async () => {
     closeModal();
     const wrap = H('virtMsgWrap');
-    if (wrap) { wrap.hidden = false; H('virtMsg').textContent = 'Applying…'; }
+    if (wrap) { wrap.hidden = false; H('virtMsg').textContent = 'Applying...'; }
     const r = await api('virt_set', mode);
     await refreshVirt();
     const w2 = H('virtMsgWrap');
@@ -1314,7 +1399,7 @@ function appIcon(id) {
 async function pageApps() {
   pageShell('Install Apps', {crumb: 'Tools › Install Apps',
     text: 'Shiftd file conversion, runtimes, browsers, game clients and a faster Discord setup.'},
-    `<div id="appsBody"><div class="card">Loading the catalogue…</div></div>`);
+    `<div id="appsBody"><div class="card">Loading the catalogue...</div></div>`);
   const cat = APPCACHE || await api('app_catalog');
   if (!cat) return;
   APPCACHE = cat;
@@ -1399,7 +1484,7 @@ function wireApps(cat) {
       if (running) {
         const el = job.elapsed || 0;
         const t = el ? '  ·  ' + (el >= 60 ? Math.floor(el / 60) + 'm ' : '') + (el % 60) + 's' : '';
-        H('appline_' + a.id).textContent = (job.line || 'Working…') + t;
+        H('appline_' + a.id).textContent = (job.line || 'Working...') + t;
         H('appres_' + a.id).innerHTML = '';
       } else if (job && job.result) {
         H('appline_' + a.id).textContent = '';
@@ -1416,7 +1501,7 @@ function wireApps(cat) {
 
     if (btn) btn.onclick = async () => {
       H('appres_' + a.id).innerHTML = '';
-      paint({state: 'running', progress: 0, line: 'Starting…'});
+      paint({state: 'running', progress: 0, line: 'Starting...'});
       await api('app_install', a.id);
     };
     if (cx) cx.onclick = () => api('cancel_app', jobkey);
@@ -1429,7 +1514,7 @@ function storeCardHtml() {
     <div class="row" style="align-items:flex-start;gap:14px">
       <div style="flex:1">
         <b style="font-size:15px">Microsoft Store &amp; Xbox apps</b>
-        <p id="storeState" style="color:var(--muted);font-size:12px;margin-top:5px">Checking…</p>
+        <p id="storeState" style="color:var(--muted);font-size:12px;margin-top:5px">Checking...</p>
       </div>
     </div>
     <div class="row" style="margin-top:13px;gap:9px;flex-wrap:wrap">
@@ -1453,7 +1538,7 @@ async function wireStoreCard() {
 
   const getBtn = H('storeGet');
   H('storeOn').onclick = async () => {
-    H('storeMsg').textContent = 'Installing from Microsoft…'; H('storeMsg').style.color = 'var(--muted)';
+    H('storeMsg').textContent = 'Installing from Microsoft...'; H('storeMsg').style.color = 'var(--muted)';
     if (getBtn) getBtn.style.display = 'none';
     const r = await api('store_set', 'both', true);
     paint(r && r.status);
@@ -1485,7 +1570,7 @@ async function wireStoreCard() {
       </div></div>`);
     H('stYes').onclick = async () => {
       closeModal();
-      H('storeMsg').textContent = 'Removing…';
+      H('storeMsg').textContent = 'Removing...';
       const r = await api('store_set', 'both', false);
       paint(r && r.status);
       H('storeMsg').textContent = 'Removed.';
@@ -1500,7 +1585,7 @@ let BIOSCACHE = null;
 async function pageBios() {
   pageShell('Firmware & BIOS', {crumb:'Tools › BIOS Info',
     text:'What Windows can see about your firmware.'},
-    `<div id="biosBody"><div class="card">Reading…</div></div>`);
+    `<div id="biosBody"><div class="card">Reading...</div></div>`);
   const d = BIOSCACHE || await api('bios_info');
   if (!d) return;
   BIOSCACHE = d;
@@ -1532,7 +1617,7 @@ function pageRestore() {
         <button class="btn" id="rpBtn">Create Restore Point</button>
         <span id="rpMsg" style="color:var(--muted);font-size:12px"></span></div></div>`);
   H('rpBtn').onclick = async () => {
-    H('rpBtn').disabled = true; H('rpBtn').textContent = 'Creating…';
+    H('rpBtn').disabled = true; H('rpBtn').textContent = 'Creating...';
     const r = await api('restore_point');
     H('rpBtn').disabled = false; H('rpBtn').textContent = 'Create Restore Point';
     H('rpMsg').textContent = (r && r.message) ||
@@ -1572,12 +1657,13 @@ function pageNetworking() {
       <div class="spacer"></div>
       <span id="netStatus" style="color:var(--muted);font-size:11.5px">Saturates the line for about 30 seconds.</span></div>
      <div class="bar" style="margin-bottom:16px"><i id="netBar"></i></div>
-     <div class="grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:15px">
+     <div class="grid network-metrics">
        <div class="card"><div class="label">BUFFERBLOAT GRADE <span class="info" ${tipAttr('bloat')}>?</span></div>
          <div style="display:flex;align-items:center;gap:16px;margin-top:14px">
            <b id="grade" style="font-size:44px;color:var(--muted)">—</b>
-           <div style="flex:1"><div class="bar" style="height:22px;border-radius:11px">
-             <i id="gradeBar" style="width:50%;background:linear-gradient(90deg,var(--accent),var(--accent-2))"></i></div></div></div>
+           <div style="flex:1"><div class="bar" id="gradeMeter" role="meter" aria-label="Bufferbloat grade" aria-valuemin="0" aria-valuemax="6" aria-valuetext="Run a test" style="height:22px;border-radius:11px">
+             <i id="gradeBar" style="width:0%;background:linear-gradient(90deg,var(--accent),var(--accent-2))"></i></div></div></div>
+         <div class="grade-legend" aria-label="Bufferbloat grades: added latency under load"><span class="grade-caption">Added latency (ms):</span><span><b>A+</b> &lt;5</span><span><b>A</b> 5–&lt;30</span><span><b>B</b> 30–&lt;60</span><span><b>C</b> 60–&lt;200</span><span><b>D</b> 200–&lt;400</span><span><b>F</b> ≥400</span></div>
          <p id="verdict" style="color:var(--muted);font-size:12px;margin-top:12px">Run a test to measure your connection.</p></div>
        <div class="card"><div class="label">INTERNET SPEED <span class="info" ${tipAttr('speed')}>?</span></div>
          <div style="margin-top:14px"><div class="row"><span style="color:var(--muted);font-size:11.5px">Download</span>
@@ -1594,7 +1680,7 @@ function pageNetworking() {
            <span class="info" ${tipAttr('jit')}>?</span></span>
            <div class="spacer"></div><b id="jit" style="font-size:15px">—</b></div></div>
      </div>
-     <div class="card" style="margin-bottom:22px"><div class="label">YOUR CONNECTION <span class="info" ${tipAttr('conn')}>?</span></div>
+     <div class="card network-activities"><div class="label">YOUR CONNECTION <span class="info" ${tipAttr('conn')}>?</span></div>
        <div id="connRows" style="margin-top:12px"></div></div>
      <div class="section">NETWORK TWEAKS</div>
      <div class="grid g3" id="netTweakGrid"></div>`);
@@ -1630,7 +1716,7 @@ function restoreNetView() {
   if (!H('netRun')) return;
   H('netRun').hidden = NET_JOB.running;
   if (NET_JOB.progress) {
-    H('netStatus').textContent = NET_JOB.progress.label + '…';
+    H('netStatus').textContent = NET_JOB.progress.label + '...';
     H('netBar').style.width = Math.min(100, NET_JOB.progress.frac * 100) + '%';
   }
   if (NET_JOB.partial) paintNet(NET_JOB.partial.res, NET_JOB.partial.stage);
@@ -1638,7 +1724,7 @@ function restoreNetView() {
 }
 window.py_netprogress = d => {
   NET_JOB.progress = d;
-  if (H('netStatus')) H('netStatus').textContent = d.label + '…';
+  if (H('netStatus')) H('netStatus').textContent = d.label + '...';
   if (H('netBar')) H('netBar').style.width = Math.min(100, d.frac * 100) + '%';
 };
 window.py_netpartial = d => { NET_JOB.partial = d; paintNet(d.res, d.stage); };
@@ -1660,11 +1746,14 @@ async function runNetTest() {
   if (NET_JOB.running) return;
   Object.assign(NET_JOB, {running:true, result:null, progress:null, partial:null});
   H('netRun').hidden = true;
-  H('netStatus').textContent = 'Starting connection test…';
+  H('netStatus').textContent = 'Starting connection test...';
   H('netStatus').style.color = 'var(--muted)';
   ['netBar','dlBar','ulBar'].forEach(id => { H(id).style.width = '0%'; });
   ['lat0','lat1','lat2','dl','ul','jit'].forEach(i => { if (H(i)) H(i).textContent = '—'; });
   H('grade').textContent = '—';
+  H('gradeBar').style.width = '0%';
+  H('gradeMeter').removeAttribute('aria-valuenow');
+  H('gradeMeter').setAttribute('aria-valuetext','Test running');
   let r;
   try { r = await api('nettest'); }
   catch (error) { r = {error:String(error)}; }
@@ -1689,9 +1778,10 @@ function paintNetResult(r) {
     el.className = 'badge ' + (ok ? 'on' : '');
     if (ok === false) el.style.cssText = 'background:rgba(255,93,108,.14);color:var(--bad)';
   });
-  const split = r.idle_ms && r.loaded_ms
-    ? Math.max(8, Math.min(92, r.idle_ms / Math.max(r.loaded_ms, r.idle_ms * 1.2) * 100)) : 50;
-  H('gradeBar').style.width = split + '%';
+  const rank = { 'A+':6, A:5, B:4, C:3, D:2, F:1 }[r.grade] || 0;
+  H('gradeBar').style.width = (rank / 6 * 100) + '%';
+  H('gradeMeter').setAttribute('aria-valuenow',String(rank));
+  H('gradeMeter').setAttribute('aria-valuetext',rank ? `Grade ${r.grade}${Number.isFinite(r.increase_ms) ? ': ' + r.increase_ms.toFixed(1) + ' ms added latency' : ''}` : 'Grade unavailable');
   H('grade').textContent = r.grade;
   H('grade').style.color = ['A+','A','B'].includes(r.grade) ? 'var(--good)'
     : ['C','D'].includes(r.grade) ? 'var(--warn)' : 'var(--bad)';
@@ -1732,16 +1822,35 @@ function paintNetResult(r) {
 
 
 /* ---------- generic confirm modal ---------- */
+let modalReturnFocus = null;
 function showModal(html) {
   let o = document.getElementById('modal');
   if (!o) { o = document.createElement('div'); o.id = 'modal';
             o.className = 'modal-overlay'; document.body.appendChild(o); }
+  if (!o.classList.contains('show')) modalReturnFocus = document.activeElement;
   o.innerHTML = html; o.classList.add('show');
+  o.setAttribute('role','dialog'); o.setAttribute('aria-modal','true');
+  o.setAttribute('aria-label',o.querySelector('h2,h3')?.textContent || 'Confirm action');
+  H('shell').inert = true;
+  const controls = () => [...o.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]')].filter(e => e.getClientRects().length);
+  o.tabIndex = -1;
+  (controls().find(e => /^cancel$/i.test(e.textContent.trim())) || controls()[0] || o).focus();
+  o.onkeydown = e => {
+    if (e.key === 'Escape') { e.preventDefault(); closeModal(); return; }
+    if (e.key !== 'Tab') return;
+    const list = controls(), first = list[0], last = list[list.length-1];
+    if (!first) { e.preventDefault(); o.focus(); }
+    else if (e.shiftKey && (document.activeElement === first || document.activeElement === o)) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  };
   o.onclick = e => { if (e.target === o) closeModal(); };
 }
 function closeModal() {
   const o = document.getElementById('modal');
   if (o) { o.classList.remove('show'); o.innerHTML = ''; }
+  H('shell').inert = false;
+  if (modalReturnFocus?.isConnected) modalReturnFocus.focus();
+  modalReturnFocus = null;
 }
 
 /* ---------- Windows Defender page ---------- */
@@ -1752,9 +1861,9 @@ async function pageDefender() {
        <div class="row" style="align-items:flex-start">
          <div style="flex:1">
            <b style="font-size:16px">Microsoft Defender</b>
-           <p id="defState" style="color:var(--muted);font-size:12.5px;margin-top:6px">Reading current state…</p>
+           <p id="defState" style="color:var(--muted);font-size:12.5px;margin-top:6px">Reading current state...</p>
          </div>
-         <div class="sw" id="defTgl" role="switch"></div>
+         <button type="button" class="sw" id="defTgl" role="switch" aria-label="Microsoft Defender" aria-checked="false" disabled></button>
        </div>
        <div id="defTamper"></div>
        <div id="defList" style="margin-top:16px"></div>
@@ -1786,7 +1895,8 @@ async function refreshDefender() {
   if (!st) return;
   window.__def = st;
   const tgl = H('defTgl');
-  if (tgl) tgl.classList.toggle('on', !!st.active);
+  if (tgl) { tgl.classList.toggle('on', !!st.active);
+    tgl.setAttribute('aria-checked',String(!!st.active)); tgl.disabled = !st.present; }
   const state = H('defState');
   if (state) {
     state.textContent = !st.present
@@ -1854,7 +1964,7 @@ function confirmDefender(want) {
     </div>`);
   H('defYes').onclick = async () => {
     closeModal();
-    if (H('defState')) { H('defState').textContent = 'Working…'; H('defState').style.color = 'var(--muted)'; }
+    if (H('defState')) { H('defState').textContent = 'Working...'; H('defState').style.color = 'var(--muted)'; }
     const r = await api('defender_set', want);
     if (r && r.tamper && H('defState')) {
       H('defState').textContent = r.message || 'Turn Tamper Protection off, then tap again.';
@@ -1882,9 +1992,9 @@ async function pageNvProfile() {
          <div class="nvlogo">${NV_LOGO}</div>
          <div style="flex:1">
            <b style="font-size:17px">NVIDIA Profile</b>
-           <p id="nvState" style="color:var(--muted);font-size:12.5px;margin-top:5px">Checking…</p>
+           <p id="nvState" style="color:var(--muted);font-size:12.5px;margin-top:5px">Checking...</p>
          </div>
-         <div class="sw" id="nvTgl" role="switch"></div>
+         <button type="button" class="sw" id="nvTgl" role="switch" aria-label="NVIDIA Profile" aria-checked="false" disabled></button>
        </div>
        <div id="nvSetup" style="margin-top:14px"></div>
        <p style="color:var(--muted);font-size:11.5px;line-height:1.6;margin-top:16px">
@@ -1894,7 +2004,7 @@ async function pageNvProfile() {
      </div>
      <div class="card nvsettings" id="nvSettings" style="margin-top:15px">
        <h3>What this profile applies</h3>
-       <div id="nvSettingsList" style="color:var(--muted);font-size:12.5px">Loading…</div>
+       <div id="nvSettingsList" style="color:var(--muted);font-size:12.5px">Loading...</div>
      </div>
      <div id="nvBlock" hidden></div>
      </div>`);
@@ -1932,6 +2042,7 @@ async function refreshNvProfile() {
     tgl.classList.toggle('on', !!st.applied);
     tgl.classList.toggle('warn', st.state === 'partial');
     tgl.classList.toggle('dis', !ready);
+    tgl.disabled = !ready; tgl.setAttribute('aria-checked',String(!!st.applied));
   }
   const state = H('nvState');
   if (state) {
@@ -1944,7 +2055,7 @@ async function refreshNvProfile() {
       state.style.color = 'var(--warn)';
     }
     else if (st.state === 'unknown' && !st.checked) {
-      state.textContent = 'Checking your current NVIDIA settings…';
+      state.textContent = 'Checking your current NVIDIA settings...';
       state.style.color = 'var(--muted)';
     }
     else { state.textContent = st.applied ? 'Profile is applied.' : 'Using NVIDIA defaults.';
@@ -1980,7 +2091,7 @@ function confirmNvProfile(want) {
       </div></div>`);
   H('nvYes').onclick = async () => {
     closeModal();
-    if (H('nvState')) { H('nvState').textContent = 'Applying…'; H('nvState').style.color = 'var(--muted)'; }
+    if (H('nvState')) { H('nvState').textContent = 'Applying...'; H('nvState').style.color = 'var(--muted)'; }
     const r = await api('nvprofile_set', want);
     if (r && !r.ok && H('nvState')) {
       H('nvState').textContent = r.message || 'Could not apply.';
@@ -1998,7 +2109,7 @@ async function loadNvSettings() {
   if (!el) return;
   // Served from the startup cache in the normal case, so this returns at once.
   const ready = await api('nvprofile_ready');
-  if (!ready) el.textContent = 'Reading your current NVIDIA settings…';
+  if (!ready) el.textContent = 'Reading your current NVIDIA settings...';
   const rows = await api('nvprofile_settings');
   if (!rows || !rows.length) {
     el.textContent = 'Profile settings unavailable.';

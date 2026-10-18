@@ -24,7 +24,11 @@ function startUpdateMonitor() {
 
 function closeUpdates() {
   const panel = H('updatesPanel');
-  if (panel) panel.hidden = true;
+  if (panel) {
+    const restoreFocus = panel.contains(document.activeElement);
+    panel.hidden = true;
+    if (restoreFocus) H('updatesButton')?.focus();
+  }
   H('updatesButton')?.setAttribute('aria-expanded', 'false');
 }
 
@@ -35,7 +39,7 @@ async function openUpdates() {
     panel.id = 'updatesPanel'; panel.hidden = true;
     panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'Updates');
     panel.innerHTML = `<header><div class="update-heading"><span class="update-emblem">${UPDATE_ICON}</span><div><div class="update-eyebrow">APP + TOOLS</div><h3>Updates</h3></div></div><button class="update-close" id="closeUpdates" aria-label="Close updates">×</button></header>
-      <div class="update-summary"><i aria-hidden="true"></i><span id="updateSummary" role="status" aria-live="polite">Checking for updates…</span></div>
+      <div class="update-summary"><i aria-hidden="true"></i><span id="updateSummary" role="status" aria-live="polite">Checking for updates...</span></div>
       <div class="update-body">
       <div id="updateAppRow"></div><div id="updateToolRows"></div>
       <div id="updateOperation" role="status" aria-live="polite" hidden><p id="updateStatus"></p><p id="updateProgress"></p>
@@ -50,7 +54,9 @@ async function openUpdates() {
     H('updateCancel').onclick = () => updateAction('updates_cancel');
     H('updateRestart').onclick = () => updateAction('updates_restart');
   }
+  const wasHidden = panel.hidden;
   panel.hidden = false;
+  if (wasHidden) H('closeUpdates')?.focus();
   H('updatesButton')?.setAttribute('aria-expanded', 'true');
   if (updateLast) paintUpdates(updateLast);
   const state = await api('updates_status');
@@ -75,7 +81,7 @@ function paintNvpiOpening() {
       button.disabled = button.dataset.launchDisabled === '1';
       delete button.dataset.launchDisabled;
     }
-    button.textContent = nvpiOpening ? 'Opening…' : 'Open';
+    button.textContent = nvpiOpening ? 'Opening...' : 'Open';
     button.setAttribute('aria-busy', String(nvpiOpening));
   });
 }
@@ -96,7 +102,7 @@ async function updateAction(method, key) {
   const result = await api(method, ...(key === undefined ? [] : [key]));
   if (result?.ok === false) banner(result.message);
   if (method === 'updates_restart' && result?.ok) {
-    banner('Restarting TechLoungeTweaks to apply the update…');
+    banner('Restarting TechLoungeTweaks to apply the update...');
     return; // Do not start another bridge request during native shutdown.
   }
   if (openingNvpi && (!result || result.ok === false)) setNvpiOpening(false);
@@ -110,7 +116,7 @@ async function updateAction(method, key) {
 }
 
 function versionLabels(item) {
-  if (item.local) return `<div class="tool-versions"><span><span class="version-label">Included version</span><b>${textEscape(item.installed || 'Not installed')}</b></span></div><small>Personal bundled tool</small>`;
+  if (item.local) return `<div class="tool-versions"><span><span class="version-label">Included version</span><b>${textEscape(item.installed || 'Not installed')}</b></span></div><small class="bundled-note">Personal bundled tool</small>`;
   const older = item.action === 'Update';
   const unavailable = item.check_error || item.status === 'unavailable';
   const latest = !unavailable && item.available && (item.id !== 'app' || /^v?\d+(?:\.\d+)*$/.test(item.available)) ? item.available : null;
@@ -119,14 +125,13 @@ function versionLabels(item) {
     return match ? `${textEscape(match[1])}<em>Build ${match[2]}</em>` : textEscape(value || 'Unavailable');
   };
   return `<div class="tool-versions"><span><span class="version-label">Current</span><b title="${textEscape(item.installed || '')}" class="${older ? 'version-old' : ''}">${format(item.installed)}</b></span>
-    <span><span class="version-label">Latest</span><b title="${textEscape(latest || '')}" class="${latest ? 'version-latest' : 'version-unknown'}">${latest ? format(latest) : unavailable ? 'Unavailable' : 'Checking…'}</b></span></div>
+    <span><span class="version-label">Latest</span><b title="${textEscape(latest || '')}" class="${latest ? 'version-latest' : 'version-unknown'}">${latest ? format(latest) : unavailable ? 'Unavailable' : 'Checking...'}</b></span></div>
     ${older ? '<small class="version-old">Update available</small>' : ''}`;
 }
 
 function updateRow(item, busy) {
   return `<div class="update-row ${item.action === 'Update' ? 'update-needed' : ''}"><div class="update-row-info"><strong>${textEscape(item.name)}</strong>${versionLabels(item)}</div>
     <div class="update-actions">${item.launch ? `<button class="btn ghost" data-tool="${textEscape(item.id)}">Open</button>` : ''}
-    ${item.rollback ? `<button class="update-rollback" data-rollback="${textEscape(item.id)}" ${busy ? 'disabled' : ''}>Previous version</button>` : ''}
     ${item.action ? `<button class="btn" data-update="${textEscape(item.id)}" ${busy ? 'disabled' : ''}>${item.id === 'app' ? 'Download' : textEscape(item.action)}</button>` : ''}</div></div>`;
 }
 
@@ -138,7 +143,7 @@ function paintUpdates(state) {
   const appAvailable = app?.action === 'Update';
   const pill = H('updatesButton');
   if (pill) {
-    const label = state.ready ? 'Restart to update' : state.busy ? 'Downloading…' : !state.checking && appAvailable ? 'App update' : !state.checking && tools.length ? tools.length + (tools.length === 1 ? ' tool update' : ' tool updates') : 'Updates';
+    const label = state.ready ? 'Restart to update' : state.busy ? 'Downloading...' : !state.checking && appAvailable ? 'App update' : !state.checking && tools.length ? tools.length + (tools.length === 1 ? ' tool update' : ' tool updates') : 'Updates';
     H('updatesButtonLabel').textContent = label;
     const count = (appAvailable ? 1 : 0) + tools.length;
     H('updatesButtonCount').hidden = !count || state.checking || state.busy || !!state.ready;
@@ -150,7 +155,7 @@ function paintUpdates(state) {
   paintExtraTools(state);
   if (!H('updatesPanel')) return;
   H('updatesPanel').dataset.state = state.checking ? 'checking' : state.ready || appAvailable || tools.length ? 'available' : app?.status === 'current' ? 'current' : 'unavailable';
-  H('updateSummary').textContent = state.checking ? 'Checking for updates…' : state.ready ? 'App update ready to apply' : appAvailable ? 'A new app version is available' : app?.status === 'current' ? 'App is up to date' : app?.status === 'unavailable' ? 'App version could not be checked' : 'Checking app version…';
+  H('updateSummary').textContent = state.checking ? 'Checking for updates...' : state.ready ? 'App update ready to apply' : appAvailable ? 'A new app version is available' : app?.status === 'current' ? 'App is up to date' : app?.status === 'unavailable' ? 'App version could not be checked' : 'Checking app version...';
   const appContent = JSON.stringify([app, state.busy, state.checking]);
   if (H('updateAppRow').dataset.content !== appContent) {
     H('updateAppRow').dataset.content = appContent;
@@ -163,15 +168,14 @@ function paintUpdates(state) {
   }
   H('updatesPanel').querySelectorAll('[data-update]').forEach(b => b.onclick = () => updateAction('updates_apply', b.dataset.update));
   H('updatesPanel').querySelectorAll('[data-tool]').forEach(b => b.onclick = () => updateAction('updates_launch', b.dataset.tool));
-  H('updatesPanel').querySelectorAll('[data-rollback]').forEach(b => b.onclick = () => updateAction('updates_rollback', b.dataset.rollback));
   H('updateCheck').disabled = state.checking || state.busy;
-  H('updateCheckLabel').textContent = state.checking ? 'Checking…' : 'Check for updates';
+  H('updateCheckLabel').textContent = state.checking ? 'Checking...' : 'Check for updates';
   H('updateChecked').textContent = state.checked ? 'Checked ' + new Date(state.checked * 1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '';
   H('updateRestart').hidden = !state.ready; H('updateRestart').disabled = state.busy;
   const operation = state.busy || state.message && !state.checking && !state.message.startsWith('Checks finished.') && !state.message.startsWith('App update ready.');
   H('updateOperation').hidden = !operation;
   H('updateStatus').textContent = state.message || '';
-  H('updateProgress').textContent = state.busy ? state.progress == null ? 'Working in the background…' : Math.round(state.progress * 100) + '% downloaded' : '';
+  H('updateProgress').textContent = state.busy ? state.progress == null ? 'Working in the background...' : Math.round(state.progress * 100) + '% downloaded' : '';
   H('updateCancel').hidden = !state.busy;
   paintNvpiOpening();
 

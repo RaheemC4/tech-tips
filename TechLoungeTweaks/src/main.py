@@ -26,6 +26,7 @@ import cleanup
 import drivers
 import nettest
 import sysinfo
+import startup_summary
 import virt
 import debloat
 import tweak_undo
@@ -201,6 +202,9 @@ class Api:
         from System.Windows.Forms import FormWindowState
         native=self._window.native
         def apply():
+            if getattr(self, '_native_frame', None):
+                self._native_frame.change_state(action)
+                return
             if action=='minimize':
                 native.WindowState=FormWindowState.Minimized
             else:
@@ -241,24 +245,32 @@ class Api:
                     self._window.evaluate_js("banner('A tool is waiting to close. Finish its save or busy prompt, then close TechLoungeTweaks again.')")
                     return
                 # Visual feedback is optional and must never prevent shutdown.
-                try:
-                    delay = self._window.evaluate_js('typeof prepareWindowClose === "function" ? prepareWindowClose() : 0')
-                    if isinstance(delay, (int, float)) and 0 < delay <= 200:
-                        time.sleep(delay / 1000)
-                except Exception:
-                    pass
+                if not getattr(self, '_native_frame', None):
+                    try:
+                        delay = self._window.evaluate_js('typeof prepareWindowClose === "function" ? prepareWindowClose() : 0')
+                        if isinstance(delay, (int, float)) and 0 < delay <= 200:
+                            time.sleep(delay / 1000)
+                    except Exception:
+                        pass
+                if getattr(self, "_scan_complete", False):
+                    startup_summary.save_tweaks([self._payload(t) for t in self._tweaks().values()])
                 self._shutdown_complete=True
                 # Post the close to WinForms instead of synchronously invoking
                 # it from a timer while the WebView bridge is still unwinding.
                 from System import Action
-                self._window.native.BeginInvoke(Action(self._window.native.Close))
+                def finish():
+                    if getattr(self, '_native_frame', None):
+                        self._native_frame.close(self._window.native)
+                    else:
+                        self._window.native.Close()
+                self._window.native.BeginInvoke(Action(finish))
             except Exception:
                 self._shutdown_complete=False
                 log('close failed\n' + traceback.format_exc())
             finally:
                 self._close_in_progress=False
-        # Release the JS bridge before any tool/save dialog or native shutdown.
-        threading.Timer(0.1, destroy).start()
+        # Keep save/tool checks and shutdown off the bridge thread.
+        threading.Thread(target=destroy, daemon=True).start()
         return {'ok': True}
 
     # ---------------------------------------------------------- tweaks
@@ -300,7 +312,18 @@ class Api:
 
         self._applied = applied
         self._locked = set()
-        return [self._payload(t) for t in self._tweaks().values()]
+        payload = [self._payload(t) for t in self._tweaks().values()]
+        self._scan_complete = True
+        startup_summary.save_tweaks(payload)
+        return payload
+
+    @traced
+    def reveal(self):
+        """Reveal only after Home has been laid out and painted by WebView2."""
+        if self._window:
+            self._window.show()
+            _close_splash()
+        return True
 
     @traced
     def init(self):
@@ -308,14 +331,15 @@ class Api:
         """Return instantly. The scan runs behind it and pushes results."""
         self._applied = getattr(self, "_applied", set())
         payload = {
-            # Deliberately does NOT call _tweaks(): building the tweak list
-            # runs PowerShell, and doing that inside a bridge call froze the
-            # whole window. The list is pushed by the "scanned" event instead.
+            # Recent results are display-only until the live scan arrives.
+            # Never build tweaks here: construction runs PowerShell and blocks
+            # the initial bridge response. Mutations use the live engine.
             "categories": list(CATEGORY_ORDER),
-            "tweaks": [],
+            "tweaks": startup_summary.load_tweaks(),
             "admin": is_admin(),
-            "specs": {},
+            "specs": startup_summary.load(),
             "scanning": True,
+            "open_updates": "--updates" in sys.argv,
         }
         threading.Thread(target=self._background_start, daemon=True).start()
         self._updates.start()
@@ -440,6 +464,8 @@ class Api:
         # then warm run in sequence on this thread so the two -exportCustomized
         # calls never overlap.
         threading.Thread(target=self._nv_startup, daemon=True).start()
+        hardware = threading.Thread(target=self._load_startup_specs, daemon=True)
+        hardware.start()
         try:
             tweaks = self.scan()
             cats = [c for c in CATEGORY_ORDER
@@ -447,12 +473,17 @@ class Api:
             self._emit("scanned", {"tweaks": tweaks, "categories": cats})
         except Exception:
             log("background scan FAILED\n" + traceback.format_exc())
-        try:
-            self._emit("specs", self.specs())
-        except Exception:
-            pass
+        hardware.join()
         self._prefetch()
         self._emit("prefetched", {})
+
+    def _load_startup_specs(self):
+        try:
+            specs = self._cached("specs", self.specs)
+            startup_summary.save(specs)
+            self._emit("specs", specs)
+        except Exception:
+            log("startup hardware read failed\n" + traceback.format_exc())
 
     def _nv_startup(self):
         try:
@@ -1815,11 +1846,16 @@ def main():
         http_port=webview.settings['DEFAULT_HTTP_PORT'],
         width=1380, height=900, min_size=(940, 640),
         resizable=True,
+        hidden=True,
         frameless=True, easy_drag=False,
         background_color="#0a0b12",
     )
     api._window = window
-    window.events.before_show += lambda: centre_window(window)
+    def prepare_native_window():
+        from native_frame import NativeFrame
+        api._native_frame = NativeFrame(window.native.Handle.ToInt64())
+        centre_window(window)
+    window.events.before_show += prepare_native_window
     window.events.closing += api._on_closing
     log("window created")
 

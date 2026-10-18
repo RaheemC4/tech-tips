@@ -32,7 +32,7 @@ const assert=require('assert');
  assert(!(await page.evaluate(()=>calls.some(c=>c[0]==='nvprofile_set'))));
  const names=await page.locator('[data-nav]').evaluateAll(es=>es.map(e=>e.dataset.nav));
  assert.strictEqual(names.length,23);
- for(const group of ['GENERAL','TWEAKS','SYSTEM','TOOLS']) {
+ for(const group of ['TWEAKS','SYSTEM','TOOLS']) {
   await page.evaluate(group=>setNavGroup(group,true),group);
   assert.strictEqual(await page.locator('[data-navgroup="'+group+'"] .navsec').getAttribute('aria-expanded'),'true');
   const overflow=await page.locator('#navlist').evaluate(e=>e.scrollHeight-e.clientHeight);

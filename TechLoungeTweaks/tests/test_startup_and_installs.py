@@ -44,6 +44,30 @@ class StartupAndInstallTests(unittest.TestCase):
             for reader in readers.values():
                 self.assertEqual(reader.call_count, 2)
 
+    def test_hardware_arrives_while_tweak_scan_is_still_running(self):
+        api = Api.__new__(Api)
+        api._cache = {}
+        api._cachelock = threading.Lock()
+        api._nv_startup = Mock()
+        api._prefetch = Mock()
+        hardware_arrived = threading.Event()
+        api.specs = Mock(return_value={"CPU": "Live CPU"})
+        events = []
+        def emit(name, data):
+            events.append((name, data))
+            if name == "specs":
+                hardware_arrived.set()
+        api._emit = emit
+        def scan():
+            self.assertTrue(hardware_arrived.wait(3), "Hardware waited behind the scan")
+            return []
+        api.scan = scan
+        with patch("main.startup_summary.save") as save:
+            api._background_start()
+        self.assertIn(("specs", {"CPU": "Live CPU"}), events)
+        self.assertIn(("scanned", {"tweaks": [], "categories": []}), events)
+        save.assert_called_once_with({"CPU": "Live CPU"})
+
     def test_simultaneous_installs_only_remove_their_own_downloads(self):
         api = Api.__new__(Api)
         api._dl_cancel = set()

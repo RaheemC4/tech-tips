@@ -1,5 +1,64 @@
 Installed edition and native tray companion.
 
+- Enlarge the Home score ring and centre its value and caption. Remove negative numeral spacing so score digits do not collide, while retaining the dashboard fit.
+
+- Remove the Previous version button from Updates. Retain stored versions and existing update recovery safeguards.
+
+- Fit all ten NVIDIA comparison rows and all four Networking tweak cards at 1280 x 800 and the 150% desktop viewport, retaining descriptions, grades, help and actions.
+- Compact the Updates panel with inline version labels and a wider layout. Show all five tools, app versions, download progress/cancellation and restart-ready controls without scrolling at desktop sizes.
+
+- Fit the full Home dashboard at 1280 x 800 and the 150% desktop viewport, including all five Quick Actions. Remove the repeated intro heading, move Create a restore point to Quick Actions, use three hardware columns on wider windows, and tighten category/setup spacing. Preserve normal scrolling in smaller windows.
+
+- Compact the Home score/hardware summary, setup controls and category cards.
+- Fix clipped sidebar keyboard focus, keyboard theme selection and main switches. Add focusable help and confirmation focus containment, Escape dismissal and return to the opener.
+- Add the bufferbloat grading legend using the test's added-latency thresholds. Replace the unrelated latency-ratio bar with a qualitative grade meter, fully filled for A+.
+
+- Reduce full-app scrolling with grouped compact cleanup rows, tighter NVIDIA setting comparisons, and a responsive multi-column connection summary. Preserve descriptions, warnings and readable type.
+- Show cleanup activity immediately beside Clean Up, keep the summary visible while scrolling, prevent duplicate cleanup calls and retain completion/error feedback. Leaving the page never navigates back automatically.
+- Keep Home always visible under General without a dropdown control.
+
+- Animate tray page navigation and Back with a restrained 300 ms spring, continuous rapid reversal and an animated cleanup viewport height. Keep controls interactive and respect reduced motion.
+- Batch native redraws when rebuilding tray pages to prevent intermediate empty frames and click-time flicker. Background progress keeps updating in place.
+
+- Remove the tray Updates page and permanent button. Show a compact indicator only for a verified newer app release, opening update details in the full app. Keep automatic installation deferred while the full app is open.
+- Restyle GPU driver results as separate cards with stronger typography, installed versions and green Current/Unknown badges. Keep unknown explicitly labelled, with amber for available updates.
+- Replace the flower-like settings font glyph with a crisp drawn cog icon.
+- Apply real bold font styles to tray headings and actions for a clearer hierarchy. Shorten secondary-page navigation to Back to avoid repeating Quick actions.
+
+- Keep tray navigation responsive during connection testing by updating progress text in place, ignoring repeated phase labels and avoiding rebuilds of unrelated pages. Reopening a running test reuses its job.
+- Let shared disk cleanup retry read-only files while skipping locked/protected files, using an exclusive file handle without changing attributes, and retaining app-folder/junction exclusions.
+
+- Keep power-plan selection on Quick actions instead of opening a success screen. Update the dropdown label and active-option checkmark from Windows' verified result, prevent overlapping switches and show failures inline.
+
+- Match the tray to the app's Segoe UI Variable Text typography with semibold weights and an older-Windows fallback.
+- Reduce tray scrolling with compact single-line cleanup rows, right-aligned sizes, a taller cleanup viewport within the monitor work area, and a fixed Clean selected footer action.
+- Size short result text to its actual content so Review cleanup is visible without scrolling.
+
+- Restyle tray and power-plan menus with rounded theme-tinted surfaces, soft selection states, crisp text and DPI-aware padding. Add line icons and a separated exit action to the tray menu.
+- Polish secondary tray screens with rounded cleanup rows, themed checkboxes, two-line size labels, a slim scrollbar and keyboard focus scrolling. Reset scroll position when rendering a page and expand long result messages to prevent clipping.
+
+- Use encoding-safe loading punctuation across restore points, NVIDIA profiles, driver checks, updates and other progress labels.
+
+- Reveal the native window only after Home is populated and painted, eliminating the brief centred loading-logo flash.
+- Show a recent local hardware summary on reopening, refresh it live, and run hardware loading alongside tweak detection. Retain the last completed tweak results and score on reopening, identify them as refreshing, and replace them with a live scan.
+
+- Add a gentle spring entrance and smooth fade-down dismissal to the tray popup, with interruption-safe reopening, native DPI rendering and reduced-motion support.
+- Avoid tray-opening flashes by updating the active icon before activation, reusing unchanged icons and compositing child-control refreshes.
+- Make the power-plan selector close its open dropdown without reopening on the same dismissal click.
+- Dispatch minimise/maximise/restore directly through Windows' native compositor while preserving the custom title bar and taskbar work area. Remove the artificial pre-minimise wait.
+- Fade the complete app window on accepted closure, preserving tool/save checks and removing the old 100 ms shutdown delay.
+
+- Render the companion at native monitor DPI, with a compact 380 x 510 logical-pixel layout, clearer title/detail typography and quieter rounded surfaces.
+- Match the app's saved theme in the popup, power menu, tray menu and active icon. Keep the tinted visual finish when Windows transparency is disabled without changing the setting or capturing the desktop.
+- Scale tray and power-menu typography, padding and row height for 150% displays.
+- Animate sidebar category expansion and collapse over 260 ms, preserving smooth interruption, keyboard focus and reduced-motion behaviour.
+
+- Fix duplicated labels and stale blocks in the live tray popup by painting each button's complete backdrop in its foreground paint pass. Verify real on-screen rendering at 150% scaling.
+- Carry the selected theme across the full frosted workspace, matching the sidebar instead of adding a separate grey surface. Theme menus and solid accessibility surfaces too.
+
+- Hide the native startup window until WebView2 loads the styled launch page.
+- Keep the loading screen until navigation and controls are populated, then reveal the workspace with a restrained spring settle. Respect reduced motion without adding a splash delay.
+
 - Replace the visible setup wizard with a native frosted interface, theme matching, real stage text and animated extraction progress.
 - Add smooth button feedback and minimise/close transitions, respecting reduced motion, without a browser runtime.
 - Preserve silent automatic app updates and the existing download link. Verify installed launcher hashes before reporting success.

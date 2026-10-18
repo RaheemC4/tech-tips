@@ -25,7 +25,7 @@ const assert = require('assert');
    STATE.cats=[];buildNav();show('Extra Tools');
   });
   await page.locator('[data-extra-tool="nvpi"]').click();
-  assert.strictEqual(await page.locator('[data-extra-tool="nvpi"]').innerText(),'Opening…');
+  assert.match(await page.locator('[data-extra-tool="nvpi"]').innerText(), /^Opening(?:…|\.{3})$/);
   assert(await page.locator('[data-extra-tool="nvpi"]').isDisabled());
   await page.evaluate(()=>{toolVisibility('nvpi',true);toolVisibility('nvpi',false);});
   assert(await page.locator('[data-extra-tool="nvpi"]').isEnabled());

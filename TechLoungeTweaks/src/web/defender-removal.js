@@ -9,7 +9,7 @@ let removalWasRunning=false;
 let removalMachine=null;
 async function refreshRemovalMachine() {
   const target=H('removalMachine');if(!target)return;
-  target.innerHTML='<span class="spin"></span> Reading this PC…';
+  target.innerHTML='<span class="spin"></span> Reading this PC...';
   document.querySelectorAll('.removal-next').forEach(e=>e.remove());
   const machine=await api('defender_remover_machine');
   if(H('removalMachine')!==target)return;

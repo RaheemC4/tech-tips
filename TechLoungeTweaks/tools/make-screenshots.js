@@ -39,7 +39,7 @@ const CAT={groups:['File tools','Chat & voice','Runtimes','Browsers','Game clien
  {id:'rockstar',name:'Rockstar Games Launcher',group:'Game clients',desc:"Rockstar's client.",page:'#',route:'direct',installable:true},
  {id:'amazon',name:'Amazon Games',group:'Game clients',desc:"Amazon's client, and the Prime Gaming freebies.",page:'#',route:'direct',installable:true}]};
 const SPECS={CPU:'Intel Core i9-14900K',Graphics:'NVIDIA GeForce RTX 5090',Memory:'32 GB @ 6000 MT/s',Motherboard:'MSI MPG Z690 EDGE WIFI',Windows:'Windows 11 Pro (build 26200)',Storage:'Samsung SSD 990 PRO 2TB'};
-const NV=[['Power Management Mode','Prefer maximum performance','Prefer maximum performance'],['Low Latency Mode','On','On'],['Vertical Sync','On','Off'],['Preferred Refresh Rate','Highest available','Highest available'],['G-SYNC','On (allowed)','Fixed refresh rate'],['G-SYNC Mode','Fullscreen & windowed','Off'],['Texture Filtering - Quality','High Performance','High Performance'],['Texture Filtering - Aniso Sample Optimization','On','On'],['Max Pre-Rendered Frames','1','1']];
+const NV=[['Power Management Mode','Prefer maximum performance','Prefer maximum performance'],['Low Latency Mode','On','On'],['Vertical Sync','On','Off'],['V-Sync Tear Control','Standard','Standard'],['Preferred Refresh Rate','Highest available','Highest available'],['G-SYNC','On (allowed)','Fixed refresh rate'],['G-SYNC Mode','Fullscreen & windowed','Off'],['Texture Filtering - Quality','High Performance','High Performance'],['Texture Filtering - Aniso Sample Optimization','On','On'],['Max Pre-Rendered Frames','1','1']];
 const TW={Performance:[['Disable GameDVR','Turns off Xbox Game Bar background recording. One of the biggest free FPS wins on Windows 11.',1,null],['Enable Game Mode','Tells Windows to prioritise the running game and hold back background work.',1,null],['Disable Fullscreen Optimizations','Forces true exclusive fullscreen instead of the borderless compositor path.',1,null],['Disable Power Throttling','Stops Windows quietly downclocking background threads.',1,null],['Ultimate Performance Power Plan','Unlocks and activates the hidden Ultimate Performance plan.',1,null],['Foreground Priority Boost','Sets Win32PrioritySeparation so the focused app gets a longer CPU time slice.',0,null],['Gaming Task Priority','Raises the GPU and scheduling priority for the Games multimedia profile.',0,null],['Disable Memory Integrity','Turns off HVCI core isolation for 5-15% more CPU performance.',0,'Breaks Valorant, Vanguard and some anti-cheats']]};
 
 (async () => {
@@ -70,6 +70,17 @@ const TW={Performance:[['Disable GameDVR','Turns off Xbox Game Bar background re
      :{tool:true,profile:true,defaults:true,backup:true,applied:false,state:'off',matched:0,total:39,checked:true,nvidia:true,releases_url:'#',tool_names:['x'],profile_name:'p'};
    if(n==='nvprofile_settings')return NV.map(r=>({name:r[0],current:r[1],target:r[2]}));
    if(n==='nvprofile_ready')return true;
+   if(n==='clean_scan')return {disk:{used:327.5,total:464.7,usedH:'327.5 GB',totalH:'464.7 GB',freeH:'137.2 GB'},items:[
+     ['user_temp','Your temp files','Everything apps left in your temp folder.',299053875,'285.2 MB',45],
+     ['win_temp','Windows temp files','System-wide scratch folder. Safe to empty.',116,'116 B',1],
+     ['updates','Windows Update cache','Installers for updates that are already applied.',0,'0 B',0],
+     ['delivery','Delivery Optimization','Peer-to-peer update chunks cached for other PCs.',1572864,'1.5 MB',3],
+     ['dumps','Crash dumps','Memory dumps written when an app crashed.',0,'0 B',0],
+     ['thumbs','Thumbnail cache','Explorer rebuilds these automatically.',0,'0 B',0],
+     ['reports','Windows error reports','Reports already sent to Microsoft.',0,'0 B',0],
+     ['prefetch','Prefetch data','Windows rebuilds this cache as you use apps.',0,'0 B',0],
+     ['recycle','Recycle Bin','Files you have already moved to the Recycle Bin.',3355443,'3.2 MB',8]
+   ].map(([id,name,desc,bytes,human,files],i)=>({id,name,desc,bytes,human,files,default:i<7}))};
    if(n==='defender_status' && window.removalPreview)return{present:false,active:false,tamper:false,items:[]};
    if(n==='defender_status')return{present:true,active:true,tamper:true,items:[['Real-time protection',1],['Behaviour monitoring',1],['On-access scanning',1],['Downloaded-file & web scanning',1],['Network inspection',1],['Tamper Protection',1]].map(i=>({label:i[0],on:!!i[1]}))};
    if(n==='app_catalog')return window.__CAT;
@@ -163,6 +174,11 @@ const TW={Performance:[['Disable GameDVR','Turns off Xbox Game Bar background re
  if (!await p.locator('#appres_shiftd').textContent().then(t=>t.includes('Install complete'))) throw new Error('Completion missing');
 
  
+ await p.evaluate(()=>show('Disk Cleanup'));
+ await p.waitForSelector('[data-cl]');
+ if(await p.locator('[data-cl]').count()!==9)throw new Error('Cleanup fixture is incomplete');
+ await p.waitForTimeout(700);await p.screenshot({path:D+'cleanup.png'});
+
   // ---- pages that need their own stubbed bridge ----
   await boot();
    await p.evaluate(()=>{document.body.classList.remove('booting');const bl=document.getElementById('bootlayer');if(bl)bl.remove();
@@ -190,7 +206,14 @@ const TW={Performance:[['Disable GameDVR','Turns off Xbox Game Bar background re
  await p.waitForTimeout(700);
 
  // Networking with a completed test
- await p.evaluate(()=>{show('Networking');setTimeout(()=>{_nettest_done({grade:'A',verdict:'Great - stays responsive under load',
+ await p.evaluate(()=>{
+ const descriptions=[
+  ["Disable Nagle's Algorithm",'Stops Windows bundling small packets together, which cuts a few ms off latency in online games.'],
+  ['Network Throttling Off','Removes the 10-packet-per-ms multimedia throttle and lowers the multimedia CPU reservation to 10% (0 causes audio crackle).'],
+  ['Disable Network Offloads','Turns off Chimney, RSC and packet coalescing so packets are not batched by the network card.'],
+  ['Disable Firewall Popups',"Stops the 'Windows Defender Firewall has blocked some features' prompt every time a new game launches."]];
+ STATE.tweaks.filter(t=>t.category==='Networking').forEach((t,i)=>{t.name=descriptions[i][0];t.desc=descriptions[i][1];t.icon='net';});
+ show('Networking');setTimeout(()=>{paintNetResult({grade:'A',verdict:'Great - stays responsive under load',
    download_mbps:1684,upload_mbps:141,idle_ms:7,loaded_ms:23,increase_ms:16,idle_jitter:1.1,jitter_ms:3.6,
    idle:{min:6,max:11,med:7,p25:6.5,p75:8,p95:10,jitter:1.1,n:24},
    down:{min:9,max:41,med:18,p25:13,p75:22,p95:30,jitter:3.6,n:44},

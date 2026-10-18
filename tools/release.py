@@ -291,10 +291,15 @@ def prepare(background_only=False):
     run([node, APP / 'tools/test-defender-removal-ui.js'], env=env)
     run([node, APP / 'tools/test-debloat-ui.js'], env=env)
     run([node, APP / 'tools/test-review-fixes-ui.js'], env=env)
+    run([node, APP / 'tools/test-launch-ui.js'], env=env)
+    run([node, APP / 'tools/test-sidebar-motion-ui.js'], env=env)
+    run([node, APP / 'tools/test-compact-pages-ui.js'], env=env)
+    run([node, APP / 'tools/test-utility-fit-ui.js'], env=env)
     if background_only:
-        print('DEFERRED: three foreground native window smoke tests (--background-only).', flush=True)
+        print('DEFERRED: foreground native window and popup smoke tests (--background-only).', flush=True)
     else:
         run([sys.executable, APP / 'tools/smoke-close.py'])
+        run([sys.executable, APP / 'tools/smoke-popup-motion.py'])
         run([sys.executable, APP / 'tools/smoke-floating-tools.py'])
         run([sys.executable, APP / 'tools/smoke-nvpi-startup.py'])
     run([node, APP / 'tools/make-screenshots.js'], env=env)

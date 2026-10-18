@@ -48,6 +48,7 @@ static class Program {
     }
     [STAThread] static int Main(string[] args) {
         try {
+            PopupDpi.Enable();
             Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
             string mode=args.Length==0?"--open":args[0];
             if(mode=="--install") {if(Setting("Startup","1")=="1")Startup(true);PruneVersions();return 0;}
@@ -110,19 +111,23 @@ sealed class Job {public bool Running;public string Message;public Dictionary<st
 sealed class Tray : ApplicationContext {
     public readonly Dictionary<string,Job> Jobs=new Dictionary<string,Job>();
     public bool Preview; public Popup Window; public Color Accent;
-    readonly NotifyIcon icon; readonly Control dispatch=new Control();
+    readonly NotifyIcon icon; readonly ContextMenuStrip menu; readonly Control dispatch=new Control();
     readonly EventWaitHandle quit; readonly RegisteredWaitHandle quitWait;
     readonly System.Threading.Timer updateTimer;
-    bool disposed; public bool Updating;
+    Icon trayImage;
+    bool disposed,iconActive,iconLight;Color iconAccent; public bool Updating;public bool UpdateAvailable;
     public Tray(bool preview) {
         Preview=preview; LoadTheme(); dispatch.CreateControl();
         if(preview) {Jobs["plans"]=new Job{Result=new Dictionary<string,object>{{"plans",new object[]{new Dictionary<string,object>{{"id","balanced"},{"name","Balanced"},{"active",true}}}}}};return;}
-        icon=new NotifyIcon{Text="Tech Lounge Tweaks",Icon=Icon.ExtractAssociatedIcon(Application.ExecutablePath),Visible=true};
+        icon=new NotifyIcon{Text="Tech Lounge Tweaks"};
+        UpdateIcon(false);icon.Visible=true;
+        SystemEvents.UserPreferenceChanged+=DesktopAppearanceChanged;
         icon.MouseClick+=(s,e)=>{if(e.Button==MouseButtons.Left)ShowPopup();};
-        var menu=new ContextMenuStrip();
-        menu.Items.Add("Quick actions",null,(s,e)=>ShowPopup());
-        menu.Items.Add("Open app",null,(s,e)=>OpenApp());
-        menu.Items.Add("Exit companion",null,(s,e)=>{if(Busy){ShowPopup();return;}ExitThread();});
+        menu=CreateMenu();
+        menu.Items.Add("Quick actions",null,(s,e)=>ShowPopup()).Tag="quick";
+        menu.Items.Add("Open app",null,(s,e)=>OpenApp()).Tag="open";
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("Exit companion",null,(s,e)=>{if(Busy){ShowPopup();return;}ExitThread();}).Tag="exit";
         icon.ContextMenuStrip=menu;
         quit=new EventWaitHandle(false,EventResetMode.AutoReset,"Local\\TechLoungeQuit-"+Program.Sid);
         quitWait=ThreadPool.RegisterWaitForSingleObject(quit,(s,t)=>Post(()=>ExitThread()),null,-1,true);
@@ -135,21 +140,49 @@ sealed class Tray : ApplicationContext {
         var colors=new Dictionary<string,string>{{"blue","#2f7dff"},{"blurple","#5865f2"},{"purple","#8b5cf6"},{"red","#ff2d6b"},{"green","#16c98a"},{"cyan","#12b6cf"}};
         string name=Program.Setting("Theme","blue"); Accent=ColorTranslator.FromHtml(colors.ContainsKey(name)?colors[name]:colors["blue"]);
     }
+    public ContextMenuStrip CreateMenu(){
+        var choices=new ThemeMenu{ForeColor=Color.FromArgb(242,244,248),ShowImageMargin=false,Font=Popup.FontFor(10,false)};
+        choices.Opening+=(s,e)=>{
+            LoadTheme();float scale=PopupDpi.PointerScale();
+            choices.BackColor=Color.FromArgb(24+Accent.R/8,33+Accent.G/8,47+Accent.B/8);
+            choices.Renderer=new ThemeMenuRenderer(Accent,scale);
+            choices.Padding=new Padding((int)Math.Round(6*scale));
+            int width=(int)Math.Round(216*scale);
+            foreach(ToolStripItem item in choices.Items)if(!(item is ToolStripSeparator))width=Math.Max(width,TextRenderer.MeasureText(item.Text,choices.Font).Width+(int)Math.Round((item.Tag is string?56:48)*scale));
+            foreach(ToolStripItem item in choices.Items){item.AutoSize=false;item.Margin=Padding.Empty;item.Padding=Padding.Empty;item.Size=new Size(width,(int)Math.Round((item is ToolStripSeparator?10:36)*scale));}
+            int height=choices.Padding.Vertical;foreach(ToolStripItem item in choices.Items)height+=item.Height;
+            choices.AutoSize=false;choices.Size=new Size(width+choices.Padding.Horizontal,height);
+        };
+        choices.Opened+=(s,e)=>UpdateIcon(true);
+        choices.Closed+=(s,e)=>UpdateIcon(Window!=null&&!Window.IsDisposed);
+        return choices;
+    }
+    void DesktopAppearanceChanged(object sender,UserPreferenceChangedEventArgs e){Post(()=>UpdateIcon(Window!=null&&!Window.IsDisposed));}
+    public void UpdateIcon(bool active){
+        if(icon==null||disposed)return;
+        bool light=TrayGlyph.LightTaskbar();
+        if(trayImage!=null&&iconActive==active&&iconLight==light&&iconAccent==Accent)return;
+        var next=TrayGlyph.Create(Accent,active,light);
+        var previous=trayImage;icon.Icon=next;trayImage=next;if(previous!=null)previous.Dispose();
+        iconActive=active;iconLight=light;iconAccent=Accent;
+    }
     public void Post(Action action){if(!disposed && dispatch.IsHandleCreated)try{dispatch.BeginInvoke(action);}catch(InvalidOperationException){}}
     public void Refresh(){if(Window!=null && !Window.IsDisposed)Window.Render();}
+    public void RefreshJob(string action){if(Window!=null&&!Window.IsDisposed)Window.JobChanged(action);}
     public void ShowPopup(){
-        LoadTheme(); if(Window!=null && !Window.IsDisposed){Window.Activate();return;}
+        var previous=Accent;LoadTheme();UpdateIcon(true);
+        if(Window!=null && !Window.IsDisposed){if(previous!=Accent)Window.Render();Window.Reveal();return;}
         Window=new Popup(this);Window.Show();Window.Activate();
         Run("plans",null,false);
     }
-    public void OpenApp(){try{Program.Start(Path.Combine(Program.Here,"TechLoungeTweaks.exe"),"");if(Window!=null)Window.Close();}catch(Exception ex){Jobs["open"]=new Job{Message=ex.Message};Refresh();}}
+    public void OpenApp(bool updates=false){try{Program.Start(Path.Combine(Program.Here,"TechLoungeTweaks.exe"),updates?"--updates":"");if(Window!=null)Window.Close();}catch(Exception ex){Jobs["open"]=new Job{Message=ex.Message};Refresh();}}
     public void Run(string action,object payload,bool elevate) {
         Job existing;if(Jobs.TryGetValue(action,out existing)&&existing.Running)return;
-        if(Updating){Jobs[action]=new Job{Message="The updater is busy. Try again shortly."};Refresh();return;}
-        var job=new Job{Running=true,Message="Working…",Result=action=="plans"&&existing!=null?existing.Result:null};Jobs[action]=job;Refresh();
+        if(Updating){Jobs[action]=new Job{Message="The updater is busy. Try again shortly."};RefreshJob(action);return;}
+        var job=new Job{Running=true,Message="Working…",Result=action=="plans"&&existing!=null?existing.Result:null};Jobs[action]=job;RefreshJob(action);
         Task.Run(async()=>{
             try {
-                if(Preview){await Task.Delay(1200);Post(()=>{job.Running=false;job.Message="Preview complete.";Refresh();});return;}
+                if(Preview){await Task.Delay(1200);Post(()=>{job.Running=false;job.Message="Preview complete.";RefreshJob(action);});return;}
                 var security=new PipeSecurity();
                 security.AddAccessRule(new PipeAccessRule(WindowsIdentity.GetCurrent().User,PipeAccessRights.FullControl,AccessControlType.Allow));
                 security.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid,null),PipeAccessRights.ReadWrite,AccessControlType.Allow));
@@ -170,13 +203,13 @@ sealed class Tray : ApplicationContext {
                                 if(line.Length>1024*1024)throw new IOException("Action result too large.");
                                 var message=Program.Json.Deserialize<Dictionary<string,object>>(line);
                                 var data=message["data"] as Dictionary<string,object>;
-                                if(message.ContainsKey("done")) {Post(()=>{job.Result=data;job.Running=false;job.Message=Describe(action,data);if(action=="power"&&data.ContainsKey("plans"))Jobs["plans"]=job;Refresh();});break;}
-                                if(data!=null&&data.ContainsKey("label")) {string label=Convert.ToString(data["label"]);Post(()=>{job.Message=label;Refresh();});}
+                                if(message.ContainsKey("done")) {Post(()=>{job.Result=data;job.Running=false;job.Message=Describe(action,data);if(action=="power"&&data.ContainsKey("plans"))Jobs["plans"]=job;RefreshJob(action);});break;}
+                                if(data!=null&&data.ContainsKey("label")) {string label=Convert.ToString(data["label"]);Post(()=>{if(job.Message!=label){job.Message=label;RefreshJob(action);}});}
                             }
                         }
                     }
                 }
-            }catch(Exception ex){Post(()=>{job.Running=false;job.Message=ex is System.ComponentModel.Win32Exception?"Action cancelled or Windows permission was denied.":ex.Message;Refresh();});}
+            }catch(Exception ex){Post(()=>{job.Running=false;job.Message=ex is System.ComponentModel.Win32Exception?"Action cancelled or Windows permission was denied.":ex.Message;RefreshJob(action);});}
         });
     }
     static string Describe(string action,Dictionary<string,object> data){
@@ -188,103 +221,208 @@ sealed class Tray : ApplicationContext {
         }return "Complete.";
     }
     static string Get(Dictionary<string,object> data,string key){return data.ContainsKey(key)?Convert.ToString(data[key]):"Unavailable";}
+    public void SetUpdateAvailable(bool available){if(UpdateAvailable==available)return;UpdateAvailable=available;RefreshJob("updates");}
     public void CheckUpdates(bool manual){Post(()=>{
-        if(Busy){if(!Updating){Jobs["updates"]=new Job{Message="Updates will check after the current action finishes."};Refresh();ScheduleUpdate(true);}return;}
-        Updating=true;Jobs["updates"]=new Job{Running=true,Message="Checking for updates…"};Refresh();
+        if(Busy){if(!Updating){Jobs["updates"]=new Job{Message="Updates will check after the current action finishes."};RefreshJob("updates");ScheduleUpdate(true);}return;}
+        Updating=true;Jobs["updates"]=new Job{Running=true,Message="Checking for updates…"};RefreshJob("updates");
         Task.Run(()=>{string status;bool retry;try{status=InstallerUpdates.Run(this,manual,out retry);}catch(Exception ex){retry=true;status="Update check unavailable. Will retry later. "+ex.Message;}
-            Post(()=>{Updating=false;Jobs["updates"].Running=false;Jobs["updates"].Message=status;Refresh();ScheduleUpdate(retry);});});
+            Post(()=>{Updating=false;Jobs["updates"].Running=false;Jobs["updates"].Message=status;RefreshJob("updates");ScheduleUpdate(retry);});});
     });}
     void ScheduleUpdate(bool retry){if(updateTimer!=null)updateTimer.Change(retry?TimeSpan.FromMinutes(15):TimeSpan.FromHours(12),System.Threading.Timeout.InfiniteTimeSpan);}
-    protected override void Dispose(bool disposing){disposed=true;if(disposing){if(updateTimer!=null)updateTimer.Dispose();if(quitWait!=null)quitWait.Unregister(null);if(quit!=null)quit.Dispose();if(icon!=null){icon.Visible=false;icon.Dispose();}if(Window!=null)Window.Dispose();dispatch.Dispose();}base.Dispose(disposing);}
+    protected override void Dispose(bool disposing){disposed=true;if(disposing){if(updateTimer!=null)updateTimer.Dispose();if(quitWait!=null)quitWait.Unregister(null);if(quit!=null)quit.Dispose();if(icon!=null){SystemEvents.UserPreferenceChanged-=DesktopAppearanceChanged;icon.Visible=false;icon.Dispose();}if(menu!=null)menu.Dispose();if(trayImage!=null)trayImage.Dispose();if(Window!=null)Window.Dispose();dispatch.Dispose();}base.Dispose(disposing);}
 }
 
 sealed class GlassButton:Button {
     public Color Tint; public bool Primary;
-    public GlassButton(){FlatStyle=FlatStyle.Flat;FlatAppearance.BorderSize=0;ForeColor=Color.FromArgb(232,238,248);Font=Popup.FontFor(10,true);Cursor=Cursors.Hand;SetStyle(ControlStyles.UserPaint|ControlStyles.OptimizedDoubleBuffer,true);}
+    public GlassButton(){FlatStyle=FlatStyle.Flat;FlatAppearance.BorderSize=0;ForeColor=Color.FromArgb(232,238,248);Font=Popup.FontFor(10,true);Cursor=Cursors.Hand;SetStyle(ControlStyles.UserPaint|ControlStyles.OptimizedDoubleBuffer|ControlStyles.AllPaintingInWmPaint,true);}
     protected override void OnPaint(PaintEventArgs e){
+        // ButtonBase is opaque and can skip OnPaintBackground. Paint the complete
+        // backing surface here before blending the translucent rounded fill.
+        var popup=FindForm() as Popup;
+        if(popup!=null){
+            var offset=popup.PointToClient(PointToScreen(Point.Empty));
+            popup.PaintBackdrop(e.Graphics,new Rectangle(-offset.X,-offset.Y,popup.ClientSize.Width,popup.ClientSize.Height));
+        }else using(var fill=new SolidBrush(BackColor))e.Graphics.FillRectangle(fill,ClientRectangle);
         e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;
         var box=new Rectangle(0,0,Width-1,Height-1);
-        using(var shape=Popup.Round(box,12))using(var fill=new SolidBrush(Primary?Color.FromArgb(210,Tint):Color.FromArgb(Focused||ClientRectangle.Contains(PointToClient(Cursor.Position))?65:32,180,200,235)))e.Graphics.FillPath(fill,shape);
-        TextRenderer.DrawText(e.Graphics,Text,Font,box,Enabled?ForeColor:Color.Gray,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.WordBreak|TextFormatFlags.NoPrefix);
-        if(Focused)ControlPaint.DrawFocusRectangle(e.Graphics,Rectangle.Inflate(box,-5,-5),ForeColor,BackColor);
+        int radius=popup==null?10:popup.Pixels(10);
+        using(var shape=Popup.Round(box,radius)){
+            using(var fill=new SolidBrush(Primary?Color.FromArgb(210,Tint):Color.FromArgb(Focused||ClientRectangle.Contains(PointToClient(Cursor.Position))?52:25,180,200,235)))e.Graphics.FillPath(fill,shape);
+            using(var rim=new Pen(Color.FromArgb(18,255,255,255)))e.Graphics.DrawPath(rim,shape);
+        }
+        if(Text=="⚙"&&popup!=null){
+            var teeth=new PointF[32];float cx=Width/2f,cy=Height/2f;
+            for(int i=0;i<8;i++)for(int j=0;j<4;j++){
+                double angle=(i+(j==0?-.5:j==1?-.23:j==2?.23:.5))*Math.PI/4-Math.PI/2;
+                float gearRadius=popup.Pixels(j==1||j==2?9:7);
+                teeth[i*4+j]=new PointF(cx+(float)Math.Cos(angle)*gearRadius,cy+(float)Math.Sin(angle)*gearRadius);
+            }
+            using(var pen=new Pen(ForeColor,Math.Max(1,popup.Pixels(1)))){
+                pen.LineJoin=LineJoin.Round;e.Graphics.DrawPolygon(pen,teeth);
+                int hole=popup.Pixels(3);e.Graphics.DrawEllipse(pen,cx-hole,cy-hole,hole*2,hole*2);
+            }
+            if(Focused&&ShowFocusCues)ControlPaint.DrawFocusRectangle(e.Graphics,Rectangle.Inflate(box,-5,-5),ForeColor,BackColor);
+            return;
+        }
+        var flags=TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.WordBreak|TextFormatFlags.NoPrefix|TextFormatFlags.PreserveGraphicsClipping|TextFormatFlags.PreserveGraphicsTranslateTransform;
+        var lines=Text.Split('\n');
+        if(lines.Length==2&&popup!=null){
+            TextRenderer.DrawText(e.Graphics,lines[0],Font,new Rectangle(0,Height/2-popup.Pixels(21),Width,popup.Pixels(24)),Enabled?ForeColor:Color.Gray,flags);
+            TextRenderer.DrawText(e.Graphics,lines[1],Popup.FontFor(9,false),new Rectangle(0,Height/2+popup.Pixels(2),Width,popup.Pixels(22)),Enabled?Color.FromArgb(176,191,212):Color.Gray,flags);
+        }else TextRenderer.DrawText(e.Graphics,Text,Font,box,Enabled?ForeColor:Color.Gray,flags);
+        if(Focused&&ShowFocusCues)ControlPaint.DrawFocusRectangle(e.Graphics,Rectangle.Inflate(box,-5,-5),ForeColor,BackColor);
     }
 }
 sealed class Popup:Form {
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr window);
     static readonly Dictionary<string,Font> fonts=new Dictionary<string,Font>();
-    internal static Font FontFor(int size,bool bold){string key=size+":"+bold;Font font;if(!fonts.TryGetValue(key,out font)){font=new Font("Segoe UI",size,bold?FontStyle.Bold:FontStyle.Regular);fonts[key]=font;}return font;}
-    readonly Tray tray; readonly Panel body=new Panel();string page="home";
+    internal static Font FontFor(int size,bool bold){string key=size+":"+bold;Font font;if(!fonts.TryGetValue(key,out font)){font=new Font("Segoe UI Variable Text",size,bold?FontStyle.Bold:FontStyle.Regular);if(!font.Name.StartsWith("Segoe UI Variable",StringComparison.Ordinal)){font.Dispose();font=new Font("Segoe UI",size,bold?FontStyle.Bold:FontStyle.Regular);}fonts[key]=font;}return font;}
+    readonly Tray tray; readonly TrayScrollPanel body=new TrayScrollPanel();string page="home";
+    readonly PopupMotion motion;
+    GlassButton secondaryFooter,openFooter;
+    readonly TrayPageMotion pageMotion;string renderedPage;
+    Label detailMessage,homeStatus;
+    float uiScale;
+    internal int Pixels(int value){return (int)Math.Round(value*uiScale);}
+    int LayoutWidth {get{return (int)Math.Round(ClientSize.Width/uiScale);}}
+    int LayoutHeight {get{return (int)Math.Round(ClientSize.Height/uiScale);}}
+    int BodyWidth {get{return (int)Math.Round(body.ClientSize.Width/uiScale);}}
+    protected override CreateParams CreateParams {get{var value=base.CreateParams;value.ExStyle|=0x02000000;return value;}}
     public Popup(Tray owner){
         tray=owner;Text="Tech Lounge quick actions";FormBorderStyle=FormBorderStyle.None;ShowInTaskbar=false;TopMost=true;StartPosition=FormStartPosition.Manual;
-        AutoScaleMode=AutoScaleMode.Dpi;ClientSize=new Size(410,600);DoubleBuffered=true;BackColor=Color.FromArgb(24,35,53);ForeColor=Color.FromArgb(232,238,248);Font=FontFor(10,false);KeyPreview=true;
+        uiScale=PopupDpi.PointerScale();AutoScaleMode=AutoScaleMode.None;DoubleBuffered=true;BackColor=Color.FromArgb(24,35,53);ForeColor=Color.FromArgb(242,244,248);Font=FontFor(10,false);KeyPreview=true;
         KeyDown+=(s,e)=>{if(e.KeyCode==Keys.Escape)Close();};
-        var area=Screen.FromPoint(Cursor.Position).WorkingArea;ClientSize=new Size(Math.Min(410,area.Width-28),Math.Min(600,area.Height-28));Location=new Point(area.Right-Width-14,area.Bottom-Height-14);
-        body.SetBounds(24,106,ClientSize.Width-48,ClientSize.Height-200);body.BackColor=Color.Transparent;body.AutoScroll=true;Controls.Add(body);
-        Deactivate+=(s,e)=>{if(!ContainsFocus)Close();};FormClosed+=(s,e)=>{tray.Window=null;};Render();
+        var area=Screen.FromPoint(Cursor.Position).WorkingArea;ClientSize=new Size(Math.Min(Pixels(380),area.Width-Pixels(28)),Math.Min(Pixels(510),area.Height-Pixels(28)));Location=new Point(area.Right-Width-Pixels(14),area.Bottom-Height-Pixels(14));
+        body.SetBounds(Pixels(24),Pixels(94),ClientSize.Width-Pixels(48),ClientSize.Height-Pixels(172));body.BackColor=Color.Transparent;body.AutoScroll=false;Controls.Add(body);
+        motion=new PopupMotion(this,Pixels(12),PopupMotion.Enabled());
+        pageMotion=new TrayPageMotion(this,body,Pixels(24),LayoutPageChrome,()=>motion.Running);
+        Shown+=(s,e)=>{Update();motion.Show();SetForegroundWindow(Handle);};
+        Activated+=(s,e)=>motion.Reopen();
+        Deactivate+=(s,e)=>QueueDismiss();FormClosed+=(s,e)=>{tray.Window=null;tray.UpdateIcon(false);};Render();
     }
+    internal void Reveal(){motion.Reopen();pageMotion.Resume();Activate();}
+    void QueueDismiss(){if(!IsDisposed&&IsHandleCreated)BeginInvoke((Action)(()=>{
+        // Focus has not necessarily moved yet inside the Deactivate event.
+        if(IsDisposed||ContainsFocus)return;
+        foreach(Control c in body.Controls)if(c.ContextMenuStrip!=null&&c.ContextMenuStrip.Visible)return;
+        Close();
+    }));}
     public static GraphicsPath Round(Rectangle r,int radius){var p=new GraphicsPath();int d=radius*2;p.AddArc(r.X,r.Y,d,d,180,90);p.AddArc(r.Right-d,r.Y,d,d,270,90);p.AddArc(r.Right-d,r.Bottom-d,d,d,0,90);p.AddArc(r.X,r.Bottom-d,d,d,90,90);p.CloseFigure();return p;}
     protected override void OnPaint(PaintEventArgs e){
         base.OnPaint(e);e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;
-        using(var b=new LinearGradientBrush(ClientRectangle,Color.FromArgb(28+tray.Accent.R/5,35+tray.Accent.G/5,48+tray.Accent.B/5),Color.FromArgb(23,34,53),45))e.Graphics.FillRectangle(b,ClientRectangle);
+        PaintBackdrop(e.Graphics,ClientRectangle);
     }
-    protected override void OnResize(EventArgs e){base.OnResize(e);if(Width>0&&Height>0)using(var p=Round(ClientRectangle,24)){var old=Region;Region=new Region(p);if(old!=null)old.Dispose();}}
-    Label Label(string text,int x,int y,int width,int height,int size,bool bold,Control parent){var l=new Label{Text=text,BackColor=Color.Transparent,ForeColor=ForeColor,Font=FontFor(size,bold)};l.SetBounds(x,y,width,height);parent.Controls.Add(l);return l;}
-    GlassButton Button(string text,int x,int y,int w,int h,Action click,Control parent,bool primary=false){var b=new GlassButton{Text=text,Tint=tray.Accent,Primary=primary,BackColor=BackColor};b.SetBounds(x,y,w,h);b.Click+=(s,e)=>click();parent.Controls.Add(b);return b;}
+    internal void PaintBackdrop(Graphics graphics,Rectangle bounds){
+        using(var b=new LinearGradientBrush(bounds,Color.FromArgb(28+tray.Accent.R/4,35+tray.Accent.G/4,48+tray.Accent.B/4),Color.FromArgb(20,29,41),70))graphics.FillRectangle(b,bounds);
+    }
+    protected override void OnResize(EventArgs e){base.OnResize(e);if(Width>0&&Height>0)using(var p=Round(ClientRectangle,Math.Max(1,Pixels(20)))){var old=Region;Region=new Region(p);if(old!=null)old.Dispose();}}
+    Label Label(string text,int x,int y,int width,int height,int size,bool bold,Control parent){var l=new Label{Text=text,BackColor=Color.Transparent,ForeColor=ForeColor,Font=FontFor(size,bold),UseCompatibleTextRendering=false};l.SetBounds(Pixels(x),Pixels(y),Pixels(width),Pixels(height));parent.Controls.Add(l);return l;}
+    GlassButton Button(string text,int x,int y,int w,int h,Action click,Control parent,bool primary=false){var b=new GlassButton{Text=text,Tint=tray.Accent,Primary=primary,BackColor=BackColor};b.SetBounds(Pixels(x),Pixels(y),Pixels(w),Pixels(h));b.Click+=(s,e)=>click();parent.Controls.Add(b);return b;}
+    void LayoutPageChrome(){
+        body.Height=Math.Max(1,ClientSize.Height-Pixels(172));
+        if(openFooter!=null&&!openFooter.IsDisposed)openFooter.Top=ClientSize.Height-Pixels(64);
+        if(secondaryFooter!=null&&!secondaryFooter.IsDisposed)secondaryFooter.Top=ClientSize.Height-Pixels(secondaryFooter.Height==Pixels(28)?58:64);
+        if(!motion.Running)motion.Reanchor();
+    }
     public void Render(){
-        SuspendLayout();foreach(Control c in new List<Control>(Children(this)))if(c!=body){Controls.Remove(c);c.Dispose();}
-        foreach(Control c in Children(body))c.Dispose();body.Controls.Clear();
-        Label("Tech Lounge",24,24,270,32,19,true,this);Label("A little control. Right here.",24,61,290,25,10,false,this);
-        Button("⚙",ClientSize.Width-72,28,48,43,()=>{page="settings";Render();},this).AccessibleName="Companion settings";
-        int footerWidth=(ClientSize.Width-60)/2;
-        Button("Updates",24,ClientSize.Height-66,footerWidth,44,()=>{page="updates";tray.CheckUpdates(true);Render();},this);
-        Button("Open app",36+footerWidth,ClientSize.Height-66,footerWidth,44,()=>tray.OpenApp(),this,true);
+        bool continuing=pageMotion.Running;int offset=pageMotion.Offset;var previous=Bounds;
+        bool animate=Visible&&PopupMotion.Enabled()&&(renderedPage!=page||continuing);
+        pageMotion.Pause();
+        using(var redraw=new TrayRedrawBatch(this,body)){
+        SuspendLayout();try{
+        if(animate)motion.Settle();
+        var work=Screen.FromPoint(new Point(Left+Width/2,Top+Height/2)).WorkingArea;
+        int height=Math.Min(Pixels(page=="scan"?600:510),work.Height-Pixels(28));
+        if(ClientSize.Height!=height){if(Visible)motion.Settle();int bottom=Bottom;ClientSize=new Size(ClientSize.Width,height);Top=Math.Max(work.Top+Pixels(14),bottom-Height);if(Visible)motion.Reanchor();}
+        body.Height=ClientSize.Height-Pixels(172);
+        body.ResetScroll();foreach(Control c in new List<Control>(Children(this)))if(c!=body){Controls.Remove(c);c.Dispose();}
+        foreach(Control c in Children(body))c.Dispose();body.Controls.Clear();detailMessage=null;homeStatus=null;
+        Label("Tech Lounge",24,22,260,30,17,true,this);Label("Quick actions",24,54,260,24,10,false,this).ForeColor=Color.FromArgb(176,191,212);
+        Button("⚙",LayoutWidth-64,24,40,38,()=>{page="settings";Render();},this).AccessibleName="Companion settings";
+        int footerWidth=(LayoutWidth-60)/2;
+        secondaryFooter=null;
+        bool splitFooter=page=="scan"||(page=="home"&&tray.UpdateAvailable);
+        if(page=="home"&&tray.UpdateAvailable){secondaryFooter=Button("● Update available",24,LayoutHeight-58,footerWidth,28,()=>tray.OpenApp(true),this);secondaryFooter.Font=FontFor(9,false);secondaryFooter.AccessibleName="Update available. Open full app update details";}
+        openFooter=Button("Open app",splitFooter?36+footerWidth:24,LayoutHeight-64,splitFooter?footerWidth:LayoutWidth-48,40,()=>tray.OpenApp(),this,true);
         if(page=="home")Home();else if(page=="settings")Settings();else Detail();
-        ResumeLayout();Invalidate();
+        var destination=Bounds;
+        pageMotion.Start(previous,destination,continuing?offset:Pixels(page=="home"?-14:14),animate);
+        renderedPage=page;Invalidate();
+        }finally{ResumeLayout();}
+        }
     }
     static List<Control> Children(Control parent){var result=new List<Control>();foreach(Control c in parent.Controls)result.Add(c);return result;}
     void Home(){
-        Label("Power plan",0,4,360,28,12,true,body);
-        var choices=new ContextMenuStrip{BackColor=Color.FromArgb(34,49,72),ForeColor=ForeColor,ShowImageMargin=false,Font=Font,Renderer=new ToolStripProfessionalRenderer(new GlassMenuColors())};
+        Label("Power plan",0,0,BodyWidth,24,10,true,body);
+        var choices=tray.CreateMenu();
         string active="Loading plans…";bool ultimate=false;Job planJob;
         if(tray.Jobs.TryGetValue("plans",out planJob)&&planJob.Result!=null&&planJob.Result.ContainsKey("plans"))foreach(var raw in (System.Collections.IEnumerable)planJob.Result["plans"]){
             var p=(Dictionary<string,object>)raw;string id=Convert.ToString(p["id"]),name=Convert.ToString(p["name"]);
             if(id=="e9a42b02-d5df-448d-aa00-03f14749eb61"||name.Equals("Ultimate Performance",StringComparison.OrdinalIgnoreCase)){name="Ultimate Performance plan";ultimate=true;}
             if(Convert.ToBoolean(p["active"]))active=name;
-            choices.Items.Add(name,null,(s,e)=>{page="power";tray.Run("power",id,true);Render();});
+            var option=(ToolStripMenuItem)choices.Items.Add(name,null,(s,e)=>tray.Run("power",id,true));option.Checked=Convert.ToBoolean(p["active"]);
         }
-        if(!ultimate)choices.Items.Add("Ultimate Performance plan",null,(s,e)=>{page="power";tray.Run("power","ultimate",true);Render();});
+        if(!ultimate)choices.Items.Add("Ultimate Performance plan",null,(s,e)=>tray.Run("power","ultimate",true));
         bool ready=planJob!=null&&planJob.Result!=null&&planJob.Result.ContainsKey("plans");
         if(!ready&&planJob!=null&&!planJob.Running)active="Refresh power plans";
-        GlassButton plans=null;plans=Button(active+"   ▾",0,38,body.ClientSize.Width,42,()=>{if(ready)choices.Show(plans,new Point(0,plans.Height));else tray.Run("plans",null,false);},body);
-        plans.AccessibleName="Power plan";plans.Disposed+=(s,e)=>choices.Dispose();plans.Enabled=!tray.Updating;
-        Label("QUICK ACTIONS",0,96,360,24,9,true,body);
-        int half=(body.ClientSize.Width-12)/2;
-        Button("Disk cleanup\nReview & clean",0,130,half,88,()=>Open("scan"),body);
-        Button("Connection\nSpeed & latency",half+12,130,half,88,()=>Open("connection"),body);
-        Button("Restore point\nCreate checkpoint",0,232,half,88,()=>Open("restore"),body);
-        Button("GPU drivers\nCheck versions",half+12,232,half,88,()=>Open("drivers"),body);
-        Label(tray.Busy?"An action is running in the background.":"Ready when you need it.",0,343,body.ClientSize.Width,45,10,false,body);
+        long dismissedFromSelector=0;
+        GlassButton plans=null;plans=Button(active+"   ▾",0,30,BodyWidth,40,()=>{
+            bool sameClick=dismissedFromSelector!=0&&(Stopwatch.GetTimestamp()-dismissedFromSelector)*1000.0/Stopwatch.Frequency<500;
+            dismissedFromSelector=0;
+            if(sameClick)return;
+            if(choices.Visible){choices.Close();return;}
+            if(ready){motion.Settle();choices.Show(plans,new Point(0,plans.Height));}else tray.Run("plans",null,false);
+        },body);
+        choices.Closing+=(s,e)=>{if(e.CloseReason==ToolStripDropDownCloseReason.AppClicked&&plans.ClientRectangle.Contains(plans.PointToClient(Cursor.Position)))dismissedFromSelector=Stopwatch.GetTimestamp();};
+        plans.AccessibleName="Power plan";plans.ContextMenuStrip=choices;choices.Closed+=(s,e)=>QueueDismiss();plans.Disposed+=(s,e)=>choices.Dispose();Job powerJob;bool switching=tray.Jobs.TryGetValue("power",out powerJob)&&powerJob.Running;plans.Enabled=!tray.Updating&&!switching;
+        Label("QUICK ACTIONS",0,88,BodyWidth,20,8,true,body).ForeColor=Color.FromArgb(176,191,212);
+        int half=(BodyWidth-12)/2;
+        Button("Disk cleanup\nReview & clean",0,114,half,68,()=>Open("scan"),body);
+        Button("Connection\nSpeed & latency",half+12,114,half,68,()=>Open("connection"),body);
+        Button("Restore point\nCreate checkpoint",0,194,half,68,()=>Open("restore"),body);
+        Button("GPU drivers\nCheck versions",half+12,194,half,68,()=>Open("drivers"),body);
+        homeStatus=Label("",0,280,BodyWidth,36,9,false,body);UpdateHomeStatus();
     }
-    void Open(string action){page=action;if(!tray.Jobs.ContainsKey(action))tray.Run(action,null,action=="restore");Render();}
-    void Back(){Button("‹  Quick actions",0,0,155,36,()=>{page="home";Render();},body);}
-    void Settings(){Back();Label("Companion settings",0,62,body.ClientSize.Width,35,17,true,body);Label("Small when idle. Active when you need it.",0,105,body.ClientSize.Width,45,10,false,body);
-        var check=new CheckBox{Text="Open on startup",Checked=Program.Setting("Startup","1")=="1",AutoSize=true,BackColor=Color.Transparent,ForeColor=ForeColor};check.Location=new Point(2,170);check.CheckedChanged+=(s,e)=>{try{if(!tray.Preview)Program.Startup(check.Checked);}catch(Exception ex){MessageBox.Show(ex.Message,"Startup setting");}};body.Controls.Add(check);
-        Label("Updates install automatically when the app and quick actions are idle.",0,226,body.ClientSize.Width,70,10,false,body);
+    void UpdateHomeStatus(){
+        if(homeStatus==null||homeStatus.IsDisposed)return;
+        Job powerJob;tray.Jobs.TryGetValue("power",out powerJob);
+        bool failed=powerJob!=null&&!powerJob.Running&&(powerJob.Result==null||powerJob.Result.ContainsKey("error")||powerJob.Result.ContainsKey("__error__"));
+        homeStatus.Text=failed?powerJob.Message:tray.Busy?"An action is running in the background.":"Ready when you need it.";
+        homeStatus.ForeColor=failed?Color.FromArgb(255,185,178):Color.FromArgb(176,191,212);
     }
-    void Detail(){Back();string title=new Dictionary<string,string>{{"scan","Disk cleanup"},{"clean","Disk cleanup"},{"connection","Your connection"},{"restore","Restore point"},{"drivers","GPU drivers"},{"updates","App updates"},{"power","Power plan"}}[page];Label(title,0,58,body.ClientSize.Width,38,18,true,body);
-        Job job;if(!tray.Jobs.TryGetValue(page,out job)){Label("Ready.",0,112,body.ClientSize.Width,80,11,false,body);return;}
-        if(page=="scan"&&job.Result!=null&&job.Result.ContainsKey("items")){
-            var selected=new List<CheckBox>();int y=106;
-            foreach(var raw in (System.Collections.IEnumerable)job.Result["items"]){var item=(Dictionary<string,object>)raw;var check=new CheckBox{Text=item["name"]+" · "+item["human"],Tag=item["id"],Checked=Convert.ToBoolean(item["default"]),BackColor=Color.Transparent,ForeColor=ForeColor};check.SetBounds(0,y,body.ClientSize.Width-12,32);body.Controls.Add(check);selected.Add(check);y+=35;}
-            Button("Clean selected",0,y+10,body.ClientSize.Width-12,44,()=>{var ids=new List<string>();foreach(var c in selected)if(c.Checked)ids.Add(Convert.ToString(c.Tag));if(ids.Count==0)return;page="clean";tray.Run("clean",ids.ToArray(),true);tray.Jobs.Remove("scan");Render();},body,true);return;
+    internal void JobChanged(string action){
+        if(page=="home"){
+            if(action=="plans"||action=="power"||action=="updates")Render();else UpdateHomeStatus();
+            return;
         }
-        Label(job.Message??"Working…",0,114,body.ClientSize.Width,185,11,false,body);
-        if(!job.Running && page!="updates" && page!="power")Button(page=="clean"?"Review cleanup":"Run again",0,310,body.ClientSize.Width,44,()=>{if(page=="clean")page="scan";tray.Run(page,null,page=="restore");Render();},body);
+        if(page!=action)return;
+        Job job;if(tray.Jobs.TryGetValue(action,out job)&&job.Running&&detailMessage!=null&&!detailMessage.IsDisposed){
+            detailMessage.Text=job.Message??"Working…";FitMessage(detailMessage);return;
+        }
+        Render();
     }
-}
-sealed class GlassMenuColors:ProfessionalColorTable {
-    public override Color MenuBorder{get{return Color.FromArgb(34,49,72);}}
-    public override Color MenuItemBorder{get{return Color.FromArgb(55,78,110);}}
-    public override Color MenuItemSelected{get{return Color.FromArgb(55,78,110);}}
-    public override Color ToolStripDropDownBackground{get{return Color.FromArgb(34,49,72);}}
+    void FitMessage(Label message){message.Height=Math.Max(Pixels(28),TextRenderer.MeasureText(message.Text,message.Font,new Size(message.Width,int.MaxValue),TextFormatFlags.WordBreak|TextFormatFlags.NoPrefix).Height+Pixels(12));}
+    void Open(string action){page=action;if(!tray.Jobs.ContainsKey(action)){tray.Run(action,null,action=="restore");return;}Render();}
+    void Back(){Button("‹  Back",0,0,88,30,()=>{page="home";Render();},body).AccessibleName="Back to Quick actions";}
+    void Settings(){Back();Label("Companion settings",0,62,BodyWidth-14,35,15,true,body);Label("Small when idle. Active when you need it.",0,105,BodyWidth,45,10,false,body);
+        var check=new TrayCheckBox{Tint=tray.Accent,Text="Open on startup",Checked=Program.Setting("Startup","1")=="1",AutoSize=false,BackColor=Color.Transparent,ForeColor=ForeColor};check.SetBounds(0,Pixels(170),Pixels(BodyWidth-14),Pixels(44));check.CheckedChanged+=(s,e)=>{try{if(!tray.Preview)Program.Startup(check.Checked);}catch(Exception ex){MessageBox.Show(ex.Message,"Startup setting");}};body.Controls.Add(check);
+        Label("Updates install automatically when the app and quick actions are idle.",0,226,BodyWidth,70,10,false,body);
+    }
+    void Detail(){Back();string title=new Dictionary<string,string>{{"scan","Disk cleanup"},{"clean","Disk cleanup"},{"connection","Your connection"},{"restore","Restore point"},{"drivers","GPU drivers"},{"power","Power plan"}}[page];Label(title,0,42,BodyWidth-14,28,15,true,body);
+        Job job;if(!tray.Jobs.TryGetValue(page,out job)){Label("Ready.",0,82,BodyWidth-14,36,10,false,body);return;}
+        if(page=="scan"&&job.Result!=null&&job.Result.ContainsKey("items")){
+            var selected=new List<CheckBox>();int y=78;
+            foreach(var raw in (System.Collections.IEnumerable)job.Result["items"]){var item=(Dictionary<string,object>)raw;var check=new TrayCheckBox{Tint=tray.Accent,Text=item["name"]+" · "+item["human"],Tag=item["id"],Checked=Convert.ToBoolean(item["default"]),BackColor=Color.Transparent,ForeColor=ForeColor};check.SetBounds(0,Pixels(y),Pixels(BodyWidth-14),Pixels(34));body.Controls.Add(check);selected.Add(check);y+=38;}
+            if(secondaryFooter!=null)secondaryFooter.Dispose();secondaryFooter=Button("Clean selected",24,LayoutHeight-64,(LayoutWidth-60)/2,40,()=>{var ids=new List<string>();foreach(var c in selected)if(c.Checked)ids.Add(Convert.ToString(c.Tag));if(ids.Count==0)return;page="clean";tray.Run("clean",ids.ToArray(),true);tray.Jobs.Remove("scan");Render();},this,true);return;
+        }
+        if(page=="drivers"&&job.Result!=null&&job.Result.ContainsKey("gpus")){
+            int y=78;
+            foreach(var raw in (System.Collections.IEnumerable)job.Result["gpus"]){var gpu=(Dictionary<string,object>)raw;var card=new TrayGpuCard(gpu);int h=Convert.ToString(gpu["status"])=="update"?110:92;card.SetBounds(0,Pixels(y),Pixels(BodyWidth-14),Pixels(h));body.Controls.Add(card);y+=h+10;}
+            if(y==78)Label("No supported GPU detected.",0,y,BodyWidth-14,36,10,false,body);
+            Button("Check again",0,y==78?124:y+2,BodyWidth-14,36,()=>tray.Run("drivers",null,false),body);return;
+        }
+        var message=Label(job.Message??"Working…",0,82,BodyWidth-14,28,10,false,body);detailMessage=message;FitMessage(message);
+        if(!job.Running && page!="power")Button(page=="clean"?"Review cleanup":"Run again",0,(int)Math.Ceiling(message.Bottom/uiScale)+12,BodyWidth-14,44,()=>{if(page=="clean")page="scan";tray.Run(page,null,page=="restore");Render();},body);
+    }
 }
 }

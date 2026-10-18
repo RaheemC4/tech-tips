@@ -9,17 +9,123 @@ drivers â€” all from one window.
 The redesigned interface keeps every sidebar tab, the tweak-score ring and six
 accent themes, with an inset workspace, a clearer navigation hierarchy, hardware
 tiles and grouped setup controls. Cards, buttons and secondary text share a calmer
-frosted charcoal design with a static backdrop derived from the selected theme's
-primary accent. The blue theme uses the score ring's deeper blue rather than a
+frosted design with one continuous theme-tinted backdrop across the sidebar and
+workspace, without a separate grey workspace panel. Cards remain subtly lifted
+and the selected theme also tints menus and solid accessibility surfaces.
+The blue theme uses the score ring's deeper blue rather than a
 pale cyan wash across the sidebar.
 The workspace uses a single blur layer, with solid surfaces when Windows requests
 reduced transparency or increased contrast. No animated wallpaper or idle rendering
 loop is added. Sidebar navigation, category cards and individual tweak switches
 support keyboard activation and visible focus. Reduced-motion preferences stop
-UI animation. Collapsible sidebar groups and compact headers/cards reduce scrolling without
+UI animation. Keyboard focus stays inside control edges, theme choices and main
+switches support Enter/Space, help text opens on focus, and confirmation dialogs
+contain Tab focus, close with Escape and restore focus to their opener. Home stays permanently visible under General. Tweaks, System and Tools expand
+and collapse, while compact headers/cards reduce scrolling without
 hiding descriptions or warnings. All 23 tabs remain accessible, including at
-940 x 640. The app catalogue retains its compact category layout.
+940 x 640. The app catalogue retains its compact category layout. Home uses a
+compact hardware summary, a larger score ring with clearly separated digits,
+tighter setup controls and compact category cards. At
+1280 x 800 and larger desktop viewports, all Home sections and all five Quick
+Actions fit without scrolling. The restore-point action lives with the other
+Quick Actions, replacing the repeated intro heading. Smaller windows retain
+normal scrolling instead of clipping controls or shrinking readable text. The
+score ring keeps a larger 122-pixel frame, with centred text and normal numeral
+spacing so digits stay separate.
+Sidebar groups now expand and collapse over 260 ms, moving the groups below
+them naturally. Rapid clicks reverse from the current position. Collapsing
+links leave keyboard navigation immediately; reduced motion remains instant.
 Screenshots and the feature-tour video use representative demonstration data.
+Loading and progress labels use encoding-safe punctuation so they remain readable in packaged WebView assets.
+
+The native window stays hidden until Home is populated and painted, so the
+centred loading logo never flashes before the app appears. Home opens directly
+with a brief spring settle. No minimum splash delay is added; reduced motion
+skips the entrance animation.
+A recent hardware summary is retained locally for up to 24 hours, scoped to this
+Windows installation, and replaced by a live read on each launch. Hardware reads
+run alongside tweak detection rather than waiting behind it. The last completed tweak results are also retained, so reopening preserves the
+score and category counts while a fresh live scan runs. The Home note identifies
+these as last checked results during the refresh. Closing after changes saves the
+updated result snapshot.
+
+Tray connection tests run independently of navigation. Progress updates change
+only the status text, leaving Back and other actions intact; return to Quick
+actions or revisit the running test without starting it again. Background progress
+does not rebuild the page you are using.
+The full app groups cleanup categories into compact rows and keeps its action
+summary visible while scrolling. Clean Up immediately changes to Cleaning with
+a visible activity indicator and live status beside the action. Completion and
+errors remain visible, details are expandable, and leaving the page does not
+interrupt cleanup or pull you back. NVIDIA settings use compact comparison rows,
+and Networking arranges activity results across columns to reduce scrolling.
+Its bufferbloat legend shows the added-latency thresholds used by the test. The
+grade meter fills by grade, with A+ full; it is a qualitative scale, not a percentage.
+The ten NVIDIA comparison rows and all four network tweaks fit without scrolling
+at the same desktop sizes as Home. Updates uses a wider, compact panel with inline
+version labels so the app and all five bundled tools fit, including download/cancel
+and restart-ready states. Smaller windows keep normal scrolling as needed.
+
+![Compact full-app Disk Cleanup with demonstration data](docs/cleanup.png)
+Disk cleanup retries ordinary read-only files and continues past locked or
+protected files. It retains the existing app-folder and junction exclusions,
+never overrides permissions or file locks, and deletes read-only files through
+an exclusive Windows file handle without changing their attributes. Both the tray and full app use this shared cleanup engine.
+
+Selecting a power plan keeps the tray on Quick actions. Its dropdown shows the
+verified active plan and marks that option with a check, without a separate
+success screen. The selector is disabled while switching; a failed switch is
+reported inline so it does not silently appear successful.
+
+Secondary screens use a compact Back button instead of repeating Quick actions.
+Settings uses a crisp drawn cog rather than a font glyph.
+The GPU-driver screen groups each GPU into a rounded card with a bold name,
+installed version and status badge. Current and unknown statuses use green;
+unknown remains explicitly labelled Unknown, not verified as up to date.
+Available driver updates use amber and show the latest version separately.
+
+Tray menus share the selected theme with rounded surfaces, compact line icons,
+soft selection highlights and a separated exit action. Their dimensions are
+measured at the monitor DPI so labels and icon padding remain visible at 150%.
+The tray uses the full app's Segoe UI Variable Text family with a clearer regular
+and bold hierarchy,
+with a Segoe UI fallback on older Windows versions. Secondary screens use compact
+rounded cleanup rows with file sizes aligned on the right and themed checkboxes.
+Cleanup expands vertically within the monitor work area to show more options,
+while its Clean selected action stays in the fixed footer. Short result messages
+use only the height they need, keeping Review cleanup visible without scrolling. A slim scroll thumb replaces the native scrollbars;
+keyboard focus scrolls options into view, and opening a page resets its scroll
+position so its heading is visible. Long result messages expand above their action.
+
+![Tray GPU drivers with preview data](docs/tray-drivers.png)
+![Tray available-update indicator with preview data](docs/tray-update-indicator.png)
+![Tray menu](docs/tray-menu.png)
+![Tray cleanup layout with preview data](docs/tray-cleanup.png)
+![Tray cleanup result with preview data](docs/tray-result.png)
+
+Tray quick-action buttons repaint their full background before drawing their
+translucent fill, preventing duplicated text and stale blocks during live Windows
+repaints. Rounded corners match the popup backdrop. This was checked on screen
+at 150% scaling as well as in bitmap previews.
+The companion now renders at the monitor's native DPI, with a more compact
+layout, lighter secondary text and theme-matched power and tray menus. Its
+frosted-style gradient remains available with Windows transparency disabled;
+it does not capture or refract the desktop. Clicking the tray icon or opening
+its menu reloads the full app's saved theme and uses it for the active icon.
+The idle glyph continues to blend with the Windows taskbar.
+Tray pages and Back use a 300 ms spring entrance, with forward/back direction
+and smooth reversal from the current position on rapid navigation. The cleanup
+viewport grows and shrinks smoothly while keeping the footer anchored. Controls
+remain live during the motion. Native redraws are batched while replacing page
+controls so intermediate empty frames are not exposed. Background progress does
+not restart the transition, and reduced-motion preferences switch immediately.
+
+The tray popup opens with a restrained 320 ms spring settle and fades down on
+close over 150 ms. Reopening during dismissal continues from the current pose;
+reduced motion remains instant. The power menu settles its anchor before opening,
+and clicking the selector again closes it without reopening on the same click.
+The active tray icon is updated before activation, unchanged icons are reused,
+and child controls are composited together to prevent flashing during refresh.
 
 Each release serves its interface from a content-versioned local address, so
 WebView cannot show a previous release's cached design after an update. Saved
@@ -29,10 +135,10 @@ The Overview connection shortcut starts testing immediately. Tests continue when
 you visit another tab; returning to Networking restores progress and results for
 the current app session. The run button is hidden while a test is active.
 The existing feature-tour video predates the frosted surface update.
-Window controls add a brief 140 ms workspace transition for minimise, maximise/
-restore and accepted close requests. Reduced motion skips it; close waits for
-tool/save checks before playing it. These are interface transitions, not a
-replacement for Windows' native window animations. Screenshots show transparency
+Window minimise, maximise and restore dispatch immediately through Windows'
+native compositor while retaining the custom title bar. Accepted close requests
+fade and lower the complete window over 160 ms after tool/save checks finish.
+Reduced motion skips the close fade. Screenshots show transparency
 enabled; actual appearance follows Windows accessibility preferences. The frost
 uses the app's theme backdrop, not a live blur of the desktop behind the window.
 
@@ -138,7 +244,9 @@ not launch the full app at sign-in. Automatic update checks begin fifteen minute
 after the companion starts, then repeat every twelve hours. They validate release
 metadata and SHA-256 against GitHub's asset digest, and install quietly only while
 the full app and quick actions are idle. Offline or failed checks defer to the next
-check. Busy or failed checks retry after fifteen minutes. The Updates button can check immediately. Third-party tools retain their
+check. Busy or failed checks retry after fifteen minutes. The tray has no Updates page or permanent Updates button. A compact indicator
+appears on Quick actions only for a verified newer release and opens the full
+app's update panel. Version details and update controls remain in the full app. Third-party tools retain their
 existing explicit update controls.
 
 Setup installs under `%LOCALAPPDATA%\Programs\TechLoungeTweaks` by default.
@@ -554,8 +662,8 @@ and sizes before activating a complete staged version. Unsupported packaging or
 missing checksums leave the previous version intact. Cancellation during unpacking
 takes effect after extraction. Close an open tool and reopen it to use its update.
 Previous managed versions and their files remain under
-`%LOCALAPPDATA%\TechLoungeTweaks\Updates`; a Previous version action appears beside a tool
-only when a previous version exists. There is no empty More options section. Publisher-specific portable settings are retained
+`%LOCALAPPDATA%\TechLoungeTweaks\Updates`. The Updates panel shows Open and
+available update actions without a Previous version button. There is no empty More options section. Publisher-specific portable settings are retained
 with their original version; automatic settings migration is not guaranteed.
 
 Win11Debloat and Microsoft Activation Scripts are hidden from the user-facing

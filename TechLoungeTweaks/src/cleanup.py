@@ -167,6 +167,47 @@ def scan(progress=None):
     return out
 
 
+def _remove_file(path):
+    """Delete read-only files by handle, without altering attributes or locks."""
+    try:
+        os.remove(path)
+        return
+    except PermissionError:
+        info = os.lstat(path)
+        if (not getattr(info, 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_READONLY
+                or not stat.S_ISREG(info.st_mode) or _unsafe_path(path) or _is_self(path)):
+            raise
+    import ctypes
+    from ctypes import wintypes
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                                  ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    kernel.CreateFileW.restype = wintypes.HANDLE
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    for name in ('GetFileInformationByHandleEx', 'SetFileInformationByHandle'):
+        fn = getattr(kernel, name)
+        fn.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
+        fn.restype = wintypes.BOOL
+    # DELETE | FILE_READ_ATTRIBUTES, exclusive sharing, OPEN_EXISTING,
+    # FILE_FLAG_OPEN_REPARSE_POINT. No lock bypass or path-based chmod retry.
+    handle = kernel.CreateFileW(path, 0x10080, 0, None, 3, 0x00200000, None)
+    if handle == ctypes.c_void_p(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        attrs = (wintypes.DWORD * 2)()  # FILE_ATTRIBUTE_TAG_INFO, class 9
+        if not kernel.GetFileInformationByHandleEx(handle, 9, ctypes.byref(attrs), ctypes.sizeof(attrs)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        if attrs[0] & (stat.FILE_ATTRIBUTE_DIRECTORY | stat.FILE_ATTRIBUTE_REPARSE_POINT):
+            raise PermissionError('Refusing a directory or reparse target.')
+        # FileDispositionInfoEx: DELETE | IGNORE_READONLY_ATTRIBUTE. Windows
+        # still enforces DELETE permission and sharing; attributes never change.
+        flags = wintypes.DWORD(0x11)
+        if not kernel.SetFileInformationByHandle(handle, 21, ctypes.byref(flags), ctypes.sizeof(flags)):
+            raise ctypes.WinError(ctypes.get_last_error())
+    finally:
+        kernel.CloseHandle(handle)
+
+
 def _purge_dir(path, match=None):
     freed = 0
     skipped = 0
@@ -189,8 +230,7 @@ def _purge_dir(path, match=None):
                 continue
             try:
                 sz = os.path.getsize(fp)
-                # Never change attributes or follow a reparse target to force deletion.
-                os.remove(fp)
+                _remove_file(fp)
                 freed += sz
             except OSError:
                 skipped += 1

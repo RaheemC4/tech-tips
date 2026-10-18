@@ -20,7 +20,7 @@ function paintDebloatJob(job) {
   const status = H('debloatStatus'); if (!status || !job) return;
   status.hidden = false;
   const running = job.state === 'running';
-  status.textContent = running ? `${job.line || 'Working…'} · ${job.elapsed || 0}s` : (job.result?.message || 'Finished.');
+  status.textContent = running ? `${job.line || 'Working...'} · ${job.elapsed || 0}s` : (job.result?.message || 'Finished.');
   const bar = H('debloatProgress');
   if (bar) { bar.style.display = running ? '' : 'none'; bar.querySelector('i').style.width = ((job.progress || 0) * 100) + '%'; }
   document.querySelectorAll('[data-debloat-action], [data-debloat-choice], [data-debloat-undo], #debloatRecommended').forEach(b => { b.disabled = running || b.dataset.unsupported === 'true'; });
@@ -50,7 +50,7 @@ async function pageDebloat() {
         <button class="btn ghost" data-debloat-action="all">Apply All</button>
         <button class="btn ghost" id="debloatRefresh">Refresh status</button>
       </div><p style="font-size:12px;color:var(--muted);margin-top:10px">Recommended is identical to the dashboard button, including the shared privacy options.</p>
-      <div id="debloatStatus" class="bulkstatus" role="status" aria-live="polite">Reading Windows settings…</div>
+      <div id="debloatStatus" class="bulkstatus" role="status" aria-live="polite">Reading Windows settings...</div>
       <div id="debloatProgress" class="jobbar" style="display:none"><i></i></div>
     </div><div id="debloatItems"></div>
     <p style="color:var(--muted);font-size:12px;margin-top:16px">Powered by Raphire/Win11Debloat · MIT licence. Unsupported Windows options are skipped.
@@ -63,7 +63,7 @@ async function pageDebloat() {
       const mode = button.dataset.debloatAction;
       if (mode === 'all' && !await confirmAction('Apply all debloat and customization options?', 'This also includes optional Gallery and duplicate-drive customization. Selected app packages will be removed for all users and existing Start pins cleared once. Xbox, Game Bar, Store and printing remain untouched.', 'Apply All')) return;
       button.disabled = true;
-      H('debloatStatus').textContent = 'Starting…';
+      H('debloatStatus').textContent = 'Starting...';
       try {
         const result = await api('debloat_apply', mode, [...(DEBLOAT_SELECTION || [])], mode === 'all');
         if (!result?.ok) { H('debloatStatus').textContent = result?.message || 'Could not start.'; return; }

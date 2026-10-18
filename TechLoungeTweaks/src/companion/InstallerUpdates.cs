@@ -40,13 +40,12 @@ static class InstallerUpdates {
         retry=false;
         if(tray.Preview)return "Preview: your app is up to date.";
         if(!File.Exists(Path.Combine(Program.Root,"current.txt")))return "Updates are available after installing the app.";
-        if(FullAppRunning()){retry=true;return "Updates will install automatically after the full app closes.";}
         ServicePointManager.SecurityProtocol=SecurityProtocolType.Tls12;
         var manifest=Metadata("https://raw.githubusercontent.com/RaheemC4/tech-tips/main/TechLoungeTweaks/release.json");
         if(!manifest.ContainsKey("distribution")||Convert.ToString(manifest["distribution"])!="installer")return "No installed-app update is available yet.";
         string latest=Convert.ToString(manifest["version"]),current=Path.GetFileName(Program.Here);
         if(!Regex.IsMatch(latest,@"^\d{4}\.\d{2}\.\d{2}\.\d{6}$"))throw new IOException("Invalid update version.");
-        if(String.CompareOrdinal(latest,current)<=0)return "Your app is up to date.";
+        if(String.CompareOrdinal(latest,current)<=0){tray.Post(()=>tray.SetUpdateAvailable(false));return "Your app is up to date.";}
         string url=Convert.ToString(manifest["download_url"]);
         if(!url.StartsWith(Repo,StringComparison.Ordinal))throw new IOException("Unexpected release repository.");
         var files=(Dictionary<string,object>)manifest["files"];
@@ -57,6 +56,8 @@ static class InstallerUpdates {
         var release=Metadata("https://api.github.com/repos/RaheemC4/tech-tips/releases/latest");bool verified=false;
         foreach(var raw in (System.Collections.IEnumerable)release["assets"]){var asset=(Dictionary<string,object>)raw;if(Convert.ToString(asset["browser_download_url"])==url && asset.ContainsKey("digest") && Convert.ToString(asset["digest"])=="sha256:"+expected)verified=true;}
         if(!verified)throw new IOException("Release metadata is not consistent yet.");
+        tray.Post(()=>tray.SetUpdateAvailable(true));
+        if(FullAppRunning()){retry=true;return "Updates will install automatically after the full app closes.";}
         string cache=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"TechLoungeTweaks","UpdateCache",Guid.NewGuid().ToString("N"));Directory.CreateDirectory(cache);
         try {
             string zip=Path.Combine(cache,"update.zip");

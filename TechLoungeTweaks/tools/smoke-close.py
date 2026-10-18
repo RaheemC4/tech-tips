@@ -1,4 +1,4 @@
-"""Hidden native WebView2 test: exercise the real close bridge, no system tweaks."""
+"""Native WebView2 fixture: exercise the real window/close bridge, no system tweaks."""
 from pathlib import Path
 import os
 import sys
@@ -13,9 +13,13 @@ class CloseOnly:
     def close(self): return api.close()
     def updates_restart(self): return api.updates_restart()
 window = webview.create_window('Tech Lounge close test', html='<html><body>Close test</body></html>',
-                               js_api=CloseOnly(), hidden=True)
+                               js_api=CloseOnly(), hidden=True, frameless=True, easy_drag=False)
 api._window = window
-window.events.before_show += lambda: centre_window(window)
+def prepare_native_window():
+    from native_frame import NativeFrame
+    api._native_frame = NativeFrame(window.native.Handle.ToInt64())
+    centre_window(window)
+window.events.before_show += prepare_native_window
 window.events.closing += api._on_closing
 closed = threading.Event()
 window.events.closed += lambda: closed.set()
@@ -24,6 +28,9 @@ watchdog.daemon = True
 watchdog.start()
 def test():
     if not window.events.loaded.wait(10): os._exit(3)
+    window.show()
+    style=api._native_frame.user.GetWindowLongPtrW(api._native_frame.hwnd,-16)
+    assert style&0x00CF0000==0x00CF0000,'WinForms removed the animation frame after showing the window'
     import time
     def wait_state(expected):
         until=time.monotonic()+3
@@ -33,8 +40,15 @@ def test():
     work=Screen.FromPoint(Cursor.Position).WorkingArea
     assert abs(window.native.Left-(work.Left+(work.Width-window.native.Width)//2))<=1
     assert abs(window.native.Top-(work.Top+(work.Height-window.native.Height)//2))<=1
+    initial=(window.native.Left,window.native.Top,window.native.Width,window.native.Height)
     api.maximize();wait_state(2)
+    maximized_work=Screen.FromHandle(window.native.Handle).WorkingArea
+    assert abs(window.native.ClientSize.Width-maximized_work.Width)<=2,'Maximized content missed the monitor work area'
+    assert abs(window.native.ClientSize.Height-maximized_work.Height)<=2,'Maximized content overlapped or missed the taskbar boundary'
     api.maximize();wait_state(0)
+    until=time.monotonic()+3
+    while (window.native.Left,window.native.Top,window.native.Width,window.native.Height)!=initial and time.monotonic()<until:time.sleep(.01)
+    assert (window.native.Left,window.native.Top,window.native.Width,window.native.Height)==initial,('Restore changed the original bounds',initial,(window.native.Left,window.native.Top,window.native.Width,window.native.Height))
     api.minimize();wait_state(1)
     api.maximize();wait_state(2)
     api.maximize();wait_state(0)

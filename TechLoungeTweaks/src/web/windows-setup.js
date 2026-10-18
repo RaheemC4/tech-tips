@@ -19,9 +19,7 @@ async function changeAppWindow(action) {
   if (windowActionBusy) return;
   windowActionBusy = true;
   try {
-    if (action === 'minimize') await windowMotion(true);
     await api(action);
-    if (action === 'maximize') await windowMotion();
   } finally { windowActionBusy = false; }
 }
 // Called by the host only after tool/save checks allow shutdown.
@@ -31,7 +29,7 @@ function prepareWindowClose() {
 }
 async function closeAppWindow(button) {
   button.disabled = true;
-  button.textContent = '…';
+  button.textContent = '...';
   const result = await api('close');
   if (!result || result.ok === false) {
     button.disabled = false; button.textContent = '×';
@@ -79,7 +77,7 @@ async function activateWindows() {
   // The status already displayed is enough to give immediate feedback. The
   // backend still rechecks before a real activation launch when it is needed.
   if (WINDOWS_STATUS?.activated === true) { alreadyActivated(WINDOWS_STATUS); return; }
-  setupBusy(true); setupMessage('Checking activation and opening MAS…', true);
+  setupBusy(true); setupMessage('Checking activation and opening MAS...', true);
   try {
     const result = await api('windows_setup', 'activate');
     if (result?.status) paintWindowsStatus(result.status);
@@ -93,9 +91,9 @@ const EDITION_NAMES = {Core:'Home',CoreN:'Home N',CoreSingleLanguage:'Home Singl
 function editionLabel(edition) { return EDITION_NAMES[edition] || edition; }
 async function chooseWindowsEdition() {
   if (WINDOWS_BUSY) return;
-  setupBusy(true); setupMessage('Loading available Windows editions…', true);
+  setupBusy(true); setupMessage('Loading available Windows editions...', true);
   showModal(`<div class="modal-card" role="dialog" aria-modal="true"><h2>Change Windows Version</h2>
-    <p style="margin-top:16px"><span class="spin"></span> Reading editions supported by this PC…</p></div>`);
+    <p style="margin-top:16px"><span class="spin"></span> Reading editions supported by this PC...</p></div>`);
   H('modal').onclick = null;
   let result;
   try { result = await api('windows_editions'); } finally { setupBusy(false); }
@@ -114,9 +112,9 @@ async function chooseWindowsEdition() {
       const target = button.dataset.editionTarget;
       if (!await confirmAction('Change to Windows 11 ' + editionLabel(target) + '?',
         `Current edition: ${result.name || result.current}. Target: ${editionLabel(target)}. Save your work first. The new edition may require activation. This app will not restart the PC automatically.`, 'Change edition')) return;
-      setupBusy(true); setupMessage('Changing Windows edition. Please wait…', true);
+      setupBusy(true); setupMessage('Changing Windows edition. Please wait...', true);
       showModal(`<div class="modal-card" role="dialog" aria-modal="true"><h2>Changing Windows edition</h2>
-        <p style="margin-top:16px"><span class="spin"></span> Windows is processing the change to ${textEscape(editionLabel(target))}…</p>
+        <p style="margin-top:16px"><span class="spin"></span> Windows is processing the change to ${textEscape(editionLabel(target))}...</p>
         <p style="margin-top:12px;color:var(--muted)">This can take several minutes. Keep the app open.</p></div>`);
       H('modal').onclick = null;
       try {
@@ -137,13 +135,13 @@ function wireWindowsSetup() {
   document.querySelector('[data-windows-setup="edition"]').onclick = chooseWindowsEdition;
   H('refreshWindowsStatus').onclick = async () => {
     if (WINDOWS_BUSY) return;
-    setupBusy(true); setupMessage('Refreshing Windows status…', true);
+    setupBusy(true); setupMessage('Refreshing Windows status...', true);
     try { WINDOWS_STATUS = null; paintWindowsStatus(await api('windows_status')); setupMessage(); }
     finally { setupBusy(false); }
   };
   if (WINDOWS_STATUS) paintWindowsStatus(WINDOWS_STATUS);
   else {
-    setupMessage('Reading Windows status…', true);
+    setupMessage('Reading Windows status...', true);
     api('windows_status').then(result => { paintWindowsStatus(result); if (!WINDOWS_BUSY) setupMessage(); });
   }
   setupBusy(WINDOWS_BUSY);

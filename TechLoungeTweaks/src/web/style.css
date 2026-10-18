@@ -129,7 +129,6 @@ body {
 .update-label { margin: 18px 0 0; }
 #updateOperation { margin: 14px 0; font-size: 12px; line-height: 1.6; }
 #updateProgress { color: var(--muted); margin: 5px 0 10px; }
-.update-rollback { border: 0; background: transparent; padding: 0; color: var(--muted); font-size: 10px; cursor: pointer; }
 #updatesPanel footer { display: flex; justify-content: space-between; gap: 12px; align-items: center;
   padding-top: 18px; flex-shrink: 0; }
 .update-check { display: flex; align-items: center; justify-content: center; gap: 9px; border: 0;
@@ -849,3 +848,159 @@ select:focus-visible, summary:focus-visible {
   .specrow { padding:6px 0; }
   .sidefoot { margin-top:8px; padding-top:10px; }
 }
+
+/* Dense utility pages: group related rows instead of oversized individual cards. */
+#pagehead:has(+ #scroll :is(#cleanList,#nvWrap,#netTweakGrid)) {
+  padding-top:12px; padding-bottom:10px; margin-bottom:12px;
+}
+.clean-summary { position:sticky; top:0; z-index:5; padding:14px 16px; margin-bottom:10px; }
+.clean-actions { flex-wrap:wrap; gap:8px; }
+#cleanTotal { font-size:19px; }
+#cleanStatus { font-size:12px; color:var(--good); line-height:1.45; margin:7px 0; }
+#cleanStatus:empty { display:none; }
+#cleanStatus.working { color:var(--text); }
+#cleanStatus.working::before { content:''; display:inline-block; width:10px; height:10px; margin-right:8px;
+  border:2px solid var(--muted); border-top-color:var(--accent-2); border-radius:50%; animation:clean-spin .8s linear infinite; }
+@keyframes clean-spin { to { transform:rotate(360deg); } }
+#diskLbl { color:var(--muted); font-size:11.5px; margin-top:6px; }
+.clean-list { padding:0 14px; }
+.clean-row { display:flex; align-items:center; gap:10px; min-height:55px; padding:9px 0; cursor:pointer; }
+.clean-row + .clean-row { border-top:1px solid var(--stroke); }
+.clean-row input { width:17px; height:17px; flex-shrink:0; accent-color:var(--accent); }
+.clean-copy { flex:1; min-width:0; display:grid; gap:3px; font-size:13px; }
+.clean-copy > span { color:var(--muted); font-size:11.5px; line-height:1.4; }
+.clean-size { color:var(--faint); white-space:nowrap; font-size:12px; }
+.clean-size.available { color:var(--good); }
+.clean-details { margin-top:10px; color:var(--muted); font-size:12px; }
+.clean-details summary { cursor:pointer; padding:8px 12px; border:1px solid var(--stroke); border-radius:9px; }
+#cleanLog { white-space:pre-wrap; line-height:1.6; padding:10px; }
+#nvCard { padding:14px 16px; }
+#nvCard .nvlogo { width:48px; height:48px; border-radius:14px; }
+#nvSetup:empty { display:none; }
+#nvCard > p { margin-top:10px!important; line-height:1.45!important; }
+#nvSettings { margin-top:10px!important; padding:14px 16px; }
+.nvrow { padding:7px 10px; min-height:34px; margin-bottom:0; border:0; border-radius:0; background:transparent; gap:8px; }
+.nvrow + .nvrow { border-top:1px solid var(--stroke); }
+.nvrow .nvname { min-width:0; line-height:1.4; }
+.nvrow .nvcur,.nvrow .nvval { width:clamp(120px,18vw,220px); flex-shrink:0; font-family:inherit; font-size:12px; line-height:1.4; overflow-wrap:anywhere; }
+.nvhead { padding:2px 10px 7px; gap:8px; }
+.nvhead .nvcur,.nvhead .nvval { width:clamp(120px,18vw,220px); }
+.nvrow .nvarrow,.nvhead .nvarrow { width:16px; margin:0; flex-shrink:0; }
+.network-metrics { grid-template-columns:repeat(3,minmax(0,1fr)); margin-bottom:10px; }
+.network-metrics .card { padding:14px 16px; }
+.network-metrics #grade { font-size:32px!important; }
+.network-metrics .card > div:not(.label),.network-metrics #verdict { margin-top:8px!important; }
+.network-activities { padding:14px 16px; margin-bottom:14px; }
+#connRows { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:0 20px; margin-top:6px!important; }
+#connRows > .row { min-width:0; gap:8px; }
+#connRows .badge { flex-shrink:0; }
+@media (max-width:1100px) {
+  #connRows { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .network-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .network-metrics > .card:last-child { grid-column:1 / -1; }
+  .nvrow,.nvhead { gap:5px; padding-left:0; padding-right:0; }
+  .nvrow .nvcur,.nvrow .nvval,.nvhead .nvcur,.nvhead .nvval { width:120px; }
+}
+@media (prefers-reduced-motion:reduce) { #cleanStatus.working::before { animation:none; } }
+
+#cleanStatus.failed { color:var(--warn); }
+
+/* Inset focus rings stay intact inside clipped and animated containers. */
+.nav:focus-visible,.navsec:focus-visible,.btn:focus-visible,.bulkbtn:focus-visible,
+.apps-categories button:focus-visible,#winbtns button:focus-visible {
+  outline:2px solid var(--accent-3); outline-offset:-3px;
+}
+.sw:focus-visible { outline:2px solid var(--accent-3); outline-offset:2px; }
+.card:has(> .foot .sw:focus-visible),.card:has(> .top .sw:focus-visible) { border-color:var(--accent-3); }
+.clean-row:has(input:focus-visible) { outline:2px solid var(--accent-3); outline-offset:-2px; border-radius:8px; }
+.clean-row input:focus-visible { outline:none; }
+.grade-legend { display:flex; flex-wrap:wrap; gap:4px 10px; margin-top:8px; color:var(--muted); font-size:10px; line-height:1.45; }
+.grade-legend span { white-space:nowrap; }
+.grade-legend b { color:var(--text); }
+
+#page-home .overview-intro { padding-bottom:10px; }
+#page-home .overview-intro .label { display:none; }
+#page-home .overview-intro h3 { font-size:19px; margin:0; }
+#page-home .statgrid { grid-template-columns:minmax(190px,.65fr) minmax(0,1.8fr); }
+#page-home .statgrid > .card { padding:12px 14px; }
+#page-home .statgrid > .card:first-child { display:grid; grid-template-columns:122px minmax(0,1fr); align-content:center; column-gap:14px; }
+#page-home .statgrid > .card:first-child > .label { grid-column:1 / -1; margin-bottom:6px; }
+#page-home .ringwrap { padding:0; width:122px; height:122px; }
+#page-home .ringwrap svg { width:122px; height:122px; }
+#page-home .ringwrap .val { inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; }
+#page-home .ringwrap .val b { display:block; font-size:38px; line-height:1; letter-spacing:0; }
+#page-home .ringwrap .val span { font-size:8.5px; line-height:1.2; letter-spacing:1px; margin-top:0; }
+#page-home #scoreNote { align-self:center; line-height:1.5; margin-top:0!important; text-align:left; }
+#page-home .specrow { padding:5px 0; }
+#page-home .section { margin:14px 0 7px; }
+#page-home #bulkRow { grid-template-columns:repeat(2,minmax(0,1fr)); }
+#page-home #bulkRow .bulkbtn { padding:10px 12px!important; }
+#page-home #bulkRow .bulkbtn .bd { margin-top:4px; line-height:1.45; }
+#page-home #catGrid .card { padding:10px 12px; }
+#page-home #catGrid .bar { margin-top:9px; }
+@media (max-width:1100px) {
+  #page-home .statgrid { grid-template-columns:170px minmax(0,1fr); }
+  #page-home .statgrid > .card:first-child { grid-template-columns:1fr; justify-items:center; }
+  #page-home #scoreNote { text-align:center; font-size:11px!important; }
+}
+@media (min-width:1600px) { #page-home #bulkRow { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+
+/* Home fits the 150% desktop viewport without clipping or hiding overflow. */
+#pagehead:has(+ #scroll #page-home.show) { padding-top:10px; padding-bottom:8px; margin-bottom:10px; }
+#scroll:has(#page-home.show) { padding-bottom:8px; }
+#page-home .section { margin:10px 0 6px; }
+#page-home #catGrid { gap:6px; }
+#page-home #catGrid .card { padding:7px 12px; }
+#page-home #catGrid .bar { margin-top:6px; }
+#page-home #bulkRow .bulkbtn { padding:8px 12px!important; gap:2px; }
+#page-home #bulkRow .bulkbtn .bd { margin-top:2px; }
+#page-home #quickRow { flex-wrap:wrap; gap:8px; }
+#page-home #quickRow .btn { padding:9px 12px; }
+@media (min-width:1200px) {
+  #page-home .statgrid { grid-template-columns:minmax(200px,.65fr) minmax(0,1.8fr); }
+  #page-home #specs { grid-template-columns:repeat(3,minmax(0,1fr)); gap:0 16px; }
+  #page-home .specrow { padding:4px 0; }
+  #page-home #catGrid { grid-template-columns:repeat(3,minmax(0,1fr)); }
+}
+
+/* Fit utility pages and the complete update inventory at desktop scale. */
+#pagehead:has(+ #scroll :is(#nvWrap,#netTweakGrid)) { padding-top:10px; padding-bottom:8px; margin-bottom:10px; }
+#scroll:has(:is(#nvWrap,#netTweakGrid)) { padding-bottom:12px; }
+#nvSettings { padding:10px 14px; }
+#nvSettings h3 { margin-bottom:6px; }
+.nvrow { min-height:30px; padding-top:5px; padding-bottom:5px; }
+#updatesPanel { width:min(680px,calc(100vw - 28px)); padding:16px; }
+#updatesPanel .update-emblem { width:34px; height:34px; }
+#updatesPanel h3 { font-size:19px; }
+#updatesPanel .update-summary { margin:10px 0 4px; padding:8px 10px; }
+#updatesPanel .update-row { padding:6px 0; gap:12px; }
+#updatesPanel .update-row strong { margin-bottom:4px; }
+#updatesPanel .tool-versions { gap:6px; }
+#updatesPanel .tool-versions > span { flex-direction:row; align-items:baseline; flex-wrap:wrap; gap:5px; min-width:0; padding:4px 7px; }
+#updatesPanel .tool-versions em { display:inline; margin-left:5px; }
+#updatesPanel .bundled-note { display:none; }
+#updatesPanel .update-actions { flex-direction:row; flex-wrap:wrap; justify-content:flex-end; max-width:160px; }
+#updatesPanel .update-row .btn { padding:8px 11px; }
+#updatesPanel .update-label { margin-top:10px; }
+#updatesPanel footer { padding-top:12px; }
+#updatesPanel #updateOperation { margin:8px 0; display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; }
+#updatesPanel #updateProgress { margin:0; }
+@media (min-width:1200px) {
+  #netTweakGrid { grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
+  #netTweakGrid .tweak { padding:12px; }
+  #netTweakGrid .top { align-items:flex-start; }
+  #netTweakGrid .top h3 { font-size:13px; line-height:1.4; }
+  #netTweakGrid .desc { line-height:1.45; }
+  #netTweakGrid .foot { margin-top:8px; padding-top:8px; }
+  .network-metrics .card { padding:12px 14px; }
+  .network-activities { padding:10px 14px; margin-bottom:10px; }
+  #scroll:has(#netTweakGrid) .section { margin:12px 0 7px; }
+}
+
+/* The Update/Download action already identifies available updates. */
+#updatesPanel .update-row small.version-old { display:none; }
+#updatesPanel #updateOperation[hidden] { display:none; }
+#updatesPanel #updateStatus { flex-basis:100%; }
+#updatesPanel #updateCancel { padding:8px 12px; }
+
+#updatesPanel button:focus-visible { outline-offset:-2px; }
