@@ -1,3 +1,5 @@
+- Refresh the feature-tour video to the approved 59-second 4K/60 fps version, with a logo-first opening, quieter music/effects and updated app/tray visuals. Add a linked preview image to the README.
+
 - Keep tray latency on idle ping. Unify live/final throughput estimates after warm-up, scale parallel streams on fast links, prevent download caching and count upload blocks while sending. Smooth completed speed readings as well as live updates. Investigated current Speedtest.net/Fast.com browser assets with REA; retain the app's public test endpoints.
 
 - Make Updates toggle on repeat clicks with reversible entrance/exit motion. Apply matching motion to theme and confirmation panels, respect reduced motion, centre SVG control icons and align tweak-card footers.

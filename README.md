@@ -146,7 +146,6 @@ Overview keeps one restore-point shortcut above the tweak controls.
 The Overview connection shortcut starts testing immediately. Tests continue when
 you visit another tab; returning to Networking restores progress and results for
 the current app session. The run button is hidden while a test is active.
-The existing feature-tour video predates the frosted surface update.
 Window minimise, maximise and restore dispatch immediately through Windows'
 native compositor while retaining the custom title bar. Accepted close requests
 fade and lower the complete window over 160 ms after tool/save checks finish.
@@ -167,9 +166,9 @@ or unknown state instead of showing unverified success. Disk Cleanup accepts onl
 server-owned category IDs and skips symbolic links/junctions and protected app files.
 
 
-[Watch the 83-second feature tour](docs/techlounge-feature-tour.mp4): all 23 tabs,
-a close-up tweak demonstration and app-category browsing. Silent, with on-screen
-instructions and sample data labels.
+[![Tech Lounge Tweaks video preview](https://raw.githubusercontent.com/RaheemC4/tech-tips/main/docs/techlounge-feature-tour-poster.png)](https://github.com/RaheemC4/tech-tips/raw/refs/heads/main/docs/techlounge-feature-tour.mp4)
+
+[Watch the 59-second feature tour](https://github.com/RaheemC4/tech-tips/raw/refs/heads/main/docs/techlounge-feature-tour.mp4) in 4K at 60 fps. It shows the refreshed app and tray companion, tweak actions, connection testing, utilities and setup, using representative demonstration data. The logo appears immediately, with quiet background music and animation effects.
 
 Rapid floating-tool drags retain movements that arrive while the host is catching up.
 
