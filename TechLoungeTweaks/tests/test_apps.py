@@ -95,6 +95,44 @@ class AppInstallTests(unittest.TestCase):
             self.assertEqual(message, "Cancelled.")
             launch.assert_not_called()
 
+    def test_hatchzip_resolves_fresh_metadata_for_each_install(self):
+        app = apps.by_id("hatchzip")
+        for version in ("v1.0.0", "v1.1.0"):
+            asset = dict(url="https://github.com/xevrion/hatchzip/releases/download/"
+                         + version + "/HatchZip-x64-setup.exe",
+                         size=42, sha256="a" * 64)
+            with patch("apps._hatchzip_asset", return_value=asset), \
+                    patch("apps.install_direct", return_value=(True, "Installed.")) as install:
+                self.assertEqual(apps.install("hatchzip", "fixture"), (True, "Installed."))
+                resolved = install.call_args.args[0]
+                self.assertEqual(resolved["url"], asset["url"])
+                self.assertEqual(resolved["sha256"], "a" * 64)
+                self.assertEqual(resolved["silent"],
+                                 ["/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"])
+        self.assertIn("/latest/", app["url"])
+
+    def test_hatchzip_invalid_metadata_prevents_download_and_launch(self):
+        from io import BytesIO
+        base = {"tag_name": "v1.2.3", "draft": False, "prerelease": False,
+                "assets": [{"name": "HatchZip-x64-setup.exe", "size": 42,
+                            "digest": "sha256:" + "a" * 64,
+                            "browser_download_url": "https://github.com/xevrion/hatchzip/"
+                            "releases/download/v1.2.3/HatchZip-x64-setup.exe"}]}
+        for change in ({}, {"digest": None}, {"size": 0},
+                       {"browser_download_url": "https://github.com/other/setup.exe"}):
+            release = json.loads(json.dumps(base))
+            release["assets"][0].update(change)
+            response = BytesIO(json.dumps(release).encode())
+            response.geturl = lambda: "https://api.github.com/repos/xevrion/hatchzip/releases/latest"
+            with patch("apps.urllib.request.urlopen", return_value=response), \
+                    patch("apps.install_direct", return_value=(True, "Installed.")) as install:
+                ok, message = apps.install("hatchzip", "fixture")
+                self.assertEqual(ok, not bool(change), message)
+                if change:
+                    install.assert_not_called()
+                else:
+                    self.assertEqual(install.call_args.args[0]["size"], 42)
+
     def _discord_version(self, root, version, payload=b"stock"):
         folder = Path(root) / "Discord" / f"app-{version}"
         (folder / "resources").mkdir(parents=True)

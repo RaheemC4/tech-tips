@@ -94,6 +94,14 @@ def host_allowed(url):
 #   note    optional warning shown on the card
 #
 APPS = [
+    dict(id="hatchzip", name="HatchZip", group="File tools",
+         desc="Extract ZIP, 7z and tar archives using less free space. "
+              "Extraction consumes the source archive. Windows x64.",
+         winget=None,
+         url="https://github.com/xevrion/hatchzip/releases/latest/download/"
+             "HatchZip-x64-setup.exe",
+         silent=["/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"],
+         page="https://github.com/xevrion/hatchzip/releases/latest"),
     dict(id="shiftd", name="Shiftd", group="File tools",
          desc="Offline file conversion, compression, image resizing and "
               "audio/video trimming, with a desktop app and Explorer "
@@ -421,6 +429,39 @@ def download(url, dest_dir, on_progress=None, should_cancel=None):
     return dest
 
 
+def _hatchzip_asset():
+    """Resolve the latest stable desktop installer and require its digest."""
+    req = urllib.request.Request(
+        "https://api.github.com/repos/xevrion/hatchzip/releases/latest",
+        headers={**UA, "Accept": "application/vnd.github+json",
+                 "X-GitHub-Api-Version": "2022-11-28"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        if urllib.parse.urlparse(resp.geturl()).hostname != "api.github.com":
+            raise ValueError("HatchZip metadata redirected off GitHub's API.")
+        raw = resp.read((2 << 20) + 1)
+    if len(raw) > (2 << 20):
+        raise ValueError("HatchZip release metadata was unexpectedly large.")
+    release = json.loads(raw.decode("utf-8"))
+    tag = release.get("tag_name")
+    if not tag or release.get("draft") or release.get("prerelease"):
+        raise ValueError("GitHub did not return a stable HatchZip release.")
+    assets = [a for a in release.get("assets", [])
+              if a.get("name") == "HatchZip-x64-setup.exe"]
+    if len(assets) != 1:
+        raise ValueError("The HatchZip Windows installer was not unique.")
+    asset = assets[0]
+    url = ("https://github.com/xevrion/hatchzip/releases/download/"
+           + urllib.parse.quote(tag, safe="") + "/HatchZip-x64-setup.exe")
+    digest = str(asset.get("digest") or "")
+    size = asset.get("size")
+    if (asset.get("browser_download_url") != url
+            or not re.fullmatch(r"sha256:[0-9a-fA-F]{64}", digest)
+            or type(size) is not int or size <= 0):
+        raise ValueError("HatchZip installer URL, size or SHA-256 is invalid.")
+    return {"url": url, "size": size,
+            "sha256": digest.split(":", 1)[1].lower()}
+
+
 def install_direct(app, dest_dir, on_progress=None, on_line=None,
                    should_cancel=None):
     """Download from the vendor and run the silent install. (ok, message)."""
@@ -725,6 +766,15 @@ def install(app_id, dest_dir, on_progress=None, on_line=None,
     app = by_id(app_id)
     if not app:
         return False, "Unknown app."
+    if app_id == "hatchzip":
+        if should_cancel and should_cancel():
+            return False, "Cancelled."
+        if on_line:
+            on_line("Checking the latest stable HatchZip release...")
+        try:
+            app = {**app, **_hatchzip_asset()}
+        except Exception as e:
+            return False, f"Could not resolve the latest HatchZip installer: {e}"
     # winget first: it keeps its own URLs current and handles silent switches.
     if app.get("winget") and winget_path():
         ok, msg = install_via_winget(app, on_line, should_cancel)

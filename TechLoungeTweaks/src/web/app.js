@@ -1434,7 +1434,7 @@ function appIcon(id) {
 
 async function pageApps() {
   pageShell('Install Apps', {crumb: 'Tools › Install Apps',
-    text: 'Shiftd file conversion, runtimes, browsers, game clients and a faster Discord setup.'},
+    text: 'File conversion, archive extraction, runtimes, browsers, game clients and Discord setup.'},
     `<div id="appsBody"><div class="card">Loading the catalogue...</div></div>`);
   const cat = APPCACHE || await api('app_catalog');
   if (!cat) return;

@@ -32,6 +32,10 @@ Toggle a tweak off or use **Revert All** to undo a category. **Restore Session C
 
 The custom window controls preserve Windows animations and restore the original window size and position, including after rapidly minimising and maximising.
 
+### HatchZip
+
+**Install Apps > File tools** installs the latest stable HatchZip Windows desktop release, resolved from GitHub each time. The installer size and SHA-256 must match release metadata before it runs. If metadata is unavailable or invalid, installation stops. Its local monochrome icon follows the selected theme. HatchZip extraction consumes the source archive as files are extracted.
+
 ### Discord and OpenAsar
 
 Installing stable Discord from **Install Apps** also installs the latest verified OpenAsar nightly and an on-demand repair launcher. Existing Discord Desktop, Start menu and taskbar shortcuts use that launcher. It checks the newest complete Discord version, restores missing OpenAsar from a verified local copy, then starts Discord and exits. It adds no Windows startup entry, scheduled task, service or background watcher. Discord's own startup preference is unchanged.

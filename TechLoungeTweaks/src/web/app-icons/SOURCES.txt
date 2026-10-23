@@ -3,3 +3,7 @@ Browsers, Steam, Epic and Discord: simple-icons 14; Edge: 11.
 Other SVGs downloaded 2026-10-12 from simple-icons latest.
 Brand marks belong to their respective owners.
 Shiftd and runtime tiles are rendered locally using text.
+
+HatchZip: assets/icon/hatchzip-24.svg at xevrion/hatchzip v0.1.2 (MIT OR Apache-2.0).
+Monochrome adaptation removes the background and inherits currentColor.
+Source: https://github.com/xevrion/hatchzip/blob/v0.1.2/assets/icon/hatchzip-24.svg

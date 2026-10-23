@@ -13,12 +13,12 @@ Git authentication may open a sign-in window. No force-push is used. A failed
 build, test, screenshot, documentation check or push stops with an error.
 
 Output: TechLoungeTweaks\TechLoungeTweaks.zip
-Copy this ZIP to your other PCs. Extract the whole folder and run the EXE inside.
+Copy this ZIP to your other PCs. Extract it and run TechLoungeTweaks-Setup.exe.
 No Python or Node is needed on PCs that only run the packaged app.
 
 The local TechLoungeTweaks-Personal.zip one folder above is also refreshed when
 the local installed app folder exists. Existing extracted app folders are not
-overwritten by packaging; extract the new ZIP to use the new build.
+overwritten by packaging; run the new installer to update an installed copy.
 
 FOR FUTURE APP CHANGES
 ---------------------
@@ -27,6 +27,14 @@ review screenshot fixtures, then run these commands from this folder:
 
   TechLoungeTweaks\.build-venv\Scripts\python.exe tools\release.py --record-doc-review
   TechLoungeTweaks\.build-venv\Scripts\python.exe tools\release.py --prepare
+
+If cloud-backed resource files cannot be read, provide a verified local resource ZIP
+with --resources-zip "C:\path\resources.zip" on BOTH commands above. It must
+contain TechLoungeTweaks/resources/ entries and match the intended bundled tool
+versions. This rebuild used the installed app resource snapshot at
+%LOCALAPPDATA%\TechLoungeBuildTools\hatchzip-resources.zip. Source cloud files
+are preserved. The prepared release can be verified/published without rereading
+those cloud resources.
 
 The scripts regenerate screenshots, sync the top-level README, build the app,
 package NVIDIA resources, MAS and Win11Debloat source/licences, and record SHA-256 hashes.

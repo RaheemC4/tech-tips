@@ -38,11 +38,12 @@ def digest(path):
     return hashlib.sha256(data).hexdigest()
 
 
-def files(folder):
+def files(folder, excluded=()):
     result = []
     for current, directories, names in os.walk(folder):
         # Prune build trees before traversal, including cloud-backed files.
-        directories[:] = [name for name in directories if name not in SKIP]
+        directories[:] = [name for name in directories if name not in SKIP
+                          and (Path(current) / name).relative_to(folder).as_posix() not in excluded]
         for name in names:
             path = Path(current) / name
             if name not in SKIP and path.suffix not in {'.pyc', '.log', '.tmp'} and path.is_file():
@@ -65,7 +66,7 @@ def app_revision():
     resource_archive = RESOURCE_ARCHIVE or ARCHIVE
     if resource_dir:
         inputs.update({'resources/' + p.relative_to(resource_dir).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
-                       for p in files(resource_dir)})
+                       for p in files(resource_dir, {"tools/bcu/win-arm64"})})
     elif resource_archive.exists():
         with zipfile.ZipFile(resource_archive) as archive:
             prefix = 'TechLoungeTweaks/resources/'
@@ -128,7 +129,11 @@ def copy_resources(destination):
     source = None if RESOURCE_ARCHIVE else next((p for p in sources if p.is_dir()), None)
     resource_archive = RESOURCE_ARCHIVE or ARCHIVE
     if source:
-        shutil.copytree(source, destination / 'resources', dirs_exist_ok=True)
+        # Do not hydrate BCU's unused ARM64 files for this x64 distribution.
+        for path in files(source, {"tools/bcu/win-arm64"}):
+            target = destination / 'resources' / path.relative_to(source)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, target)
     elif resource_archive.exists():
         with zipfile.ZipFile(resource_archive) as archive:
             prefix = 'TechLoungeTweaks/resources/'

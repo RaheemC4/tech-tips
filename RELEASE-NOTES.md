@@ -1,3 +1,7 @@
+- Skip unused BCU ARM64 resources before hashing and copying the x64 package, avoiding cloud-file hydration stalls during release preparation. Preserve the x64 tool and source resources.
+
+- Add HatchZip to Install Apps > File tools with a local theme-coloured archive icon. Resolve the latest stable Windows desktop installer on each install and verify its size and SHA-256 before launch. Explain that extraction consumes the source archive.
+
 - Fix intermittent restore failures after rapidly minimising and maximising the main window. Apply native state changes directly on the owning UI thread and repeat the native regression sequence five times, retaining work-area and original-bounds checks. Wait for completed layout and retain the initial monitor in the fixture so transitional geometry and pointer movement do not cause false failures.
 
 - Install an on-demand native OpenAsar repair launcher with stable Discord. Keep a verified local cache, preserve original archives and route existing Discord shortcuts through the launcher with Discord's taskbar identity. Restore OpenAsar on a full quit/reopen after updates, then exit; add no startup item, task, service or watcher. Fail open to normal Discord startup if repair is blocked. Reinstalling through Install Apps reconnects the integration; external reinstalls and Discord's internal restart/auto-start can bypass it. Add native update, reinstall, file-lock, corrupt-cache, argument forwarding and shortcut checks, plus installer integration tests.

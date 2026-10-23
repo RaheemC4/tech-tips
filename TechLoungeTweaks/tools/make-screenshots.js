@@ -16,6 +16,7 @@ const DEBLOAT = require('../src/debloat_catalog.json').items.map((item, index) =
 const PAGE = require('url').pathToFileURL(require('path').resolve(__dirname, '../src/web/index.html')).href;
 
 const CAT={groups:['File tools','Chat & voice','Runtimes','Browsers','Game clients','Tuning tools'],winget:true,apps:[
+ {id:'hatchzip',name:'HatchZip',group:'File tools',desc:'Extract ZIP, 7z and tar archives using less free space. Extraction consumes the source archive. Windows x64.',page:'https://github.com/xevrion/hatchzip/releases/latest',route:'direct',installable:true},
  {id:'shiftd',name:'Shiftd',group:'File tools',desc:'Offline file conversion, compression, image resizing and audio/video trimming, with a desktop app and Explorer right-click submenu. Windows x64. Downloads about 395 MB.',page:'https://github.com/RaheemC4/tech-tips/releases/tag/shiftd-1.0.0-20261011-r2',route:'direct',installable:true},
  {id:'afterburner',name:'MSI Afterburner',group:'Tuning tools',desc:'The standard GPU tuning + monitoring tool. Installed without RivaTuner (RTSS). Overclocking is done here in the real tool - this app never touches clocks itself.',page:'#',route:'winget',installable:true},
  {id:'discord',name:'Discord',group:'Chat & voice',desc:'The desktop client plus the latest OpenAsar nightly for a faster launch and snappier UI. Re-run this installer after a Discord update if it replaces OpenAsar.',page:'#',route:'winget',installable:true},

@@ -58,6 +58,34 @@ class ReleaseTests(unittest.TestCase):
                 self.assertLess(bundle.getinfo('TechLoungeTweaks/_internal/runtime.dll').compress_size, 100)
             (root / 'stray.txt').write_text('unexpected')
             with self.assertRaises(RuntimeError): release.write_distribution(root, archive)
+    def test_resource_copy_and_identity_never_read_unused_arm64(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            app = root / 'app'
+            (app / 'src').mkdir(parents=True)
+            (app / 'requirements-build.txt').write_text('requirements')
+            resources = app / 'resources'
+            for name, data in [('TechLoungeProfile.nip', b'profile'),
+                               ('tools/bcu/win-x64/BCUninstaller.exe', b'x64'),
+                               ('tools/bcu/win-arm64/cloud.dll', b'cloud')]:
+                path = resources / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(data)
+            read_bytes = Path.read_bytes
+            def read(path):
+                if 'win-arm64' in path.parts:
+                    raise AssertionError('Unused cloud resource read')
+                return read_bytes(path)
+            with patch.object(release, 'APP', app), patch.object(release, 'ROOT', root), \
+                    patch.object(Path, 'read_bytes', read):
+                revision = release.app_revision()
+                (resources / 'tools/bcu/win-arm64/cloud.dll').write_bytes(b'changed')
+                self.assertEqual(release.app_revision(), revision)
+                release.copy_resources(root / 'built')
+            self.assertEqual((root / 'built/resources/TechLoungeProfile.nip').read_bytes(), b'profile')
+            self.assertEqual((root / 'built/resources/tools/bcu/win-x64/BCUninstaller.exe').read_bytes(), b'x64')
+            self.assertFalse((root / 'built/resources/tools/bcu/win-arm64').exists())
+
     def test_x64_resource_trim_preserves_supported_tool_and_licence(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
