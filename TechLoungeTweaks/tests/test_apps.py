@@ -171,10 +171,15 @@ class AppInstallTests(unittest.TestCase):
             newest = self._discord_version(local, "1.0.9257", b"y" * (2 << 20))
             source = Path(downloads) / "nightly.asar"
             source.write_bytes(payload)
-            with patch("apps._download_openasar", return_value=(str(source), {"sha256": "0" * 64})), \
-                    patch("apps._stop_discord"), patch("apps.subprocess.Popen"):
+            launcher = str(Path(local) / 'DiscordLauncher.exe')
+            digest = hashlib.sha256(payload).hexdigest()
+            with patch("apps._download_openasar", return_value=(str(source), {"sha256": digest})), \
+                    patch("apps.discord_integration.deploy", return_value=launcher) as deploy, \
+                    patch("apps._stop_discord"), patch("apps.subprocess.Popen") as launch:
                 ok, message = apps.install_openasar(downloads, local_appdata=local,
                                                      appdata=roaming)
+                deploy.assert_called_once_with(str(source), digest, local)
+                self.assertEqual(launch.call_args.args[0], [launcher])
             self.assertTrue(ok, message)
             self.assertEqual((newest / "resources" / "app.asar").read_bytes(), payload)
             self.assertEqual((newest / "resources" / "app.asar.backup").stat().st_size,
@@ -182,6 +187,22 @@ class AppInstallTests(unittest.TestCase):
             self.assertEqual((older / "resources" / "app.asar").stat().st_size, 2 << 20)
             settings = json.loads((Path(roaming) / "discord" / "settings.json").read_text())
             self.assertEqual(settings["openasar"], apps.OPENASAR_SETTINGS)
+            self.assertFalse(source.exists())
+
+    def test_launcher_setup_failure_does_not_close_discord_and_cleans_download(self):
+        with tempfile.TemporaryDirectory() as local, tempfile.TemporaryDirectory() as downloads:
+            self._discord_version(local, "1.0.1")
+            source = Path(downloads) / 'nightly.asar'
+            source.write_bytes(b'fixture')
+            with patch('apps._download_openasar', return_value=(str(source), {'sha256': '0' * 64})), \
+                    patch('apps.discord_integration.deploy', side_effect=OSError('setup failed')), \
+                    patch('apps._stop_discord') as stop, patch('apps.subprocess.Popen') as launch:
+                ok, message = apps.install_openasar(downloads, local_appdata=local)
+            self.assertFalse(ok)
+            self.assertIn('setup failed', message)
+            stop.assert_not_called()
+            launch.assert_not_called()
+            self.assertFalse(source.exists())
 
 
 if __name__ == "__main__":

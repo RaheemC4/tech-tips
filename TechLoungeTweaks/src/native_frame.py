@@ -33,7 +33,7 @@ class NativeFrame:
         self.user.MonitorFromWindow.argtypes = [wintypes.HWND, wintypes.DWORD]
         self.user.MonitorFromWindow.restype = wintypes.HMONITOR
         self.user.GetMonitorInfoW.argtypes = [wintypes.HMONITOR, ctypes.POINTER(MonitorInfo)]
-        self.user.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+        self.user.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
         callback_type = ctypes.WINFUNCTYPE(ctypes.c_ssize_t, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM, ctypes.c_size_t, ctypes.c_size_t)
         self.callback = callback_type(self._message)
         self.comctl.DefSubclassProc.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
@@ -99,8 +99,11 @@ class NativeFrame:
         return self.comctl.DefSubclassProc(hwnd, message, wp, lp)
 
     def change_state(self, action):
-        command = 0xF020 if action == 'minimize' else 0xF120 if self.user.IsZoomed(self.hwnd) else 0xF030
-        return bool(self.user.PostMessageW(self.hwnd, 0x0112, command, 0))
+        # Already on the owning UI thread. Queued system commands can lose a
+        # restore during a rapid minimize/maximize transition.
+        command = 6 if action == 'minimize' else 9 if self.user.IsZoomed(self.hwnd) else 3
+        self.user.ShowWindow(self.hwnd, command)
+        return True
 
     def close(self, native):
         """Fade the complete host after save/tool checks, without delaying input."""

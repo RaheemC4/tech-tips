@@ -16,6 +16,9 @@ window = webview.create_window('Tech Lounge close test', html='<html><body>Close
                                js_api=CloseOnly(), hidden=True, frameless=True, easy_drag=False)
 api._window = window
 def prepare_native_window():
+    global initial_work
+    from System.Windows.Forms import Screen, Cursor
+    initial_work=Screen.FromPoint(Cursor.Position).WorkingArea
     from native_frame import NativeFrame
     api._native_frame = NativeFrame(window.native.Handle.ToInt64())
     centre_window(window)
@@ -35,23 +38,32 @@ def test():
     def wait_state(expected):
         until=time.monotonic()+3
         while int(window.native.WindowState)!=expected and time.monotonic()<until: time.sleep(.01)
-        assert int(window.native.WindowState)==expected,'Native window state did not change'
-    from System.Windows.Forms import Screen, Cursor
-    work=Screen.FromPoint(Cursor.Position).WorkingArea
-    assert abs(window.native.Left-(work.Left+(work.Width-window.native.Width)//2))<=1
-    assert abs(window.native.Top-(work.Top+(work.Height-window.native.Height)//2))<=1
+        assert int(window.native.WindowState)==expected,('Native window state did not change', expected, int(window.native.WindowState))
+    from System.Windows.Forms import Screen
+    work=initial_work
+    assert abs(window.native.Left-(work.Left+max(0,(work.Width-window.native.Width)//2)))<=1,('Initial horizontal centre', window.native.Left, work.Left, work.Width, window.native.Width)
+    assert abs(window.native.Top-(work.Top+max(0,(work.Height-window.native.Height)//2)))<=1,('Initial vertical centre', window.native.Top, work.Top, work.Height, window.native.Height)
     initial=(window.native.Left,window.native.Top,window.native.Width,window.native.Height)
-    api.maximize();wait_state(2)
-    maximized_work=Screen.FromHandle(window.native.Handle).WorkingArea
-    assert abs(window.native.ClientSize.Width-maximized_work.Width)<=2,'Maximized content missed the monitor work area'
-    assert abs(window.native.ClientSize.Height-maximized_work.Height)<=2,'Maximized content overlapped or missed the taskbar boundary'
-    api.maximize();wait_state(0)
-    until=time.monotonic()+3
-    while (window.native.Left,window.native.Top,window.native.Width,window.native.Height)!=initial and time.monotonic()<until:time.sleep(.01)
-    assert (window.native.Left,window.native.Top,window.native.Width,window.native.Height)==initial,('Restore changed the original bounds',initial,(window.native.Left,window.native.Top,window.native.Width,window.native.Height))
-    api.minimize();wait_state(1)
-    api.maximize();wait_state(2)
-    api.maximize();wait_state(0)
+    # Repeat without animation sleeps to catch lost rapid restore requests.
+    for cycle in range(5):
+        api.maximize();wait_state(2)
+        maximized_work=Screen.FromHandle(window.native.Handle).WorkingArea
+        # WinForms reports Maximized before WM_SIZE finishes applying bounds.
+        until=time.monotonic()+3
+        def fits_work_area():
+            return (abs(window.native.ClientSize.Width-maximized_work.Width)<=2 and
+                    abs(window.native.ClientSize.Height-maximized_work.Height)<=2)
+        while not fits_work_area() and time.monotonic()<until:time.sleep(.01)
+        assert fits_work_area(),('Maximized content missed the monitor work area',
+                                 window.native.ClientSize.Width,window.native.ClientSize.Height,
+                                 maximized_work.Width,maximized_work.Height)
+        api.maximize();wait_state(0)
+        until=time.monotonic()+3
+        while (window.native.Left,window.native.Top,window.native.Width,window.native.Height)!=initial and time.monotonic()<until:time.sleep(.01)
+        assert (window.native.Left,window.native.Top,window.native.Width,window.native.Height)==initial,('Restore changed the original bounds',initial,(window.native.Left,window.native.Top,window.native.Width,window.native.Height))
+        api.minimize();wait_state(1)
+        api.maximize();wait_state(2)
+        api.maximize();wait_state(0)
     dispatched=threading.Event();on_ui=[]
     api._begin_native_drag=lambda:(on_ui.append(not window.native.InvokeRequired),dispatched.set())
     api.start_drag()

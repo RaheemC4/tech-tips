@@ -30,6 +30,16 @@ Toggle a tweak off or use **Revert All** to undo a category. **Restore Session C
 
 ## Help
 
+The custom window controls preserve Windows animations and restore the original window size and position, including after rapidly minimising and maximising.
+
+### Discord and OpenAsar
+
+Installing stable Discord from **Install Apps** also installs the latest verified OpenAsar nightly and an on-demand repair launcher. Existing Discord Desktop, Start menu and taskbar shortcuts use that launcher. It checks the newest complete Discord version, restores missing OpenAsar from a verified local copy, then starts Discord and exits. It adds no Windows startup entry, scheduled task, service or background watcher. Discord's own startup preference is unchanged.
+
+After an update, fully quit Discord from its system tray icon and reopen it through its shortcut or taskbar pin. Discord's internal update restart and its own Windows auto-start can bypass the launcher. If Windows retains an older taskbar launch target, unpin Discord and pin the **Discord** Start menu entry again. Reinstalling Discord through TechLoungeTweaks reconnects the launcher; installing it elsewhere may replace the shortcuts.
+
+The launcher and versioned original-file backups live in `%LOCALAPPDATA%\TechLoungeTweaks\Discord`. It preserves existing OpenAsar builds and recognised renamed archives used by other client mods. If repair is blocked, it records the reason in `launcher.log` and opens Discord normally. A future incompatible Discord/OpenAsar release may still need an updated integration. To remove it, reinstall official Discord to restore its files and shortcuts, replace any remaining repair shortcut with the official Discord shortcut, then remove the helper folder.
+
 Logs: `%LOCALAPPDATA%\TechLoungeTweaks\Logs\TL-api.log`.
 
 See the [full guide and credits](https://github.com/RaheemC4/tech-tips/blob/main/docs/USER-GUIDE.md) for detailed features, troubleshooting, bundled software and licences. The video uses representative demonstration data.

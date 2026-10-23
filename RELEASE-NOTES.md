@@ -1,3 +1,7 @@
+- Fix intermittent restore failures after rapidly minimising and maximising the main window. Apply native state changes directly on the owning UI thread and repeat the native regression sequence five times, retaining work-area and original-bounds checks. Wait for completed layout and retain the initial monitor in the fixture so transitional geometry and pointer movement do not cause false failures.
+
+- Install an on-demand native OpenAsar repair launcher with stable Discord. Keep a verified local cache, preserve original archives and route existing Discord shortcuts through the launcher with Discord's taskbar identity. Restore OpenAsar on a full quit/reopen after updates, then exit; add no startup item, task, service or watcher. Fail open to normal Discord startup if repair is blocked. Reinstalling through Install Apps reconnects the integration; external reinstalls and Discord's internal restart/auto-start can bypass it. Add native update, reinstall, file-lock, corrupt-cache, argument forwarding and shortcut checks, plus installer integration tests.
+
 - Refresh the feature-tour video to the approved 59-second 4K/60 fps version, with a logo-first opening, quieter music/effects and updated app/tray visuals. Add a linked preview image to the README.
 
 - Keep tray latency on idle ping. Unify live/final throughput estimates after warm-up, scale parallel streams on fast links, prevent download caching and count upload blocks while sending. Smooth completed speed readings as well as live updates. Investigated current Speedtest.net/Fast.com browser assets with REA; retain the app's public test endpoints.
@@ -426,7 +430,3 @@ Bundled tools, a simpler update panel and clearer version status.
 - App and tool update notifications are distinct. Content-based app identity prevents unchanged rebuilds from appearing as new software.
 - Fixed sidebar crowding with independent menu scrolling and a spaced, fixed-height status footer.
 - The push batch publishes the larger bundled ZIP as a verified GitHub Release asset and commits updated source, README, release notes and screenshots together.
-
-
-
-

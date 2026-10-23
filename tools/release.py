@@ -281,6 +281,14 @@ def prepare(background_only=False):
     if app_revision() != json.loads((APP / 'src/build-info.json').read_text())['app_revision']:
         raise RuntimeError('App or bundled resources changed since review. Review and record the updated release before preparing.')
     node, env = browser_env()
+    sys.path.insert(0, str(APP / 'tools'))
+    from build_discord_launcher import build as build_discord_launcher
+    launcher_dir = APP / 'src/build/discord-launcher'
+    build_discord_launcher(launcher_dir)
+    launcher_checks = build_discord_launcher(launcher_dir, checks=True)
+    launcher_report = launcher_dir / 'checks.txt'
+    run([launcher_checks, launcher_report])
+    print(launcher_report.read_text(), flush=True)
     run([sys.executable, '-m', 'unittest', 'discover', '-s', APP / 'tests', '-v'])
     run([sys.executable, '-m', 'unittest', 'discover', '-s', ROOT / 'tools/tests', '-v'])
     run([node, '--check', APP / 'src/web/app-icons.js'])

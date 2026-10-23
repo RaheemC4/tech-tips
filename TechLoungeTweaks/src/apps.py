@@ -27,6 +27,8 @@ import time
 import urllib.parse
 import urllib.request
 
+import discord_integration
+
 CREATE_NO_WINDOW = 0x08000000
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
@@ -236,8 +238,8 @@ APPS = [
     # ------------------------------------------------------- chat & voice
     dict(id="discord", name="Discord", group="Chat & voice",
          desc="The desktop client plus the latest OpenAsar nightly for a "
-              "faster launch and snappier UI. Re-run this installer after a "
-              "Discord update if it replaces OpenAsar.",
+              "faster launch and snappier UI. Restores OpenAsar when opened "
+              "through its shortcuts after a full quit. No extra startup app.",
          winget="Discord.Discord",
          url="https://discord.com/api/download?platform=win",
          silent=["/S"],
@@ -669,26 +671,32 @@ def install_openasar(dest_dir, on_progress=None, on_line=None,
         return False, ("Discord installed, but its newest app-* folder was not ready. "
                        "Open Discord once, then run this installer again.")
 
+    downloaded = None
     try:
         if on_line:
             on_line("Checking the latest OpenAsar nightly on GitHub…")
         downloaded, asset = _download_openasar(dest_dir, on_progress, should_cancel)
         if on_line:
             on_line("Applying OpenAsar performance settings…")
+        launcher = discord_integration.deploy(downloaded, asset["sha256"], local_appdata)
         configure_openasar(appdata)
         if on_line:
             on_line("Closing Discord and installing OpenAsar…")
         _stop_discord()
         target = os.path.join(folder, "resources", "app.asar")
+        for name in ("app.orig.asar", "_app.asar"):
+            renamed = os.path.join(folder, "resources", name)
+            if os.path.isfile(renamed):
+                target = renamed
+                break
         _replace_openasar(downloaded, target)
-        try:
-            os.remove(downloaded)
-        except OSError:
-            pass
+        with open(target, "rb") as installed:
+            if hashlib.sha256(installed.read()).hexdigest() != asset["sha256"]:
+                raise OSError("Installed OpenAsar failed verification.")
         if on_line:
             on_line("Starting Discord…")
         try:
-            subprocess.Popen([os.path.join(folder, "Discord.exe")], cwd=folder,
+            subprocess.Popen([launcher], cwd=os.path.dirname(launcher),
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                              stdin=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW)
             launch = " Discord has been restarted."
@@ -696,11 +704,19 @@ def install_openasar(dest_dir, on_progress=None, on_line=None,
             launch = " Open Discord normally to finish."
         version = os.path.basename(folder).removeprefix("app-")
         return True, (f"Discord {version} and the latest verified OpenAsar nightly "
-                      f"are ready.{launch}")
+                      f"are ready with on-demand repair.{launch} "
+                      "Use the Discord shortcut or taskbar pin after fully quitting. "
+                      "If the existing pin bypasses repair, unpin it and pin Discord from Start again.")
     except InterruptedError:
         return False, "Cancelled."
     except Exception as e:
         return False, f"Discord installed, but OpenAsar could not be applied: {e}"
+    finally:
+        if downloaded:
+            try:
+                os.remove(downloaded)
+            except OSError:
+                pass
 
 
 def install(app_id, dest_dir, on_progress=None, on_line=None,
