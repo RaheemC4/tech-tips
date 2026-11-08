@@ -45,8 +45,7 @@ class PackagedTlsTests(unittest.TestCase):
             self.assertEqual(worker.execute('https-probe', None, lambda _: None),
                              {'ok': True, 'certificate_verification': True, 'status': 206, 'bytes_received': 22})
             request = opening.call_args.args[0]
-            self.assertEqual(request.full_url, 'https://proof.ovh.net/files/100Mb.dat')
-            self.assertEqual(request.get_header('Range'), 'bytes=0-65535')
+            self.assertEqual(request.full_url, 'https://api.github.com/repos/RaheemC4/tech-tips')
             self.assertIs(opening.call_args.kwargs['context'], context)
 
     def test_worker_refuses_disabled_verification_and_custom_addresses(self):

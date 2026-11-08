@@ -139,6 +139,7 @@ class NetworkTest(unittest.TestCase):
 
     def test_one_estimator_tracks_gigabit_bytes_and_does_not_reselect_an_old_peak(self):
         meter = nettest._Throughput(0)
+        meter.sample(0, 1)
         # Warm-up is excluded. Then 1 second at 1600 Mbps and 3 at 200 Mbps.
         meter.sample(2.5, 50_000_000)
         self.assertEqual(meter.sample(3.5, 250_000_000), 1600)
@@ -146,6 +147,39 @@ class NetworkTest(unittest.TestCase):
         self.assertEqual(meter.sample(5.5, 300_000_000), 2000 / 3)
         self.assertEqual(meter.sample(6.5, 325_000_000), 550)
         self.assertEqual(meter.rate, 550)  # Final is the latest live estimate, not 1600.
+
+    def test_server_setup_delay_does_not_reduce_a_1600_mbps_transfer(self):
+        meter = nettest._Throughput(0)
+        for now in (0, 2.5, 4):
+            self.assertEqual(meter.sample(now, 0), 0)
+            self.assertFalse(meter.ready)
+        # Data starts at 4 seconds: 200 MB each second is exactly 1,600 Mbps.
+        meter.sample(4.2, 40_000_000)
+        meter.sample(5.2, 240_000_000)
+        meter.sample(6.7, 540_000_000)
+        self.assertTrue(meter.ready)
+        self.assertAlmostEqual(meter.sample(12, 1_600_000_000), 1600)
+
+    def test_all_streams_start_immediately_without_speed_thresholds(self):
+        clock = [0.0]
+        started = []
+        def worker(stop, counter, lock): pass
+        class Thread:
+            def __init__(self, **kwargs): pass
+            def start(self): started.append(clock[0])
+        class Sampler:
+            samples = [7]
+            def start(self): pass
+            def stop(self): pass
+        class Meter(nettest._Throughput):
+            def sample(self, now, total):
+                return super().sample(now, round(max(0, now - 4) * 200_000_000))
+        diagnostics = {}
+        with patch.object(nettest.time, 'perf_counter', side_effect=lambda: clock[0]), patch.object(nettest.time, 'sleep', side_effect=lambda seconds: clock.__setitem__(0, clock[0]+seconds)), patch.object(nettest.threading, 'Thread', Thread), patch.object(nettest, '_Sampler', Sampler), patch.object(nettest, '_Throughput', Meter):
+            rate, _ = nettest._run_phase(worker, 10, 8, diagnostics=diagnostics)
+        self.assertEqual(diagnostics['streams'], 8)
+        self.assertEqual(started, [0.0] * 8)
+        self.assertAlmostEqual(rate, 1600)
 
     def test_phase_last_live_sample_equals_final_result(self):
         clock = [0.0]

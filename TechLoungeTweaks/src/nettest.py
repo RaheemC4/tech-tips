@@ -1,7 +1,7 @@
 """Bufferbloat / latency-under-load test.
 
 Live and final throughput share a time-weighted estimate from received/sent
-bytes after connection warm-up. Parallel transfers scale with measured speed;
+bytes after connection warm-up. Parallel transfers start together;
 completion never switches to an earlier peak window.
 """
 
@@ -203,8 +203,18 @@ class _Throughput:
         self.origin = (start, 0)
         self.ready = False
         self.rate = 0.0
+        self.first_data = False
 
     def sample(self, now, total):
+        if not self.first_data:
+            if total <= 0:
+                return 0.0
+            # DNS, TLS and failed-server delays are not transfer time. Begin
+            # slow-start warm-up only when a stream actually delivers bytes.
+            self.first_data = True
+            self.start = now
+            self.origin = (now, total)
+            return 0.0
         if not self.ready and now - self.start >= WARMUP:
             self.origin = (now, total)
             self.ready = True
@@ -229,10 +239,10 @@ def _run_phase(worker, seconds, threads, progress=None, label="", diagnostics=No
         thread.start()
     t0 = time.perf_counter()
     meter = _Throughput(t0)
-    for _ in range(min(2, threads)):
+    for _ in range(threads):
         add_worker()
     sampler_started = False
-    last_live = last_expand = t0
+    last_live = t0
     try:
         while True:
             now = time.perf_counter()
@@ -240,7 +250,7 @@ def _run_phase(worker, seconds, threads, progress=None, label="", diagnostics=No
             with lock:
                 total = counter[0]
             rate = meter.sample(now, total)
-            if elapsed >= WARMUP and not sampler_started:
+            if meter.ready and not sampler_started:
                 sampler.start()
                 sampler_started = True
             finished = elapsed >= seconds
@@ -252,13 +262,6 @@ def _run_phase(worker, seconds, threads, progress=None, label="", diagnostics=No
                 progress(label, min(1.0, elapsed / seconds))
             if finished:
                 break
-            # Avoid excess connections on slow links, but fill fast links promptly.
-            if elapsed < WARMUP and now - last_expand >= 0.5 and len(workers) < threads:
-                wanted = min(4 if rate < 100 else threads, threads)
-                if rate >= 4:
-                    for _ in range(min(2, wanted - len(workers))):
-                        add_worker()
-                last_expand = now
             time.sleep(0.05)
     finally:
         stop_evt.set()
@@ -268,6 +271,7 @@ def _run_phase(worker, seconds, threads, progress=None, label="", diagnostics=No
         with lock:
             diagnostics.update(counter[1])
             diagnostics["bytes"] = total
+            diagnostics["streams"] = len(workers)
     # Failed POSTs can have written into a socket buffer. Do not call that success.
     if worker is _upload_worker and not counter[1].get("successful_uploads"):
         return 0.0, sampler.samples

@@ -14,10 +14,9 @@ def https_probe():
     context = ssl.create_default_context()
     if context.verify_mode != ssl.CERT_REQUIRED or not context.check_hostname:
         raise RuntimeError('HTTPS verification must remain enabled.')
-    request = urllib.request.Request('https://proof.ovh.net/files/100Mb.dat',
-                                    headers={'User-Agent': 'TechLoungeTweaks/1.0',
-                                             'Range': 'bytes=0-65535'})
-    with urllib.request.urlopen(request, context=context, timeout=15) as response:
+    request = urllib.request.Request('https://api.github.com/repos/RaheemC4/tech-tips',
+                                     headers={'User-Agent': 'TechLoungeTweaks/1.0'})
+    with urllib.request.urlopen(request, context=context, timeout=5) as response:
         data = response.read(65536)
         status = response.status
     if status not in (200, 206) or not data:
