@@ -3,27 +3,14 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 namespace TechLounge {
-// A clipped viewport with one slim scroll thumb, never native horizontal chrome.
-sealed class TrayScrollPanel:Panel {
-    int offset,maximum,dragY,dragOffset;bool moving,dragging;
+// Fixed content area; every item is laid out together without scrollbars.
+sealed class TrayBodyPanel:Panel {
     protected override void WndProc(ref Message message){TrayGeometry.DiscardCopiedPixels(ref message,true);base.WndProc(ref message);}
-    public TrayScrollPanel(){AutoScroll=false;DoubleBuffered=true;SetStyle(ControlStyles.ResizeRedraw,true);}
-    int P(int n){var popup=FindForm() as Popup;return popup==null?n:popup.Pixels(n);}
-    public void ResetScroll(){ScrollTo(0);}
-    protected override void OnLayout(LayoutEventArgs e){base.OnLayout(e);if(moving)return;int bottom=0;foreach(Control c in Controls)bottom=Math.Max(bottom,c.Bottom+offset);maximum=Math.Max(0,bottom-ClientSize.Height+P(4));if(offset>maximum)ScrollTo(maximum);Invalidate();}
-    protected override void OnControlAdded(ControlEventArgs e){base.OnControlAdded(e);e.Control.Enter+=(s,a)=>{var c=(Control)s;if(c.Top<0)ScrollTo(offset+c.Top);else if(c.Bottom>Height)ScrollTo(offset+c.Bottom-Height);};}
-    void ScrollTo(int value){value=Math.Max(0,Math.Min(maximum,value));if(value==offset)return;moving=true;SuspendLayout();int delta=offset-value;offset=value;foreach(Control c in Controls)c.Top+=delta;ResumeLayout(false);moving=false;Invalidate(true);}
-    protected override void OnMouseWheel(MouseEventArgs e){ScrollTo(offset-e.Delta*P(42)/120);base.OnMouseWheel(e);}
-    Rectangle Thumb(){int h=Math.Max(P(30),Height*Height/Math.Max(1,Height+maximum));int y=maximum==0?0:offset*(Height-h)/maximum;return new Rectangle(Width-P(6),y,P(4),h);}
-    protected override void OnPaint(PaintEventArgs e){base.OnPaint(e);if(maximum==0)return;e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;using(var shape=Popup.Round(Thumb(),Math.Max(1,P(2))))using(var fill=new SolidBrush(Color.FromArgb(dragging?180:100,183,202,230)))e.Graphics.FillPath(fill,shape);}
-    protected override void OnMouseDown(MouseEventArgs e){base.OnMouseDown(e);if(maximum==0||e.Button!=MouseButtons.Left||e.X<Width-P(12))return;var thumb=Thumb();if(!thumb.Contains(e.Location))ScrollTo((e.Y-thumb.Height/2)*maximum/Math.Max(1,Height-thumb.Height));dragging=true;dragY=e.Y;dragOffset=offset;Capture=true;}
-    protected override void OnMouseMove(MouseEventArgs e){base.OnMouseMove(e);if(dragging)ScrollTo(dragOffset+(e.Y-dragY)*maximum/Math.Max(1,Height-Thumb().Height));}
-    protected override void OnMouseCaptureChanged(EventArgs e){base.OnMouseCaptureChanged(e);if(!Capture){dragging=false;Invalidate();}}
-    protected override void OnMouseUp(MouseEventArgs e){base.OnMouseUp(e);dragging=false;Capture=false;Invalidate();}
+    public TrayBodyPanel(){AutoScroll=false;DoubleBuffered=true;SetStyle(ControlStyles.ResizeRedraw,true);}
 }
 sealed class TrayCheckBox:CheckBox {
     public Color Tint;
-    public TrayCheckBox(){AutoSize=false;FlatStyle=FlatStyle.Flat;Cursor=Cursors.Hand;Font=Popup.FontFor(10,false);SetStyle(ControlStyles.UserPaint|ControlStyles.OptimizedDoubleBuffer|ControlStyles.AllPaintingInWmPaint,true);}
+    public TrayCheckBox(){AutoSize=false;FlatStyle=FlatStyle.Flat;Cursor=PopupDpi.HandCursor();Font=Popup.FontFor(10,false);SetStyle(ControlStyles.UserPaint|ControlStyles.OptimizedDoubleBuffer|ControlStyles.AllPaintingInWmPaint,true);}
     protected override void OnMouseEnter(EventArgs e){base.OnMouseEnter(e);Invalidate();}
     protected override void OnMouseLeave(EventArgs e){base.OnMouseLeave(e);Invalidate();}
     protected override void OnPaint(PaintEventArgs e){
@@ -43,8 +30,10 @@ sealed class TrayCheckBox:CheckBox {
 }
 sealed class TrayGpuCard:Control {
     readonly string name,installed,latest,status;
-    internal bool Green {get{return status=="current"||status=="ahead"||status=="unknown";}}
-    internal string StatusText {get{return status=="current"?"Current":status=="ahead"?"Newer":status=="update"?"Update available":"Unknown";}}
+    internal bool Green {get{return status=="current"||status=="ahead";}}
+    internal string StatusText {get{return status=="current"?"Up to date":status=="ahead"?"Newer":status=="update"?"Out of date":"Couldn’t verify";}}
+    static int NameHeight(string text,Popup popup,int width){return Math.Max(popup.Pixels(32),TextRenderer.MeasureText(text,popup.FontAt(10,true),new Size(Math.Max(1,width-popup.Pixels(57)),int.MaxValue),TextFormatFlags.WordBreak|TextFormatFlags.NoPrefix).Height);}
+    internal static int HeightFor(System.Collections.Generic.Dictionary<string,object> gpu,Popup popup,int width){return (Convert.ToString(gpu["status"])=="update"?110:92)+Math.Max(0,popup.Logical(NameHeight(Convert.ToString(gpu["name"]),popup,popup.Pixels(width)))-32);}
     public TrayGpuCard(System.Collections.Generic.Dictionary<string,object> gpu){
         name=Convert.ToString(gpu["name"]);installed=Convert.ToString(gpu["installed"]);status=Convert.ToString(gpu["status"]);latest=gpu.ContainsKey("latest")?Convert.ToString(gpu["latest"]):"";
         AccessibleRole=AccessibleRole.Grouping;AccessibleName=name;AccessibleDescription="Installed "+installed+". Status: "+StatusText;TabStop=false;
@@ -56,17 +45,18 @@ sealed class TrayGpuCard:Control {
         e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;
         using(var shape=Popup.Round(new Rectangle(0,0,Width-1,Height-1),popup.Pixels(11)))using(var fill=new SolidBrush(Color.FromArgb(24,180,200,235)))e.Graphics.FillPath(fill,shape);
         var flags=TextFormatFlags.Left|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix|TextFormatFlags.PreserveGraphicsClipping|TextFormatFlags.PreserveGraphicsTranslateTransform;
-        TraySymbols.Draw(e.Graphics,"gpu",new Rectangle(popup.Pixels(13),popup.Pixels(12),popup.Pixels(22),popup.Pixels(22)),Green?Color.FromArgb(61,220,151):Color.FromArgb(255,190,61));
-        TextRenderer.DrawText(e.Graphics,name,popup.FontAt(10,true),new Rectangle(popup.Pixels(44),popup.Pixels(9),Width-popup.Pixels(57),popup.Pixels(32)),Color.FromArgb(242,244,248),flags|TextFormatFlags.WordBreak);
-        int badgeWidth=popup.Pixels(status=="update"?104:76);
-        var badge=new Rectangle(Width-badgeWidth-popup.Pixels(13),popup.Pixels(52),badgeWidth,popup.Pixels(24));
-        var tint=Green?Color.FromArgb(61,220,151):Color.FromArgb(255,190,61);
+        TraySymbols.Draw(e.Graphics,"gpu",new Rectangle(popup.Pixels(13),popup.Pixels(12),popup.Pixels(22),popup.Pixels(22)),Green?Color.FromArgb(61,220,151):status=="update"?Color.FromArgb(255,190,61):Color.FromArgb(176,191,212));
+        int nameHeight=NameHeight(name,popup,Width),extra=nameHeight-popup.Pixels(32);
+        TextRenderer.DrawText(e.Graphics,name,popup.FontAt(10,true),new Rectangle(popup.Pixels(44),popup.Pixels(9),Width-popup.Pixels(57),nameHeight),Color.FromArgb(242,244,248),flags|TextFormatFlags.WordBreak);
+        int badgeWidth=popup.Pixels(status=="unknown"?116:104);
+        var badge=new Rectangle(Width-badgeWidth-popup.Pixels(13),popup.Pixels(52)+extra,badgeWidth,popup.Pixels(24));
+        var tint=Green?Color.FromArgb(61,220,151):status=="update"?Color.FromArgb(255,190,61):Color.FromArgb(176,191,212);
         using(var shape=Popup.Round(badge,popup.Pixels(7)))using(var fill=new SolidBrush(Color.FromArgb(24,tint)))e.Graphics.FillPath(fill,shape);
         TextRenderer.DrawText(e.Graphics,StatusText,popup.FontAt(9,true),badge,tint,flags|TextFormatFlags.HorizontalCenter|TextFormatFlags.SingleLine);
         int textWidth=Math.Max(1,badge.Left-popup.Pixels(22));
-        TextRenderer.DrawText(e.Graphics,"Installed",popup.FontAt(8,false),new Rectangle(popup.Pixels(13),popup.Pixels(43),textWidth,popup.Pixels(16)),Color.FromArgb(176,191,212),flags|TextFormatFlags.SingleLine);
-        TextRenderer.DrawText(e.Graphics,installed,popup.FontAt(10,true),new Rectangle(popup.Pixels(13),popup.Pixels(60),textWidth,popup.Pixels(22)),Color.FromArgb(232,238,248),flags|TextFormatFlags.SingleLine|TextFormatFlags.EndEllipsis);
-        if(status=="update"&&latest!="")TextRenderer.DrawText(e.Graphics,"Latest  "+latest,popup.FontAt(9,false),new Rectangle(popup.Pixels(13),popup.Pixels(85),Width-popup.Pixels(26),popup.Pixels(18)),Color.FromArgb(176,191,212),flags|TextFormatFlags.SingleLine);
+        TextRenderer.DrawText(e.Graphics,"Installed",popup.FontAt(8,false),new Rectangle(popup.Pixels(13),popup.Pixels(43)+extra,textWidth,popup.Pixels(16)),Color.FromArgb(176,191,212),flags|TextFormatFlags.SingleLine);
+        TextRenderer.DrawText(e.Graphics,installed,popup.FontAt(10,true),new Rectangle(popup.Pixels(13),popup.Pixels(60)+extra,textWidth,popup.Pixels(22)),Color.FromArgb(232,238,248),flags|TextFormatFlags.SingleLine|TextFormatFlags.EndEllipsis);
+        if(status=="update"&&latest!="")TextRenderer.DrawText(e.Graphics,"Latest  "+latest,popup.FontAt(9,false),new Rectangle(popup.Pixels(13),popup.Pixels(85)+extra,Width-popup.Pixels(26),popup.Pixels(18)),Color.FromArgb(176,191,212),flags|TextFormatFlags.SingleLine);
     }
 }
 
@@ -113,16 +103,16 @@ sealed class TrayMetricCard:Control {
         e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;
         using(var shape=Popup.Round(new Rectangle(0,0,Width-1,Height-1),popup.Pixels(14))){using(var fill=new SolidBrush(Color.FromArgb(28,180,200,235)))e.Graphics.FillPath(fill,shape);using(var rim=new Pen(Color.FromArgb(22,220,235,255)))e.Graphics.DrawPath(rim,shape);}
         Color tint=icon=="grade"?StatusColor:accent;
-        var saved=e.Graphics.Save();e.Graphics.TranslateTransform(pad,popup.Pixels(13));e.Graphics.ScaleTransform(popup.Pixels(22)/22f,popup.Pixels(22)/22f);
+        var saved=e.Graphics.Save();e.Graphics.TranslateTransform(pad,popup.Pixels(9));e.Graphics.ScaleTransform(popup.Pixels(18)/22f,popup.Pixels(18)/22f);
         using(var pen=new Pen(tint,1.8f)){pen.StartCap=pen.EndCap=LineCap.Round;pen.LineJoin=LineJoin.Round;
             if(icon=="download"||icon=="upload"){bool down=icon=="download";e.Graphics.DrawLine(pen,11,down?3:17,11,down?17:3);e.Graphics.DrawLines(pen,down?new[]{new Point(6,12),new Point(11,17),new Point(16,12)}:new[]{new Point(6,8),new Point(11,3),new Point(16,8)});e.Graphics.DrawLine(pen,4,20,18,20);}
             else if(icon=="latency")e.Graphics.DrawLines(pen,new[]{new Point(1,12),new Point(6,12),new Point(9,4),new Point(13,19),new Point(16,10),new Point(21,10)});
             else {e.Graphics.DrawEllipse(pen,2,2,18,18);e.Graphics.DrawLines(pen,new[]{new Point(6,11),new Point(10,15),new Point(16,8)});}
         }e.Graphics.Restore(saved);
         var flags=TextFormatFlags.Left|TextFormatFlags.VerticalCenter|TextFormatFlags.SingleLine|TextFormatFlags.NoPrefix|TextFormatFlags.EndEllipsis|TextFormatFlags.PreserveGraphicsClipping|TextFormatFlags.PreserveGraphicsTranslateTransform;
-        TextRenderer.DrawText(e.Graphics,title,popup.FontAt(9,true),new Rectangle(pad+popup.Pixels(29),popup.Pixels(12),Width-pad*2-popup.Pixels(29),popup.Pixels(24)),Color.FromArgb(208,220,238),flags);
-        TextRenderer.DrawText(e.Graphics,Value,popup.FontAt(Value=="Unavailable"?12:26,true),new Rectangle(pad,popup.Pixels(42),Width-pad*2,popup.Pixels(40)),StatusColor,flags);
-        TextRenderer.DrawText(e.Graphics,Caption,popup.FontAt(9,false),new Rectangle(pad,popup.Pixels(85),Width-pad*2,popup.Pixels(21)),Value=="Unavailable"?Color.FromArgb(255,190,61):Color.FromArgb(176,191,212),flags);
+        TextRenderer.DrawText(e.Graphics,title,popup.FontAt(9,true),new Rectangle(pad+popup.Pixels(25),popup.Pixels(6),Width-pad*2-popup.Pixels(25),popup.Pixels(20)),Color.FromArgb(208,220,238),flags);
+        TextRenderer.DrawText(e.Graphics,Value,popup.FontAt(Value=="Unavailable"?12:22,true),new Rectangle(pad,popup.Pixels(34),Width-pad*2,popup.Pixels(34)),StatusColor,flags);
+        TextRenderer.DrawText(e.Graphics,Caption,popup.FontAt(9,false),new Rectangle(pad,popup.Pixels(72),Width-pad*2,popup.Pixels(18)),Value=="Unavailable"?Color.FromArgb(255,190,61):Color.FromArgb(176,191,212),flags);
     }
 }
 

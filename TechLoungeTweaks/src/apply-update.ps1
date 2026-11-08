@@ -1,9 +1,60 @@
-param([int]$AppProcess, [string]$Source, [string]$Destination)
+param([int]$AppProcess, [string]$Source, [string]$Destination, [switch]$Installer)
 $ErrorActionPreference = 'Stop'
 $sourcePath = [IO.Path]::GetFullPath($Source).TrimEnd('\')
 $targetPath = [IO.Path]::GetFullPath($Destination).TrimEnd('\')
 $updateRoot = Join-Path $env:LOCALAPPDATA 'TechLoungeTweaks\Updates'
 $updateRoot = [IO.Path]::GetFullPath($updateRoot).TrimEnd('\')
+# Installed releases use the reviewed per-user installer and its atomic version pointer.
+if ($Installer) {
+    try {
+        if (-not $sourcePath.StartsWith($updateRoot + '\', [StringComparison]::OrdinalIgnoreCase) -or
+            -not (Test-Path -LiteralPath (Join-Path $targetPath 'current.txt')) -or
+            -not (Test-Path -LiteralPath (Join-Path $targetPath 'TechLounge.exe'))) {
+            throw 'Invalid installed-app update source or destination.'
+        }
+        $running = Get-Process -Id $AppProcess -ErrorAction SilentlyContinue
+        if ($running -and -not $running.WaitForExit(60000)) { throw 'App did not close. Update was not applied.' }
+        $currentVersion = (Get-Content -LiteralPath (Join-Path $targetPath 'current.txt') -Raw).Trim()
+        if ($currentVersion -notmatch '^\d{4}\.\d{2}\.\d{2}\.\d{6}$') { throw 'Invalid installed version.' }
+        $currentInfo = Get-Content -LiteralPath (Join-Path $targetPath "versions\$currentVersion\_internal\build-info.json") -Raw | ConvertFrom-Json
+        $candidate = Get-Content -LiteralPath (Join-Path $sourcePath 'installer.json') -Raw | ConvertFrom-Json
+        $setupPath = Join-Path $sourcePath 'TechLoungeTweaks-Setup.exe'
+        $sha = [Security.Cryptography.SHA256]::Create()
+        $setupStream = [IO.File]::OpenRead($setupPath)
+        try { $actualHash = [BitConverter]::ToString($sha.ComputeHash($setupStream)).Replace('-', '').ToLowerInvariant() }
+        finally { $setupStream.Dispose(); $sha.Dispose() }
+        $candidateChannel = if ($candidate.channel) { $candidate.channel } else { 'stable' }
+        $currentChannel = if ($currentInfo.channel) { $currentInfo.channel } else { 'stable' }
+        if ($candidateChannel -ne $currentChannel -or $candidateChannel -ne 'stable' -or
+            $candidate.app_revision -eq $currentInfo.app_revision -or
+            [DateTimeOffset]$candidate.built_utc -le [DateTimeOffset]$currentInfo.built_utc -or
+            $candidate.sha256 -notmatch '^[a-f0-9]{64}$' -or
+            $actualHash -ne $candidate.sha256) {
+            throw 'Installer identity or checksum verification failed.'
+        }
+        # Wait for the bootloader and WebView children to release their handles.
+        $prepared = $false
+        for ($attempt = 0; $attempt -lt 15; $attempt++) {
+            $guard = Start-Process -FilePath (Join-Path $targetPath 'TechLounge.exe') -ArgumentList '--prepare-install' -Wait -PassThru -WindowStyle Hidden
+            if ($guard.ExitCode -eq 0) { $prepared = $true; break }
+            Start-Sleep -Milliseconds 1000
+        }
+        if (-not $prepared) { throw 'Another app session is still running. Current app retained.' }
+        $install = Start-Process -FilePath $setupPath -ArgumentList ('/S /UPDATE /D=' + $targetPath) -Wait -PassThru -WindowStyle Hidden
+        if ($install.ExitCode -ne 0) { throw 'Installer failed. Previous version retained.' }
+        $installedVersion = (Get-Content -LiteralPath (Join-Path $targetPath 'current.txt') -Raw).Trim()
+        if ($installedVersion -ne $candidate.version) { throw 'Installer did not select the expected release.' }
+        'Updated successfully.' | Set-Content -LiteralPath (Join-Path $updateRoot 'last-update.txt')
+        Start-Process -FilePath (Join-Path $targetPath 'TechLounge.exe') -ArgumentList '--open' -WorkingDirectory $targetPath -WindowStyle Hidden
+        exit 0
+    } catch {
+        "Update failed: $($_.Exception.Message)" | Set-Content -LiteralPath (Join-Path $updateRoot 'last-update.txt')
+        if (-not (Get-Process -Id $AppProcess -ErrorAction SilentlyContinue) -and (Test-Path -LiteralPath (Join-Path $targetPath 'TechLounge.exe'))) {
+            Start-Process -FilePath (Join-Path $targetPath 'TechLounge.exe') -ArgumentList '--open' -WorkingDirectory $targetPath -WindowStyle Hidden
+        }
+        exit 1
+    }
+}
 $backupPath = $targetPath + '.previous-' + [guid]::NewGuid().ToString('N')
 $stagePath = $targetPath + '.staged-' + [guid]::NewGuid().ToString('N')
 $moved = $false

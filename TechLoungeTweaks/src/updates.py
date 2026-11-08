@@ -1,4 +1,4 @@
-"""Background release checks and transactional, opt-in portable tool updates.
+"""Background release checks and transactional app/tool updates.
 
 No network or subprocess work happens at import, construction or status reads.
 The app's reviewed adapters are updated only by a complete app release.
@@ -20,6 +20,7 @@ import urllib.request
 import urllib.parse
 import uuid
 import zipfile
+from update_lock import update_lease
 
 APP_REPO = 'RaheemC4/tech-tips'
 RAW = 'https://raw.githubusercontent.com/' + APP_REPO + '/main/TechLoungeTweaks/'
@@ -279,17 +280,20 @@ class UpdateManager:
         if self.channel == 'nuitka':
             self.root = self.root / 'nuitka'
         app_dir = Path(getattr(sys, '_tl_app_root', Path(sys.executable).parent)) if getattr(sys, 'frozen', False) else Path(__file__).parent.parent
+        self.install_root = app_dir.parent.parent if app_dir.parent.name == 'versions' and (app_dir.parent.parent / 'current.txt').is_file() else None
         self.bundle_root = Path(bundle_root) if bundle_root else app_dir / 'resources/tools' if root is None else None
         self.bundle_manifest = bundle_manifest or Path(getattr(sys, '_MEIPASS', Path(__file__).parent)) / 'bundled-tools.json'
         self.bundles = {}
         self.lock = threading.Lock()
         self.cancel = threading.Event()
-        self.state = dict(checking=False, busy=False, checked=None, items=[dict(OPENMOUSE)], message='', progress=None)
+        self.state = dict(checking=False, busy=False, restarting=False, checked=None, items=[dict(OPENMOUSE)], message='', progress=None)
         self.installed = {}
         self.offers = {}
         self.processes = {}
         self.startup_guards = {}
         self.started = False
+        self.automatic = False
+        self.auto_timer = None
 
     @staticmethod
     def _build_info():
@@ -306,14 +310,33 @@ class UpdateManager:
         with self.lock:
             self.state.update(values)
 
-    def start(self, manual=False):
+    def start(self, manual=False, automatic=False):
         with self.lock:
-            if self.state['busy'] or self.state['checking'] or (self.started and not manual):
+            if self.state['busy'] or self.state['checking'] or self.state.get('restarting') or (self.started and not manual):
                 return self.status_unlocked()
             self.started = True
             self.state.update(checking=True, message='Checking official publishers in the background…')
-        threading.Thread(target=self._check, daemon=True).start()
+        threading.Thread(target=self._check, kwargs={'automatic': automatic}, daemon=True).start()
         return {'ok': True}
+
+    def start_automatic(self):
+        if self.automatic:
+            return
+        self.automatic = True
+        self._automatic_tick()
+
+    def _automatic_tick(self):
+        if not self.automatic:
+            return
+        self.start(manual=True, automatic=True)
+        self.auto_timer = threading.Timer(15 * 60, self._automatic_tick)
+        self.auto_timer.daemon = True
+        self.auto_timer.start()
+
+    def stop_automatic(self):
+        self.automatic = False
+        if self.auto_timer:
+            self.auto_timer.cancel()
 
     def status_unlocked(self):
         return {'ok': False, 'message': 'A check or update is already active.'}
@@ -342,15 +365,17 @@ class UpdateManager:
         try:
             pending = json.loads((self.root / 'pending-app.json').read_text())
             path = (self.root / pending['folder']).resolve()
-            if (pending['version'] > self.build.get('built_utc', '') and
-                    path.is_relative_to(self.root.resolve()) and (path / 'TechLoungeTweaks.exe').is_file()):
-                info = json.loads((path / '_internal/build-info.json').read_text())
+            kind = pending.get('kind', 'portable')
+            metadata = path / ('installer.json' if kind == 'installer' else '_internal/build-info.json')
+            executable = path / ('TechLoungeTweaks-Setup.exe' if kind == 'installer' else 'TechLoungeTweaks.exe')
+            if path.is_relative_to(self.root.resolve()) and executable.is_file():
+                info = json.loads(metadata.read_text())
                 if newer_app(info, self.build):
-                    self._set(ready=str(path))
+                    self._set(ready=str(path), ready_kind=kind)
         except (OSError, ValueError, KeyError, TypeError):
             pass
 
-    def _check(self):
+    def _check(self, include_app=True, automatic=False):
         items, offers = [], {}
         try:
             self._load()
@@ -387,58 +412,109 @@ class UpdateManager:
                 items.append(row)
                 completed = {r['id'] for r in items}
                 self._set(items=copy.deepcopy(items + [r for r in initial if r['id'] not in completed]))
-            row = dict(id='app', name='TechLoungeTweaks', installed=self.build.get('version'), action=None, status='checking',
-                       message='The full app update includes tested Windows integrations.')
-            try:
-                manifest = app_manifest(self.build)
-                remote = manifest['built_utc']
-                is_new = newer_app(manifest, self.build)
-                row['available'] = manifest['version']
-                row['status'] = 'ready' if self.status().get('ready') else 'available' if is_new else 'current'
-                if is_new and not self.status().get('ready'):
-                    sha = manifest['files']['TechLoungeTweaks/TechLoungeTweaks.zip']
-                    url = manifest['download_url']
-                    if not url.startswith('https://github.com/' + APP_REPO + '/releases/download/'):
-                        raise ValueError('Unexpected app release download source.')
-                    offers['app'] = dict(url=url, sha256=sha,
-                                         version=remote, app_revision=manifest['app_revision'], name='TechLoungeTweaks.zip')
-                    row['action'] = 'Update' if getattr(sys, 'frozen', False) else None
-                    if not getattr(sys, 'frozen', False):
-                        row['message'] = 'App replacement is available in the packaged app only.'
-                if manifest.get('distribution') == 'installer':
+            if include_app:
+                row = dict(id='app', name='TechLoungeTweaks', installed=self.build.get('version'), action=None, status='checking',
+                           message='The full app update includes tested Windows integrations.')
+                try:
+                    manifest = app_manifest(self.build)
+                    remote = manifest['built_utc']
+                    is_new = newer_app(manifest, self.build)
+                    row['available'] = manifest['version']
+                    row['status'] = 'ready' if self.status().get('ready') else 'available' if is_new else 'current'
+                    if is_new and not self.status().get('ready'):
+                        sha = manifest['files']['TechLoungeTweaks/TechLoungeTweaks.zip']
+                        url = manifest['download_url']
+                        if not url.startswith('https://github.com/' + APP_REPO + '/releases/download/'):
+                            raise ValueError('Unexpected app release download source.')
+                        offers['app'] = dict(url=url, sha256=sha,
+                                             version=remote, app_revision=manifest['app_revision'], name='TechLoungeTweaks.zip')
+                        row['action'] = 'Update' if getattr(sys, 'frozen', False) else None
+                        if not getattr(sys, 'frozen', False):
+                            offers.pop('app', None)
+                            row['message'] = 'App replacement is available in the packaged app only.'
+                    if manifest.get('distribution') == 'installer':
+                        if 'app' in offers and self.install_root:
+                            offer = offers['app']
+                            published = release(APP_REPO)
+                            if not any(a.get('browser_download_url') == offer['url'] and a.get('digest') == 'sha256:' + offer['sha256'] for a in published.get('assets', [])):
+                                raise ValueError('GitHub release checksum does not match the app manifest yet.')
+                            offer['distribution'] = 'installer'
+                            row['message'] = 'Downloads automatically and restarts when no jobs or tools are running.'
+                        else:
+                            offers.pop('app', None)
+                            row['action'] = None
+                            row['message'] = 'Updated through the installed app. Portable users: install the GitHub package once.'
+                except Exception as exc:
                     offers.pop('app', None)
                     row['action'] = None
-                    row['message'] = 'Installed app releases update quietly through the tray companion when the app is closed. Portable users: run the installer from the existing GitHub download link once.'
-            except Exception as exc:
-                row['message'] = 'App check unavailable: ' + str(exc)
-                row.update(status='unavailable', check_error=True, available=None)
-            items.append(row)
-            for key, (name, repo, baseline) in REVIEWED.items():
-                row = dict(id=key, name=name, installed=baseline or 'Bundled', action=None)
-                try:
-                    latest = release(repo)['tag_name']
-                    row['available'] = latest
-                    row['message'] = ('New upstream release; requires a tested TechLoungeTweaks release.'
-                                      if baseline and version(latest) > version(baseline) else
-                                      'Updated through tested TechLoungeTweaks releases.')
-                    if baseline is None:
-                        row['message'] = 'Latest publisher release shown; bundled version is not recorded. Updated with the app.'
-                except Exception as exc:
-                    row['message'] = 'Publisher check unavailable: ' + str(exc)
+                    row['message'] = 'App check unavailable: ' + str(exc)
+                    row.update(status='unavailable', check_error=True, available=None)
                 items.append(row)
+                for key, (name, repo, baseline) in REVIEWED.items():
+                    row = dict(id=key, name=name, installed=baseline or 'Bundled', action=None)
+                    try:
+                        latest = release(repo)['tag_name']
+                        row['available'] = latest
+                        row['message'] = ('New upstream release; requires a tested TechLoungeTweaks release.'
+                                          if baseline and version(latest) > version(baseline) else
+                                          'Updated through tested TechLoungeTweaks releases.')
+                        if baseline is None:
+                            row['message'] = 'Latest publisher release shown; bundled version is not recorded. Updated with the app.'
+                    except Exception as exc:
+                        row['message'] = 'Publisher check unavailable: ' + str(exc)
+                    items.append(row)
             items.append(dict(OPENMOUSE))
             with self.lock:
                 self.offers = offers
-                message = 'App update ready. Restart to apply when your work is finished.' if self.state.get('ready') else 'Checks finished. Downloads start only when you choose Install or Update.'
+                message = 'App update ready. Restart to apply when your work is finished.' if self.state.get('ready') else 'Checks finished. Available updates install automatically.'
                 self.state.update(items=items, checked=time.time(), message=message)
         except Exception as exc:
             self._set(message='Unable to check updates: ' + str(exc))
         finally:
             self._set(checking=False)
+        if automatic and self.automatic:
+            self.apply_all()
+
+    def apply_all(self, background=True):
+        with self.lock:
+            if self.state['busy'] or self.state['checking'] or self.state.get('restarting'):
+                return self.status_unlocked()
+            pending = {key: copy.deepcopy(offer) for key, offer in self.offers.items()}
+            if not pending:
+                failed = any(row.get('check_error') for row in self.state['items'])
+                message = ('App update ready. Restarting automatically when idle.' if self.state.get('ready') else
+                           'Some publishers could not be checked. Automatic checks will retry.' if failed else 'Everything is up to date.')
+                self.state['message'] = message
+                return {'ok': not failed, 'message': message}
+            self.state.update(busy=True, active='all', progress=None, message='Updating app and tools…')
+            self.cancel.clear()
+        if background:
+            threading.Thread(target=self._run_all, args=(pending,), daemon=True).start()
+            return {'ok': True}
+        return self._run_all(pending)
+
+    def _run_all(self, pending):
+        errors = {row['id']: row.get('message', 'Publisher check unavailable.') for row in self.status()['items'] if row.get('check_error')}
+        try:
+            # Stage the app last so tool updates finish before a silent restart.
+            for key in sorted(pending, key=lambda key: key == 'app'):
+                if self.cancel.is_set():
+                    break
+                self._set(active=key, progress=None)
+                if not self._install(key, pending[key], batch=True):
+                    errors[key] = self.status()['message']
+            message = ('Updates cancelled; completed updates were kept.' if self.cancel.is_set() else
+                       'Some updates are deferred or failed and will retry automatically.' if errors else
+                       'App update ready. Restarting automatically when idle.' if self.status().get('ready') else
+                       'Everything is up to date.')
+            self._set(message=message, update_errors=errors)
+            return {'ok': not errors and not self.cancel.is_set(), 'message': message}
+        finally:
+            self._set(busy=False, active=None, progress=None)
 
     def apply(self, key):
         with self.lock:
-            if self.state['busy'] or self.state['checking'] or key not in self.offers:
+            if self.state['busy'] or self.state['checking'] or self.state.get('restarting') or key not in self.offers:
                 return {'ok': False, 'message': 'Wait for checks to finish, then choose an available update.'}
             self.state.update(busy=True, active=key, progress=None, message='Preparing download…')
             offer = copy.deepcopy(self.offers[key])
@@ -449,69 +525,93 @@ class UpdateManager:
     def _progress(self, message, fraction=None):
         self._set(message=message, progress=fraction)
 
-    def _install(self, key, offer):
+    def _install(self, key, offer, batch=False):
         try:
-            self.root.mkdir(parents=True, exist_ok=True)
-            with tempfile.TemporaryDirectory(prefix='stage-', dir=self.root) as temporary:
-                stage = Path(temporary)
-                archive = stage / ('download.7z' if offer['name'].endswith('.7z') else 'download.zip')
-                download(offer, archive, self._progress, self.cancel)
-                if self.cancel.is_set():
-                    raise InterruptedError('Update cancelled.')
-                self._progress('Verifying and unpacking…')
-                unpacked = stage / 'payload'
-                extract(archive, unpacked)
-                if self.cancel.is_set():
-                    raise InterruptedError('Update cancelled.')
-                if key == 'app':
-                    payload = unpacked / 'TechLoungeTweaks'
-                    for required in ('TechLoungeTweaks.exe', '_internal/build-info.json', 'resources/TechLoungeProfile.nip'):
-                        if not (payload / required).is_file():
-                            raise ValueError('App package is incomplete; current app unchanged.')
-                    info = json.loads((payload / '_internal/build-info.json').read_text())
-                    if info['built_utc'] != offer['version']:
-                        raise ValueError('App package and release metadata do not match. Check again later.')
-                    if info.get('app_revision') != offer['app_revision']:
-                        raise ValueError('App content identity does not match the release. Check again later.')
-                    if not newer_app(info, self.build):
-                        raise ValueError('App package is not a newer release in this channel.')
-                    target = self.root / ('app-' + uuid.uuid4().hex)
-                    shutil.move(str(payload), target)
-                    atomic_json(self.root / 'pending-app.json', dict(folder=target.name, version=offer['version']))
-                    self._set(ready=str(target), message='App update ready. Restart to apply when your work is finished.')
-                else:
-                    exe = [p for p in unpacked.rglob('*.exe') if p.name.lower() == TOOLS[key]['exe'].lower()]
-                    if len(exe) > 1:
-                        # Multi-architecture releases ship an official root
-                        # launcher which selects the correct native binary.
-                        root_exe = unpacked / TOOLS[key]['exe']
-                        exe = [root_exe] if root_exe.is_file() else exe
-                    if len(exe) != 1:
-                        raise ValueError('Expected tool executable not found; publisher packaging may have changed.')
-                    relative = exe[0].relative_to(unpacked)
-                    target = self.root / (key + '-' + uuid.uuid4().hex)
-                    shutil.move(str(unpacked), target)
-                    old = self.installed.get(key)
-                    record = dict(version=offer['version'], folder=target.name, exe=str(relative))
-                    if old:
-                        record['previous'] = {k: v for k, v in old.items() if k != 'previous'}
-                    new = dict(self.installed, **{key: record})
-                    atomic_json(self.root / 'installed.json', new)
-                    self.installed = new
-                    self._set(message=TOOLS[key]['name'] + ' is ready. Open it when you are ready; previous files were kept.')
-                with self.lock:
-                    self.offers.pop(key, None)
-                    for row in self.state['items']:
-                        if row['id'] == key:
-                            row.update(action=None, installed=offer['version'], launch=key != 'app')
-                            if key == 'app':
-                                row.update(installed=self.build.get('version'), status='ready')
-                            else:
-                                row['rollback'] = bool(self.installed[key].get('previous'))
+            with update_lease(self.root):
+                persisted = self.root / 'installed.json'
+                if persisted.is_file():
+                    self.installed = json.loads(persisted.read_text())
+                running = self.processes.get(key)
+                if running and running.poll() is None:
+                    raise RuntimeError('Close ' + TOOLS[key]['name'] + ' before its update can finish.')
+                old = self.installed.get(key)
+                if key != 'app' and old and self._tool_path(key) and version(old['version']) >= version(offer['version']):
+                    self._complete_offer(key, old['version'])
+                    return True
+                with tempfile.TemporaryDirectory(prefix='stage-', dir=self.root) as temporary:
+                    stage = Path(temporary)
+                    archive = stage / ('download.7z' if offer['name'].endswith('.7z') else 'download.zip')
+                    download(offer, archive, self._progress, self.cancel)
+                    if self.cancel.is_set():
+                        raise InterruptedError('Update cancelled.')
+                    self._progress('Verifying and unpacking…')
+                    unpacked = stage / 'payload'
+                    extract(archive, unpacked)
+                    if self.cancel.is_set():
+                        raise InterruptedError('Update cancelled.')
+                    if key == 'app':
+                        self._stage_app(unpacked, offer)
+                    else:
+                        exe = [p for p in unpacked.rglob('*.exe') if p.name.lower() == TOOLS[key]['exe'].lower()]
+                        if len(exe) > 1:
+                            # Multi-architecture releases ship an official root
+                            # launcher which selects the correct native binary.
+                            root_exe = unpacked / TOOLS[key]['exe']
+                            exe = [root_exe] if root_exe.is_file() else exe
+                        if len(exe) != 1:
+                            raise ValueError('Expected tool executable not found; publisher packaging may have changed.')
+                        relative = exe[0].relative_to(unpacked)
+                        target = self.root / (key + '-' + uuid.uuid4().hex)
+                        shutil.move(str(unpacked), target)
+                        old = self.installed.get(key)
+                        record = dict(version=offer['version'], folder=target.name, exe=str(relative))
+                        if old:
+                            record['previous'] = {k: v for k, v in old.items() if k != 'previous'}
+                        new = dict(self.installed, **{key: record})
+                        atomic_json(self.root / 'installed.json', new)
+                        self.installed = new
+                        self._set(message=TOOLS[key]['name'] + ' is ready. Open it when you are ready; previous files were kept.')
+                    self._complete_offer(key, offer['version'])
+            return True
         except Exception as exc:
             self._set(message=str(exc))
+            return False
         finally:
-            self._set(busy=False, active=None, progress=None)
+            if not batch:
+                self._set(busy=False, active=None, progress=None)
+
+    def _stage_app(self, unpacked, offer):
+        installer = offer.get('distribution') == 'installer'
+        payload = unpacked if installer else unpacked / 'TechLoungeTweaks'
+        required = ('TechLoungeTweaks-Setup.exe', 'installer.json') if installer else ('TechLoungeTweaks.exe', '_internal/build-info.json', 'resources/TechLoungeProfile.nip')
+        if not all((payload / name).is_file() for name in required):
+            raise ValueError('App package is incomplete; current app unchanged.')
+        info = json.loads((payload / ('installer.json' if installer else '_internal/build-info.json')).read_text())
+        if info['built_utc'] != offer['version'] or info.get('app_revision') != offer['app_revision']:
+            raise ValueError('App package and release identity do not match. Check again later.')
+        if not newer_app(info, self.build):
+            raise ValueError('App package is not a newer release in this channel.')
+        if installer:
+            with (payload / 'TechLoungeTweaks-Setup.exe').open('rb') as stream:
+                actual = hashlib.file_digest(stream, 'sha256').hexdigest()
+            if actual != info.get('sha256'):
+                raise ValueError('Installer checksum mismatch; current app unchanged.')
+        target = self.root / ('app-' + uuid.uuid4().hex)
+        shutil.move(str(payload), target)
+        kind = 'installer' if installer else 'portable'
+        atomic_json(self.root / 'pending-app.json', dict(folder=target.name, version=offer['version'], kind=kind))
+        self._set(ready=str(target), ready_kind=kind, message='App update ready. Restarting automatically when idle.')
+
+    def _complete_offer(self, key, installed):
+        with self.lock:
+            self.offers.pop(key, None)
+            for row in self.state['items']:
+                if row['id'] == key:
+                    row.update(action=None, installed=installed, launch=key != 'app')
+                    if key == 'app':
+                        row.update(installed=self.build.get('version'), status='ready')
+                    else:
+                        row['rollback'] = bool(self.installed[key].get('previous'))
 
     def _tool_path(self, key):
         entry = self.installed.get(key)
@@ -528,6 +628,12 @@ class UpdateManager:
     def launch(self, key):
         if key not in TOOLS:
             return {'ok': False, 'message': 'Unknown tool.'}
+        state = self.status()
+        if state['busy'] and state.get('active') in (key, 'all'):
+            return {'ok': False, 'message': 'This tool is being updated. It will be available shortly.'}
+        persisted = self.root / 'installed.json'
+        if persisted.is_file():
+            self.installed = json.loads(persisted.read_text())
         path = self._tool_path(key)
         if not path:
             return {'ok': False, 'message': 'Install this tool first.'}
@@ -576,38 +682,63 @@ class UpdateManager:
         return {'ok': True, 'pid': self.processes[key].pid, 'folder': str(path.parent)}
 
     def rollback(self, key):
-        with self.lock:
-            if self.state['busy'] or self.state['checking']:
-                return {'ok': False, 'message': 'Wait for the current operation to finish.'}
-            old = self.installed.get(key, {}).get('previous')
-            if not old:
-                return {'ok': False, 'message': 'No previous managed version is available.'}
-            if old.get('bundle') and self.bundles.get(key, {}).get('version') != old['version']:
-                return {'ok': False, 'message': 'That previous bundled version is no longer available.'}
-            current = self.installed[key]
-            new = dict(self.installed, **{key: dict(old, selected_previous=True, previous={k:v for k,v in current.items() if k != 'previous'})})
-            atomic_json(self.root / 'installed.json', new)
-            self.installed = new
+        try:
+            with update_lease(self.root):
+                with self.lock:
+                    if self.state['busy'] or self.state['checking']:
+                        return {'ok': False, 'message': 'Wait for the current operation to finish.'}
+                    persisted = self.root / 'installed.json'
+                    if persisted.is_file():
+                        self.installed = json.loads(persisted.read_text())
+                    old = self.installed.get(key, {}).get('previous')
+                    if not old:
+                        return {'ok': False, 'message': 'No previous managed version is available.'}
+                    if old.get('bundle') and self.bundles.get(key, {}).get('version') != old['version']:
+                        return {'ok': False, 'message': 'That previous bundled version is no longer available.'}
+                    current = self.installed[key]
+                    new = dict(self.installed, **{key: dict(old, selected_previous=True, previous={k:v for k,v in current.items() if k != 'previous'})})
+                    atomic_json(self.root / 'installed.json', new)
+                    self.installed = new
+        except (OSError, ValueError, RuntimeError) as exc:
+            return {'ok': False, 'message': str(exc)}
         return self.start(manual=True)
 
     def restart(self):
+        if self.status().get('restarting'):
+            return {'ok': True}
         ready = self.status().get('ready')
         if not ready or not getattr(sys, 'frozen', False):
             return {'ok': False, 'message': 'No app update is ready.'}
         try:
             path = Path(ready).resolve()
-            info = json.loads((path / '_internal/build-info.json').read_text())
+            installer = self.status().get('ready_kind') == 'installer'
+            info = json.loads((path / ('installer.json' if installer else '_internal/build-info.json')).read_text())
             if not path.is_relative_to(self.root.resolve()) or not newer_app(info, self.build):
                 raise ValueError('Update is not a newer release in this channel.')
+            if installer:
+                with (path / 'TechLoungeTweaks-Setup.exe').open('rb') as stream:
+                    actual = hashlib.file_digest(stream, 'sha256').hexdigest()
+                if not self.install_root or actual != info.get('sha256'):
+                    raise ValueError('Installed-app update failed verification.')
         except (OSError, ValueError, KeyError, TypeError) as exc:
             return {'ok': False, 'message': 'App update rejected: ' + str(exc)}
         # Run the helper outside the app folder so none of its files are held open.
         helper = self.root / ('apply-' + uuid.uuid4().hex + '.ps1')
         shutil.copyfile(Path(sys._MEIPASS) / 'apply-update.ps1', helper)
-        subprocess.Popen(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(helper),
-                          '-AppProcess', str(os.getpid()), '-Source', ready,
-                          '-Destination', str(getattr(sys, '_tl_app_root', Path(sys.executable).parent))],
-                         creationflags=0x08000000, cwd=self.root)
+        destination = self.install_root if installer else getattr(sys, '_tl_app_root', Path(sys.executable).parent)
+        arguments = ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(helper),
+                     '-AppProcess', str(os.getpid()), '-Source', ready, '-Destination', str(destination)]
+        if installer:
+            arguments.append('-Installer')
+        with self.lock:
+            if self.state.get('restarting'):
+                return {'ok': True}
+            self.state['restarting'] = True
+        try:
+            subprocess.Popen(arguments, creationflags=0x08000000, cwd=self.root)
+        except Exception:
+            self._set(restarting=False)
+            raise
         return {'ok': True}
 
 

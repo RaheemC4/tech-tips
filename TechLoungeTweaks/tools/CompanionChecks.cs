@@ -11,9 +11,9 @@ namespace TechLounge {
 static class CompanionChecks {
     [STAThread] static int Main(string[] args){
         PopupDpi.Enable();
-        try {CheckUpdateBoundaries();CheckButtonPainting();CheckThemeIcons();}catch(Exception ex){File.WriteAllText(args[0],"FAIL: "+ex);return 1;}
+        try {CheckUpdateBoundaries();CheckDriverLinks();CheckPopupScaling();CheckButtonPainting();CheckThemeIcons();}catch(Exception ex){File.WriteAllText(args[0],"FAIL: "+ex);return 1;}
         Application.EnableVisualStyles();int code=1;var watch=Stopwatch.StartNew();
-        using(var tray=new Tray(false))using(var timer=new Timer{Interval=100}){
+        using(var tray=new Tray(false,false))using(var timer=new Timer{Interval=100}){
             tray.Run("plans",null,false);
             timer.Tick+=(s,e)=>{
                 Job job=tray.Jobs["plans"];
@@ -36,6 +36,42 @@ static class CompanionChecks {
             };
             timer.Start();Application.Run(tray);
         }return code;
+    }
+    static void CheckDriverLinks(){
+        foreach(string bad in new[]{"http://www.nvidia.com/a", "https://nvidia.com.evil.test/a", "https://user@nvidia.com/a", "https://nvidia.com:444/a", "file:///C:/driver.exe"})
+            if(DriverLinks.IsOfficial(bad,"NVIDIA"))throw new Exception("Unsafe GPU link accepted: "+bad);
+        if(!DriverLinks.IsOfficial("https://us.download.nvidia.com/Windows/test.exe","NVIDIA"))throw new Exception("Official NVIDIA download rejected");
+        foreach(string vendor in new[]{"NVIDIA","AMD","Intel"})if(!DriverLinks.IsOfficial(DriverLinks.SupportPage(vendor),vendor))throw new Exception("Official support link rejected");
+        if(DriverLinks.IsOfficial("https://www.nvidia.com/a","AMD"))throw new Exception("Wrong vendor link accepted");
+    }
+    static void CheckPopupScaling(){
+        var flags=BindingFlags.Instance|BindingFlags.NonPublic;
+        using(var tray=new Tray(true))using(var popup=new Popup(tray)){
+            popup.CreateControl();
+            foreach(int dpi in new[]{96,144,192,240}){
+                var message=Message.Create(popup.Handle,0x02E0,new IntPtr(dpi|(dpi<<16)),IntPtr.Zero);
+                typeof(Popup).GetMethod("WndProc",flags).Invoke(popup,new object[]{message});
+                int expected=Math.Min((int)Math.Round(380*dpi/96.0),Screen.FromHandle(popup.Handle).WorkingArea.Width-(int)Math.Round(28*dpi/96.0));
+                if(popup.ClientSize.Width!=expected)throw new Exception("DPI width mismatch at "+dpi);
+                var footer=(Control)typeof(Popup).GetField("openFooter",flags).GetValue(popup);
+                if(footer.Bottom>popup.ClientSize.Height||footer.Top<0)throw new Exception("Footer outside viewport at "+dpi);
+                var settings=(Control)typeof(Popup).GetField("settingsButton",flags).GetValue(popup);
+                foreach(Control chrome in popup.Controls)if(chrome is Label&&chrome.Bounds.IntersectsWith(settings.Bounds))throw new Exception("Header overlaps settings at "+dpi);
+                var content=(Control)typeof(Popup).GetField("body",flags).GetValue(popup);
+                foreach(Control action in content.Controls)if(action.Text=="Connection"&&action.Width!=content.ClientSize.Width)throw new Exception("Action width not rebuilt at "+dpi);
+                using(var bitmap=new Bitmap(popup.Width,popup.Height)){popup.DrawToBitmap(bitmap,popup.ClientRectangle);}
+            }
+            var gpu=new Dictionary<string,object>{{"name","NVIDIA GeForce RTX 5090"},{"vendor","NVIDIA"},{"installed","581.80"},{"latest","581.94"},{"status","update"},{"url","https://us.download.nvidia.com/Windows/test.exe"}};
+            foreach(string status in new[]{"update","current","unknown"}){
+                gpu["status"]=status;
+                using(var card=new TrayGpuCard(gpu))if(card.Green!=(status=="current"))throw new Exception("Incorrect GPU status colour: "+status);
+                tray.Jobs["drivers"]=new Job{Result=new Dictionary<string,object>{{"gpus",new object[]{gpu}}}};
+                typeof(Popup).GetField("page",flags).SetValue(popup,"drivers");popup.Render();
+                var body=(Control)typeof(Popup).GetField("body",flags).GetValue(popup);bool download=false;
+                foreach(Control control in body.Controls)download|=control.Text=="Download update";
+                if(download!=(status=="update"))throw new Exception("Incorrect GPU update action for "+status);
+            }
+        }
     }
     static Bitmap PaintButton(GlassButton button,Color seed,bool clipped){
         var bitmap=new Bitmap(260,110);

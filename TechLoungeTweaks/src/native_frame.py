@@ -77,10 +77,23 @@ class NativeFrame:
                 dpi = self.user.GetDpiForWindow(hwnd)
                 edge = self.user.GetSystemMetricsForDpi(32, dpi) + self.user.GetSystemMetricsForDpi(92, dpi)
                 sizes = ctypes.cast(lp, ctypes.POINTER(MinMaxInfo)).contents
+                sizes.min_track.x = min(sizes.min_track.x, monitor.work.right - monitor.work.left)
+                sizes.min_track.y = min(sizes.min_track.y, monitor.work.bottom - monitor.work.top)
                 sizes.max_position.x = monitor.work.left - monitor.monitor.left - edge
                 sizes.max_position.y = monitor.work.top - monitor.monitor.top - edge
                 sizes.max_size.x = monitor.work.right - monitor.work.left + 2 * edge
                 sizes.max_size.y = monitor.work.bottom - monitor.work.top + 2 * edge
+            return result
+        elif message == 0x02E0:  # WM_DPICHANGED: fit the new monitor's work area.
+            result = self.comctl.DefSubclassProc(hwnd, message, wp, lp)
+            rect = ctypes.cast(lp, ctypes.POINTER(wintypes.RECT)).contents
+            monitor = MonitorInfo(size=ctypes.sizeof(MonitorInfo))
+            if not self.user.IsZoomed(hwnd) and self.user.GetMonitorInfoW(self.user.MonitorFromWindow(hwnd, 2), ctypes.byref(monitor)):
+                width = min(rect.right-rect.left, monitor.work.right-monitor.work.left)
+                height = min(rect.bottom-rect.top, monitor.work.bottom-monitor.work.top)
+                x = max(monitor.work.left, min(rect.left, monitor.work.right-width))
+                y = max(monitor.work.top, min(rect.top, monitor.work.bottom-height))
+                self.user.SetWindowPos(hwnd, None, x, y, width, height, 0x0014)
             return result
         elif message == 0x0084 and not self.user.IsZoomed(hwnd):  # WM_NCHITTEST
             rect = wintypes.RECT()

@@ -17,6 +17,10 @@ import traceback
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 
+# Establish monitor-aware coordinates and native cursor scaling before UI imports.
+if sys.platform == 'win32':
+    ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+
 import webview
 
 import apps
@@ -89,6 +93,13 @@ def traced(fn):
     def wrapper(self, *args, **kwargs):
         t0 = time.time()
         log(f"-> {fn.__name__}{args!r}")
+        activity = getattr(self, '_activity_lock', None)
+        tracked = activity is not None and fn.__name__ not in ('updates_status', 'active_jobs', 'updates_restart', 'close')
+        if tracked:
+            with activity:
+                if self._auto_restart_committed:
+                    return {'ok': False, 'message': 'Restarting to finish the app update.'}
+                self._active_calls += 1
         try:
             out = fn(self, *args, **kwargs)
             log(f"<- {fn.__name__} ok in {time.time() - t0:.1f}s")
@@ -97,6 +108,10 @@ def traced(fn):
             tb = traceback.format_exc()
             log(f"!! {fn.__name__} FAILED after {time.time() - t0:.1f}s\n{tb}")
             return {"__error__": tb.strip().splitlines()[-1], "trace": tb}
+        finally:
+            if tracked:
+                with activity:
+                    self._active_calls -= 1
     return wrapper
 
 
@@ -108,6 +123,11 @@ class Api:
 
     def __init__(self):
         self._updates = UpdateManager()
+        self._auto_restart_lock = threading.Lock()
+        self._activity_lock = threading.Lock()
+        self._active_calls = 0
+        self._auto_restart_committed = False
+        self._startup_updates_ready = False
         self._tool_launch_lock = threading.Lock()
         self._floating_tools = FloatingTools(self._tool_visibility, self._return_tool_focus)
         self._debloat_run_lock = threading.Lock()
@@ -167,7 +187,7 @@ class Api:
         except Exception:
             return None
 
-    def _begin_native_drag(self):
+    def _begin_native_drag(self, hit=2):
         from ctypes import wintypes
         user=ctypes.WinDLL('user32',use_last_error=True)
         user.GetAsyncKeyState.argtypes=[ctypes.c_int]
@@ -186,7 +206,7 @@ class Api:
         # This runs on the owning WinForms UI thread, so ReleaseCapture releases
         # the WebView's mouse capture before starting Windows' native move loop.
         user.ReleaseCapture()
-        user.SendMessageW(hwnd,0x00A1,2,position)  # WM_NCLBUTTONDOWN / HTCAPTION
+        user.SendMessageW(hwnd,0x00A1,hit,position)  # WM_NCLBUTTONDOWN / HTCAPTION
 
     @traced
     def start_drag(self):
@@ -195,6 +215,15 @@ class Api:
         from System import Action
         # Never run the modal native move loop on a pywebview API worker thread.
         self._window.native.BeginInvoke(Action(self._begin_native_drag))
+        return True
+
+    @traced
+    def start_resize(self, edge):
+        hits = {'w':10, 'e':11, 'n':12, 'nw':13, 'ne':14, 's':15, 'sw':16, 'se':17}
+        if edge not in hits or not self._hwnd():
+            return False
+        from System import Action
+        self._window.native.BeginInvoke(Action(lambda: self._begin_native_drag(hits[edge])))
         return True
 
     def _set_window_state(self, action):
@@ -255,6 +284,8 @@ class Api:
                 if getattr(self, "_scan_complete", False):
                     startup_summary.save_tweaks([self._payload(t) for t in self._tweaks().values()])
                 self._shutdown_complete=True
+                if getattr(self, '_updates', None):
+                    self._updates.stop_automatic()
                 # Post the close to WinForms instead of synchronously invoking
                 # it from a timer while the WebView bridge is still unwinding.
                 from System import Action
@@ -342,7 +373,7 @@ class Api:
             "open_updates": "--updates" in sys.argv,
         }
         threading.Thread(target=self._background_start, daemon=True).start()
-        self._updates.start()
+        self._updates.start_automatic()
         return payload
 
     def _return_tool_focus(self):
@@ -403,7 +434,30 @@ class Api:
 
     @traced
     def updates_status(self):
-        return self._updates.status()
+        state = self._updates.status()
+        lock = getattr(self, '_auto_restart_lock', None)
+        if state.get('ready') and not state.get('restarting') and not state['busy'] and not state['checking'] and lock and lock.acquire(False):
+            threading.Thread(target=self._restart_automatically, daemon=True).start()
+        return state
+
+    def _restart_automatically(self):
+        try:
+            if not self._startup_updates_ready:
+                return
+            with self._activity_lock:
+                if self._active_calls:
+                    return
+                self._auto_restart_committed = True
+            result = self.updates_restart()
+            if not result.get('ok'):
+                with self._activity_lock:
+                    self._auto_restart_committed = False
+        except Exception:
+            with self._activity_lock:
+                self._auto_restart_committed = False
+            log('automatic restart deferred\n' + traceback.format_exc())
+        finally:
+            self._auto_restart_lock.release()
 
     @traced
     def updates_check(self):
@@ -412,6 +466,10 @@ class Api:
     @traced
     def updates_apply(self, key):
         return self._updates.apply(key)
+
+    @traced
+    def updates_apply_all(self):
+        return self._updates.apply_all()
 
     @traced
     def updates_cancel(self):
@@ -446,6 +504,9 @@ class Api:
 
     @traced
     def updates_restart(self):
+        setup = getattr(getattr(self, '_windows_setup', None), '_process', None)
+        if getattr(self, '_busy', set()) or (setup is not None and setup.poll() is None):
+            return {'ok': False, 'message': 'Waiting for the current system action to finish.'}
         if defender_remover.is_running() or self._floating_tools.has_open_windows() or any(p.poll() is None for p in self._updates.processes.values()):
             return {'ok': False, 'message': 'Close the open tool windows before restarting to apply the app update.'}
         if self._updates.status()['busy'] or any(j.get('state') == 'running' for j in self.active_jobs()):
@@ -463,7 +524,8 @@ class Api:
         # sit behind the tweak scan, specs and every sysinfo section. Backup
         # then warm run in sequence on this thread so the two -exportCustomized
         # calls never overlap.
-        threading.Thread(target=self._nv_startup, daemon=True).start()
+        nvidia = threading.Thread(target=self._nv_startup, daemon=True)
+        nvidia.start()
         hardware = threading.Thread(target=self._load_startup_specs, daemon=True)
         hardware.start()
         try:
@@ -476,6 +538,9 @@ class Api:
         hardware.join()
         self._prefetch()
         self._emit("prefetched", {})
+        # A silent restart must wait for startup reads and NVIDIA backup work.
+        nvidia.join()
+        self._startup_updates_ready = True
 
     def _load_startup_specs(self):
         try:
@@ -1820,10 +1885,14 @@ def _close_splash():
 
 def centre_window(window):
     """Use actual native pixel dimensions and the pointer monitor work area."""
-    from System.Drawing import Point
+    from System.Drawing import Point, Size
     from System.Windows.Forms import Screen, Cursor
     native = window.native
     work = Screen.FromPoint(Cursor.Position).WorkingArea
+    ctypes.windll.user32.GetDpiForWindow.argtypes = [ctypes.c_void_p]
+    scale = ctypes.windll.user32.GetDpiForWindow(native.Handle.ToInt64()) / 96
+    native.MinimumSize = Size(min(round(640*scale), work.Width), min(round(420*scale), work.Height))
+    native.Size = Size(min(native.Width, work.Width), min(native.Height, work.Height))
     native.Location = Point(work.Left + max(0,(work.Width-native.Width)//2),
                             work.Top + max(0,(work.Height-native.Height)//2))
 
@@ -1846,7 +1915,7 @@ def main():
         js_api=api,
         # Keep the existing origin so saved themes survive the asset URL change.
         http_port=webview.settings['DEFAULT_HTTP_PORT'],
-        width=1380, height=900, min_size=(940, 640),
+        width=1380, height=900, min_size=(640, 420),
         resizable=True,
         hidden=True,
         frameless=True, easy_drag=False,

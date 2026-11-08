@@ -245,7 +245,7 @@ const TW={Performance:[['Disable GameDVR','Turns off Xbox Game Bar background re
  
  // Representative update status; no live downloads in screenshots.
  await p.evaluate(()=>{
-   updateLast={checking:false,busy:false,checked:Date.now()/1000,message:'Checks finished. Downloads start only when you choose Install or Update.',items:[
+   updateLast={checking:false,busy:false,checked:Date.now()/1000,message:'Automatic updates are enabled. Available updates install in the background.',items:[
      {id:'openmouse',name:'OpenMouse',installed:'Live web panel',message:'Opens in your default browser. Mouse controls require WebHID support, such as Edge or Chrome.'},
      {id:'driverbooster',name:'IObit Driver Booster',installed:'13.5.1.400',local:true,launch:true},
     {id:'treesize',name:'TreeSize Professional',installed:'9.8.0.2301',local:true,launch:true},

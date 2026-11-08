@@ -308,6 +308,7 @@ def prepare(background_only=False):
     run([node, APP / 'tools/test-sidebar-motion-ui.js'], env=env)
     run([node, APP / 'tools/test-compact-pages-ui.js'], env=env)
     run([node, APP / 'tools/test-utility-fit-ui.js'], env=env)
+    run([node, APP / 'tools/test-responsive-window-ui.js'], env=env)
     if background_only:
         print('DEFERRED: foreground native window and popup smoke tests (--background-only).', flush=True)
     else:

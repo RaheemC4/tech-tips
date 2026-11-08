@@ -69,6 +69,11 @@ def select_plan(value):
 
 
 def execute(action, payload, emit):
+    if action == 'update-tools':
+        from updates import UpdateManager
+        manager = UpdateManager()
+        manager._check(include_app=False)
+        return manager.apply_all(background=False)
     if action == 'plans':
         return {'plans': plans()}
     if action == 'power':

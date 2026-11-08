@@ -50,11 +50,12 @@ async function openUpdates() {
         <button class="btn ghost" id="updateCancel" hidden>Cancel download</button></div>
       <button class="btn" id="updateRestart" hidden>Restart & apply</button>
 
-      </div><footer><button class="update-check" id="updateCheck">${UPDATE_ICON}<span id="updateCheckLabel">Check for updates</span></button><span id="updateChecked"></span></footer>`;
+      </div><footer><button class="update-check" id="updateCheck">${UPDATE_ICON}<span id="updateCheckLabel">Check for updates</span></button><button class="btn" id="updateAll" hidden>Update all</button><span id="updateChecked"></span></footer>`;
     document.body.appendChild(panel);
     watchShellOverlay(panel);
     H('closeUpdates').onclick = () => { closeUpdates(); H('updatesButton').focus(); };
     H('updateCheck').onclick = () => updateAction('updates_check');
+    H('updateAll').onclick = () => updateAction('updates_apply_all');
     H('updateCancel').onclick = () => updateAction('updates_cancel');
     H('updateRestart').onclick = () => updateAction('updates_restart');
   }
@@ -103,7 +104,6 @@ async function updateAction(method, key) {
     setNvpiOpening(true);
   }
   try {
-  if (method === 'updates_restart' && !await confirmAction('Restart and apply?', 'TechLoungeTweaks will close, apply the downloaded update and reopen.', 'Restart')) return;
   const result = await api(method, ...(key === undefined ? [] : [key]));
   if (result?.ok === false) banner(result.message);
   if (method === 'updates_restart' && result?.ok) {
@@ -148,7 +148,7 @@ function paintUpdates(state) {
   const appAvailable = app?.action === 'Update';
   const pill = H('updatesButton');
   if (pill) {
-    const label = state.ready ? 'Restart to update' : state.busy ? 'Downloading...' : !state.checking && appAvailable ? 'App update' : !state.checking && tools.length ? tools.length + (tools.length === 1 ? ' tool update' : ' tool updates') : 'Updates';
+    const label = state.ready ? 'Restarting when idle' : state.busy ? 'Downloading...' : !state.checking && appAvailable ? 'App update' : !state.checking && tools.length ? tools.length + (tools.length === 1 ? ' tool update' : ' tool updates') : 'Updates';
     H('updatesButtonLabel').textContent = label;
     const count = (appAvailable ? 1 : 0) + tools.length;
     H('updatesButtonCount').hidden = !count || state.checking || state.busy || !!state.ready;
@@ -160,7 +160,7 @@ function paintUpdates(state) {
   paintExtraTools(state);
   if (!H('updatesPanel')) return;
   H('updatesPanel').dataset.state = state.checking ? 'checking' : state.ready || appAvailable || tools.length ? 'available' : app?.status === 'current' ? 'current' : 'unavailable';
-  H('updateSummary').textContent = state.checking ? 'Checking for updates...' : state.ready ? 'App update ready to apply' : appAvailable ? 'A new app version is available' : app?.status === 'current' ? 'App is up to date' : app?.status === 'unavailable' ? 'App version could not be checked' : 'Checking app version...';
+  H('updateSummary').textContent = state.checking ? 'Checking for updates...' : state.ready ? 'App update ready — restarts automatically when idle' : appAvailable ? 'A new app version is available' : app?.status === 'current' ? 'App is up to date' : app?.status === 'unavailable' ? 'App version could not be checked' : 'Checking app version...';
   const appContent = JSON.stringify([app, state.busy, state.checking]);
   if (H('updateAppRow').dataset.content !== appContent) {
     H('updateAppRow').dataset.content = appContent;
@@ -174,6 +174,8 @@ function paintUpdates(state) {
   H('updatesPanel').querySelectorAll('[data-update]').forEach(b => b.onclick = () => updateAction('updates_apply', b.dataset.update));
   H('updatesPanel').querySelectorAll('[data-tool]').forEach(b => b.onclick = () => updateAction('updates_launch', b.dataset.tool));
   H('updateCheck').disabled = state.checking || state.busy;
+  H('updateAll').hidden = !rows.some(item => item.action);
+  H('updateAll').disabled = state.checking || state.busy;
   H('updateCheckLabel').textContent = state.checking ? 'Checking...' : 'Check for updates';
   H('updateChecked').textContent = state.checked ? 'Checked ' + new Date(state.checked * 1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '';
   H('updateRestart').hidden = !state.ready; H('updateRestart').disabled = state.busy;

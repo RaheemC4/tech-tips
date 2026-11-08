@@ -10,7 +10,7 @@ sealed class TrayRedrawBatch:IDisposable {
     public void Dispose(){if(!active||window.IsDisposed)return;if(body.IsHandleCreated)SendMessage(body.Handle,11,new IntPtr(1),IntPtr.Zero);SendMessage(window.Handle,11,new IntPtr(1),IntPtr.Zero);Paint(window);}
 }
 sealed class TrayPageMotion:IDisposable {
-    readonly Form window;readonly Control body;readonly int baseLeft;readonly Action layout;readonly Func<bool> windowMoving;
+    readonly Form window;readonly Control body;int baseLeft;readonly Action layout;readonly Func<bool> windowMoving;
     readonly Timer frames=new Timer{Interval=15};readonly Stopwatch clock=new Stopwatch();
     Rectangle from,target;int startOffset;bool disposed,pausedForClose,waiting;
     internal bool Running {get{return frames.Enabled;}}
@@ -19,7 +19,9 @@ sealed class TrayPageMotion:IDisposable {
         this.window=window;this.body=body;this.baseLeft=baseLeft;this.layout=layout;this.windowMoving=windowMoving;
         frames.Tick+=(s,e)=>Tick();window.FormClosing+=(s,e)=>{pausedForClose=Running;Pause();};window.Disposed+=(s,e)=>Dispose();
     }
+    internal void SetBaseLeft(int value){baseLeft=value;}
     internal void Pause(){frames.Stop();}
+    internal void Settle(){frames.Stop();Apply(1);}
     internal void Start(Rectangle previous,Rectangle destination,int offset,bool animate){
         frames.Stop();pausedForClose=false;waiting=false;from=previous;target=destination;startOffset=offset;
         if(!animate){Apply(1);return;}

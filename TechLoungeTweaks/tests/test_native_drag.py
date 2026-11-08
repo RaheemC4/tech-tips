@@ -28,6 +28,17 @@ class DragTests(unittest.TestCase):
         with patch('main.ctypes.WinDLL',return_value=user): self.api._begin_native_drag()
         user.ReleaseCapture.assert_not_called();user.SendMessageW.assert_not_called()
 
+    def test_resize_edges_dispatch_the_expected_native_hit(self):
+        for edge, hit in {'w':10,'e':11,'n':12,'nw':13,'ne':14,'s':15,'sw':16,'se':17}.items():
+            with self.subTest(edge=edge), patch.dict(sys.modules,{'System':Mock(Action=lambda fn:fn)}), patch.object(self.api,'_begin_native_drag') as begin:
+                self.assertTrue(self.api.start_resize(edge))
+                self.api._window.native.BeginInvoke.call_args.args[0]()
+                begin.assert_called_once_with(hit)
+
+    def test_invalid_resize_edge_does_not_dispatch(self):
+        self.assertFalse(self.api.start_resize('invalid'))
+        self.api._window.native.BeginInvoke.assert_not_called()
+
     def test_minimize_maximize_restore_are_dispatched_to_ui_thread(self):
         import types
         states=types.SimpleNamespace(Normal=0,Minimized=1,Maximized=2)

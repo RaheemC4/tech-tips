@@ -2178,3 +2178,16 @@ async function loadNvSettings() {
        </div>`;
     }).join('');
 }
+
+// The WebView child owns edge input; forward it to Windows' native sizing loop.
+for (const edge of ['n','s','e','w','ne','nw','se','sw']) {
+  const grip = document.createElement('div');
+  grip.className = `window-resize resize-${edge}`;
+  grip.setAttribute('aria-hidden', 'true');
+  grip.addEventListener('pointerdown', event => {
+    if (event.button !== 0 || !window.pywebview?.api?.start_resize) return;
+    event.preventDefault();
+    window.pywebview.api.start_resize(edge);
+  });
+  document.body.append(grip);
+}
