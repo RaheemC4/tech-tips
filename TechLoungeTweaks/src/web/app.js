@@ -379,20 +379,58 @@ function show(name, recordHistory = true) {
    toggling feel like it was lagging. Writes for one tweak are chained so a
    fast on/off/on always ends in the state you last chose. */
 const INFLIGHT = {};
+let activeTweakBatch = null;
+let tweakBatchSequence = 0;
+
+function beginTweakBatch(keys) {
+  const id = tweakBatchSequence = tweakBatchSequence % 2147483647 + 1;
+  activeTweakBatch = {id, keys:new Set(keys), phases:new Map(keys.map(key => [key, 'queued'])), observed:new Set(), completed:0};
+  STATE.tweaks.forEach(paintCard);
+  return id;
+}
+
+function finishTweakBatch() {
+  activeTweakBatch = null;
+  STATE.tweaks.forEach(paintCard);
+}
+
+window.py_tweak_progress = data => {
+  const batch = activeTweakBatch;
+  if (!batch || data?.operation !== batch.id || !batch.keys.has(data.key) ||
+      !['working','verified','failed'].includes(data.phase) || !Number.isInteger(data.completed) ||
+      !Number.isInteger(data.total) || data.total < 1 || data.total > batch.keys.size ||
+      data.completed < batch.completed || data.completed > data.total) return;
+  const tweak = STATE.tweaks.find(t => t.key === data.key);
+  if (!tweak) return;
+  batch.completed = data.completed;
+  batch.phases.set(data.key, data.phase);
+  if (data.phase !== 'working') {
+    tweak.applied = typeof data.applied === 'boolean' ? data.applied : null;
+    if (typeof data.applied === 'boolean') batch.observed.add(data.key);
+  }
+  paintCard(tweak); refreshCounts(); updateCounts();
+  const caption = `${data.phase === 'working' ? 'Applying' : data.phase === 'failed' ? 'Needs attention:' : 'Checked'} ${tweak.name} · ${data.completed} of ${data.total} checked`;
+  const status = H('bulkStatus') || H('debloatStatus');
+  if (status) { status.hidden = false; status.textContent = caption; }
+  if (STATE.page === tweak.category && H('psub')) H('psub').textContent = caption;
+};
 
 function paintCard(t) {
   const card = document.querySelector(`.card.tweak[data-key="${CSS.escape(t.key)}"]`);
   if (!card) return;
   card.classList.toggle('on', !!t.applied);
+  const phase = activeTweakBatch?.phases.get(t.key);
+  card.setAttribute('aria-busy', String(phase === 'working' || phase === 'queued'));
   const sw = card.querySelector('.sw');
   if (sw) {
     sw.classList.toggle('on', !!t.applied);
     if (sw.getAttribute('role') === 'switch') sw.setAttribute('aria-checked', String(!!t.applied));
+    sw.disabled = BULK_BUSY;
   }
   const badge = card.querySelector('.badge');
   if (badge) {
-    badge.textContent = t.applied == null ? 'UNKNOWN' : t.applied ? 'APPLIED' : 'NOT APPLIED';
-    badge.className = 'badge' + (t.applied ? ' on' : '');
+    badge.textContent = phase === 'working' ? 'APPLYING…' : phase === 'queued' ? 'QUEUED' : phase === 'failed' ? 'NEEDS ATTENTION' : t.applied == null ? 'UNKNOWN' : t.applied ? 'APPLIED' : 'NOT APPLIED';
+    badge.className = 'badge' + (t.applied && phase !== 'failed' ? ' on' : '');
   }
 }
 
@@ -413,13 +451,16 @@ function setToggle(key) {
     paintCard(t); updateCounts();
     if (!r?.ok) banner(t.name + ': ' + (r?.message || 'Could not verify the change. Rescan to check.'));
   };
-  INFLIGHT[key] = (INFLIGHT[key] || Promise.resolve()).then(run, run);
+  const pending = (INFLIGHT[key] || Promise.resolve()).then(run, run);
+  INFLIGHT[key] = pending;
+  const finished = () => { if (INFLIGHT[key] === pending) delete INFLIGHT[key]; };
+  pending.then(finished, finished);
 }
 
 function reconcileTweaks(result, affected = STATE.tweaks) {
   STATE.tweaks.forEach(t => {
     if (result?.applied && Object.hasOwn(result.applied, t.key)) t.applied = result.applied[t.key];
-    else if (affected.includes(t)) t.applied = null;
+    else if (affected.includes(t) && !activeTweakBatch?.observed.has(t.key)) t.applied = null;
     paintCard(t);
   });
   refreshCounts(); updateCounts();
@@ -432,11 +473,12 @@ async function applyCategory(category, on) {
   BULK_BUSY = true;
   try {
     await Promise.all(Object.values(INFLIGHT));
-    const result = await api('bulk', category, on);
+    const operation = beginTweakBatch(STATE.tweaks.filter(t => t.category === category).map(t => t.key));
+    const result = await api('bulk', category, on, operation);
     reconcileTweaks(result, STATE.tweaks.filter(t => t.category === category));
     if (!result?.ok) banner('Some changes could not be verified. ' + (result?.message || Object.values(result?.errors || {}).join(' ')));
   } catch (error) { reconcileTweaks(null, STATE.tweaks.filter(t => t.category === category)); banner('Could not finish: ' + error.message); }
-  finally { BULK_BUSY = false; }
+  finally { BULK_BUSY = false; finishTweakBatch(); }
 }
 
 function updateCounts() {
@@ -487,6 +529,7 @@ function renderTweaks(cat) {
   document.querySelectorAll('[data-sw]').forEach(sw => {
     sw.onclick = () => setToggle(sw.dataset.sw);
   });
+  items.forEach(paintCard);
   wireTips();
 }
 
@@ -529,8 +572,10 @@ async function runBulk(mode) {
   setStatus(LABEL + '...', true);
 
   // 2) Write the tweaks.
-  const r = await api('bulk_tweaks', mode, mode === 'all');
-  reconcileTweaks(r);
+  const keys = STATE.tweaks.filter(t => mode !== 'recommended' || RECOMMENDED_KEYS.includes(t.key)).map(t => t.key);
+  const operation = beginTweakBatch(keys);
+  const r = await api('bulk_tweaks', mode, mode === 'all', operation);
+  reconcileTweaks(r, STATE.tweaks.filter(t => keys.includes(t.key)));
 
   // 3) Defender + NVIDIA, per mode.
   const extras = [];
@@ -608,6 +653,7 @@ async function runBulk(mode) {
   } finally {
     document.querySelectorAll('[data-bulk]').forEach(b => b.disabled = false);
     BULK_BUSY = false;
+    finishTweakBatch();
   }
 }
 
@@ -828,6 +874,7 @@ startWhenReady();
 window.py_scanned = d => {
   if (!d || !d.tweaks) return;
   const busy = new Set(Object.keys(INFLIGHT));
+  if (activeTweakBatch) activeTweakBatch.keys.forEach(key => busy.add(key));
   const prev = new Map(STATE.tweaks.map(t => [t.key, t.applied]));
   const hadNone = STATE.tweaks.length === 0;
   STATE.tweaks = d.tweaks.map(t =>

@@ -38,6 +38,8 @@ Read each setting. Disabling Memory Integrity can prevent some anti-cheat games 
 
 Toggle a tweak off or use **Revert All** to undo a category. **Restore Session Changes** restores supported values saved during the current session; it does not undo every tool or app removal. Use a restore point for wider recovery.
 
+During a batch, cards show queued, applying and verified results as each setting finishes. Category actions recheck that category rather than every unrelated tweak. The dashboard score includes optional tweaks too; applying Recommended does not mean every tweak should be enabled.
+
 ## Help
 
 Resize the main window from any edge or corner. Its initial size fits the current monitor’s available area at Windows display scaling, with a smaller minimum size and responsive content. The tray rescales when its monitor’s DPI changes. The tray uses the main app’s font, shows all cleanup items and detected GPUs together, and has no scrollbars or pagination. Its width is 380 logical pixels; page height fits its content while the Open app footer stays anchored. Windows supplies the pointer shapes.

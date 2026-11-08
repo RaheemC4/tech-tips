@@ -595,15 +595,27 @@ class Api:
                          'The requested state did not read back. Windows may require a restart or enforce another policy.')}
             return {'ok': True, 'applied': verified}
 
-    def _bulk_targets(self, targets, mode):
+    def _bulk_targets(self, targets, mode, operation_id=None):
+        if operation_id is not None and (type(operation_id) is not int or
+                                         not 1 <= operation_id <= 2147483647):
+            return {'ok': False, 'message': 'Invalid tweak progress request.'}
         with tweak_undo.LOCK:
             failures = {}
-            for key, want in targets.items():
+            for completed, (key, want) in enumerate(targets.items(), 1):
+                self._emit('tweak_progress', {'operation': operation_id, 'key': key,
+                           'phase': 'working', 'completed': completed - 1,
+                           'total': len(targets)})
                 result = self.toggle(key, want)
                 if not result.get('ok'):
                     failures[key] = result.get('message', 'Change failed.')
-            applied = {key: self._read_tweak(t) for key, t in self._tweaks().items()}
-            self._applied = {key for key, value in applied.items() if value is True}
+                self._emit('tweak_progress', {'operation': operation_id, 'key': key,
+                           'phase': 'verified' if result.get('ok') else 'failed',
+                           'applied': result.get('applied'),
+                           'message': result.get('message', ''),
+                           'completed': completed, 'total': len(targets)})
+            applied = {key: self._read_tweak(self._tweaks()[key]) for key in targets}
+            self._applied.difference_update(targets)
+            self._applied.update(key for key, value in applied.items() if value is True)
             for key, want in targets.items():
                 if applied.get(key) is None or applied[key] != want:
                     failures.setdefault(key, 'The final state could not be verified.')
@@ -616,7 +628,7 @@ class Api:
     RECOMMENDED_KEYS = debloat.RECOMMENDED_EXISTING
 
     @traced
-    def bulk_tweaks(self, mode, confirmed=False):
+    def bulk_tweaks(self, mode, confirmed=False, operation_id=None):
         """Apply presets, explicit off defaults, or undo only this session's changes."""
         tweaks = self._tweaks()
         if mode == 'all' and confirmed is not True:
@@ -635,18 +647,18 @@ class Api:
             return {'ok': False, 'message': 'Unknown bulk mode.'}
         targets = {key: mode != 'defaults' for key in tweaks
                    if mode != 'recommended' or key in self.RECOMMENDED_KEYS}
-        result = self._bulk_targets(targets, mode)
+        result = self._bulk_targets(targets, mode, operation_id)
         result['skipped'] = sorted(set(tweaks) - set(targets))
         return result
 
     @traced
-    def bulk(self, category, want):
+    def bulk(self, category, want, operation_id=None):
         if type(want) is not bool:
             return {'ok': False, 'message': 'Choose on or off.'}
         targets = {key: want for key, t in self._tweaks().items() if t.category == category}
         if not targets:
             return {'ok': False, 'message': 'Unknown or empty category.'}
-        return self._bulk_targets(targets, category)
+        return self._bulk_targets(targets, category, operation_id)
 
     # ------------------------------------------------------------ info
     @traced
@@ -815,7 +827,7 @@ class Api:
         from the GUI thread, and calling it from a worker thread is what
         makes the window stop responding.
         """
-        if not self._window:
+        if not getattr(self, "_window", None):
             return
         import json
         script = (f"window.onPy && window.onPy({json.dumps(event)},"
