@@ -8,6 +8,63 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import nettest
 
 class NetworkTest(unittest.TestCase):
+    def test_timed_out_download_falls_back_and_counts_backup_bytes(self):
+        stop = threading.Event()
+        counter = [0, {"url": "https://lon.speedtest.clouvider.net/backend/garbage.php", "server": "Clouvider London"}]
+        class Response:
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def read(self, size):
+                stop.set()
+                return b"x" * 1234
+        with patch.object(nettest.urllib.request, "urlopen", side_effect=[TimeoutError("stalled"), Response()]) as open_url, patch.object(stop, "wait", return_value=False), patch.object(nettest, "_ctx", return_value=None):
+            nettest._download_worker(stop, counter, threading.Lock())
+        self.assertEqual(counter[0], 1234)
+        self.assertEqual(counter[1]["server"], "Cloudflare")
+        self.assertTrue(open_url.call_args_list[1].args[0].full_url.startswith(nettest.DOWN_URL.format(n=25_000_000)))
+
+    def test_failed_direction_never_earns_a_bufferbloat_grade(self):
+        for rates in ((0, 100), (100, 0)):
+            live = []
+            phases = iter(rates)
+            def phase(*args, **kwargs):
+                rate = next(phases)
+                kwargs["on_sample"](0, [7])
+                kwargs["on_sample"](rate, [7])
+                return rate, [7]
+            with self.subTest(rates=rates), patch.object(nettest.time, "perf_counter", side_effect=[0, 0, 5]), patch.object(nettest.time, "sleep"), patch.object(nettest, "tcp_ping", return_value=7), patch.object(nettest, "_run_phase", side_effect=phase), patch.object(nettest, "select_download_server", return_value=("https://fixture.invalid", "Fixture")):
+                result = nettest.run_test(on_live=lambda stage, data: live.append((stage, data)))
+            self.assertEqual(result["grade"], "-")
+            self.assertIsNone(result["increase_ms"])
+            self.assertIn("Incomplete test", result["verdict"])
+            self.assertNotIn("grade", live[1][1])
+            if rates[0] == 0:
+                self.assertNotIn("grade", live[-1][1])
+                self.assertIsNone(result["down_ms"])
+                self.assertIn("Download unavailable", result["download_error"])
+            else:
+                self.assertIsNone(result["upload_mbps"])
+                self.assertIsNone(result["up_ms"])
+                self.assertIn("Upload unavailable", result["upload_error"])
+
+    def test_empty_primary_and_failed_cloudflare_recover_on_ovh(self):
+        stop = threading.Event()
+        counter = [0, {"url": "https://lon.speedtest.clouvider.net/backend/garbage.php"}]
+        class Response:
+            def __init__(self, data): self.data = data
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def read(self, size):
+                if self.data: stop.set()
+                return self.data
+        failure = HTTPError(nettest.DOWN_URL, 503, "Unavailable", {}, None)
+        with patch.object(nettest.urllib.request, "urlopen", side_effect=[Response(b""), failure, Response(b"x" * 2048)]) as open_url, patch.object(stop, "wait", return_value=False), patch.object(nettest, "_ctx", return_value=None):
+            nettest._download_worker(stop, counter, threading.Lock())
+        self.assertEqual(counter[0], 2048)
+        self.assertEqual(counter[1]["server"], "OVHcloud")
+        self.assertTrue(open_url.call_args_list[1].args[0].full_url.startswith(nettest.DOWN_URL.format(n=25_000_000)))
+        self.assertTrue(open_url.call_args_list[2].args[0].full_url.startswith(nettest.FALLBACK_DOWN_URL))
+
     def test_rate_limit_switches_shared_server_and_counts_received_bytes(self):
         stop = threading.Event()
         counter = [0, {"server": "Cloudflare"}]

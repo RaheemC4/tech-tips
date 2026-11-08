@@ -140,7 +140,8 @@ def _download_worker(stop_evt, counter, lock, size=25_000_000):
             separator = "&" if "?" in url else "?"
             req = urllib.request.Request(url + separator + "tl=" + uuid.uuid4().hex,
                                          headers={**UA, "Accept-Encoding": "identity", "Cache-Control": "no-cache"})
-            with urllib.request.urlopen(req, timeout=10, context=context) as resp:
+            with urllib.request.urlopen(req, timeout=3, context=context) as resp:
+                received = 0
                 while not stop_evt.is_set():
                     try:
                         buf = resp.read(READ_CHUNK)
@@ -150,15 +151,21 @@ def _download_worker(stop_evt, counter, lock, size=25_000_000):
                         break
                     if not buf:
                         break
+                    received += len(buf)
                     with lock:
                         counter[0] += len(buf)
+                if not received and not stop_evt.is_set():
+                    raise OSError("Download server returned no data")
         except Exception as exc:
             with lock:
                 counter[1]["error"] = str(exc)
-                if isinstance(exc, urllib.error.HTTPError) and exc.code == 429 and url != FALLBACK_DOWN_URL:
-                    # Share the switch so other streams stop retrying the rate-limited host.
-                    counter[1]["url"] = FALLBACK_DOWN_URL
-                    counter[1]["server"] = "OVHcloud"
+                # Share a one-way fallback across streams. A late failure from
+                # the previous host must not overwrite a newer selection.
+                if counter[1].get("url", DOWN_URL.format(n=size)) == url and url != FALLBACK_DOWN_URL:
+                    limited = isinstance(exc, urllib.error.HTTPError) and exc.code == 429
+                    use_ovh = limited or url.startswith("https://speed.cloudflare.com/")
+                    counter[1]["url"] = FALLBACK_DOWN_URL if use_ovh else DOWN_URL.format(n=size)
+                    counter[1]["server"] = "OVHcloud" if use_ovh else "Cloudflare"
             if stop_evt.wait(1.0):
                 return
 
@@ -238,7 +245,8 @@ def _run_phase(worker, seconds, threads, progress=None, label="", diagnostics=No
                 sampler_started = True
             finished = elapsed >= seconds
             if on_sample and (now - last_live >= SAMPLE_INTERVAL or finished):
-                on_sample(rate, list(sampler.samples))
+                confirmed = worker is not _upload_worker or counter[1].get("successful_uploads")
+                on_sample(rate, list(sampler.samples) if rate > 0 and confirmed else [])
                 last_live = now
             if progress:
                 progress(label, min(1.0, elapsed / seconds))
@@ -325,7 +333,8 @@ def run_test(progress=None, duration=12, on_partial=None, on_live=None):
         snapshot[field] = rate
         fields = [field]
         loaded = median(latency[-5:])
-        if loaded is not None and result.get("idle_ms") is not None:
+        complete_download = stage == "download" or (result.get("download_mbps") or 0) > 0
+        if rate > 0 and complete_download and loaded is not None and result.get("idle_ms") is not None:
             worst = max(loaded, result.get("down_ms") or loaded)
             snapshot["grade"], _ = grade_for(max(0, worst - result["idle_ms"]))
             fields.append("grade")
@@ -369,15 +378,18 @@ def run_test(progress=None, duration=12, on_partial=None, on_live=None):
     if down_mbps <= 0:
         result["download_error"] = "Download unavailable. " + download.get("error", "No sustained data received.")
     result["down"] = stats(down_lat)
-    result["down_ms"] = result["down"]["med"] if result["down"] else None
+    result["down_ms"] = result["down"]["med"] if result["down"] and down_mbps > 0 else None
     emit("download")
 
+    upload = {}
     up_mbps, up_lat = _run_phase(_upload_worker, duration, UP_THREADS,
-                                 progress, "Testing upload",
+                                 progress, "Testing upload", diagnostics=upload,
                                  on_sample=lambda rate, latency: live("upload", rate, latency))
-    result["upload_mbps"] = up_mbps
+    result["upload_mbps"] = up_mbps if up_mbps > 0 else None
+    if up_mbps <= 0:
+        result["upload_error"] = "Upload unavailable. " + upload.get("error", "No successful transfer.")
     result["up"] = stats(up_lat)
-    result["up_ms"] = result["up"]["med"] if result["up"] else None
+    result["up_ms"] = result["up"]["med"] if result["up"] and up_mbps > 0 else None
     emit("upload")
 
     js = [x["jitter"] for x in (result.get("idle"), result.get("down"),
@@ -388,8 +400,11 @@ def run_test(progress=None, duration=12, on_partial=None, on_live=None):
     loaded = [v for v in (result["down_ms"], result["up_ms"]) if v]
     worst = max(loaded) if loaded else None
     result["loaded_ms"] = worst
-    result["increase_ms"] = (worst - result["idle_ms"]) if worst else None
+    complete = down_mbps > 0 and up_mbps > 0 and result["down_ms"] is not None and result["up_ms"] is not None
+    result["increase_ms"] = (worst - result["idle_ms"]) if complete else None
     result["grade"], result["verdict"] = grade_for(result["increase_ms"])
+    if not complete:
+        result["verdict"] = "Incomplete test - retry to measure latency under load"
     emit("grade")
     result["activities"] = verdicts(worst, down_mbps, up_mbps)
     return result

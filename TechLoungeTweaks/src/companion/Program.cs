@@ -511,7 +511,9 @@ sealed class Popup:Form {
         if(job.Running)status=job.Message??"Testing connection…";
         else if(job.Failed||job.Result==null)status=job.Message;
         else if(job.Result.ContainsKey("error"))status=Convert.ToString(job.Result["error"]);
-        else if(job.Result.ContainsKey("download_error"))status="Download unavailable. Other completed results remain usable.";
+        else if(job.Result.ContainsKey("download_error")&&job.Result.ContainsKey("upload_error"))status="Speed test unavailable. Please test again.";
+        else if(job.Result.ContainsKey("download_error"))status="Download unavailable. Please test again.";
+        else if(job.Result.ContainsKey("upload_error"))status="Upload unavailable. Please test again.";
         if(detailMessage!=null)detailMessage.Text=status;
         if(connectionRetry!=null){connectionRetry.Enabled=!job.Running;connectionRetry.Text=job.Running?"Testing…":"Test again";}
     }

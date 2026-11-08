@@ -46,6 +46,8 @@ Resize the main window from any edge or corner. Its initial size fits the curren
 
 The custom window controls preserve Windows animations and restore the original window size and position, including after rapidly minimising and maximising.
 
+Connection tests switch download servers after timeouts, empty responses or other server failures. A speed stays **Testing** until data arrives. Failed directions remain **Unavailable**; an incomplete test does not receive a bufferbloat grade. Retry to measure both directions.
+
 ### HatchZip
 
 **Install Apps > File tools** installs the latest stable HatchZip Windows desktop release, resolved from GitHub each time. The installer size and SHA-256 must match release metadata before it runs. If metadata is unavailable or invalid, installation stops. Its local monochrome icon follows the selected theme. HatchZip extraction consumes the source archive as files are extracted.

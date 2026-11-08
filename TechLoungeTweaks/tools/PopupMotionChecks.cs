@@ -260,6 +260,12 @@ static class PopupMotionChecks {
         }
     }
     static void ConnectionResults(){
+        using(var waiting=new TrayMetricCard("Upload",null,"Mbps","upload",Color.Blue)){
+            waiting.UpdateValue(0.0,"Mbps",false,true,true);
+            Require(waiting.Value=="…"&&waiting.Caption=="Testing…","Stalled upload displayed a measured zero");
+            waiting.UpdateValue(null,"Mbps",false,false);
+            Require(waiting.Value=="Unavailable"&&waiting.Caption=="Not measured","Failed upload retained live state");
+        }
         Require(TrayMetricCard.Number(0,true)=="Unavailable"&&TrayMetricCard.Number(null,true)=="Unavailable"&&TrayMetricCard.Number(double.NaN,false)=="Unavailable","Invalid speed became a measured result");
         Require(TrayMetricCard.Number(119.48,true)==119.5.ToString("0.0")&&TrayMetricCard.Number(7.43,false)==7.43.ToString("0.##"),"Metric precision changed");
         using(var tray=new Tray(true))using(var popup=new Popup(tray)){
