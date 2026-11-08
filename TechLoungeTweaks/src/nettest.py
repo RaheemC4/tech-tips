@@ -146,6 +146,7 @@ def _download_worker(stop_evt, counter, lock, size=25_000_000):
                     try:
                         buf = resp.read(READ_CHUNK)
                     except http.client.IncompleteRead as incomplete:
+                        received += len(incomplete.partial)
                         with lock:
                             counter[0] += len(incomplete.partial)
                         break

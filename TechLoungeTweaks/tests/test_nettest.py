@@ -8,6 +8,27 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import nettest
 
 class NetworkTest(unittest.TestCase):
+    def test_short_first_response_with_data_does_not_abandon_a_working_server(self):
+        stop = threading.Event()
+        url = 'https://lon.speedtest.clouvider.net/backend/garbage.php?ckSize=1024'
+        counter = [0, {'url': url, 'server': 'Clouvider London'}]
+        class Response:
+            def __init__(self, short): self.short = short
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def read(self, size):
+                if self.short:
+                    raise nettest.http.client.IncompleteRead(b'x' * 1234, 1000)
+                stop.set()
+                return b'y' * 321
+        with patch.object(nettest.urllib.request, 'urlopen', side_effect=[Response(True), Response(False)]) as opening, patch.object(nettest, '_ctx', return_value=None):
+            nettest._download_worker(stop, counter, threading.Lock())
+        self.assertEqual(counter[0], 1555)
+        self.assertEqual(counter[1]['server'], 'Clouvider London')
+        self.assertNotIn('error', counter[1])
+        self.assertEqual(opening.call_count, 2)
+        self.assertTrue(all(call.args[0].full_url.startswith(url) for call in opening.call_args_list))
+
     def test_timed_out_download_falls_back_and_counts_backup_bytes(self):
         stop = threading.Event()
         counter = [0, {"url": "https://lon.speedtest.clouvider.net/backend/garbage.php", "server": "Clouvider London"}]

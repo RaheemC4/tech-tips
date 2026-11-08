@@ -50,6 +50,8 @@ The custom window controls preserve Windows animations and restore the original 
 
 Connection tests switch download servers after timeouts, empty responses or other server failures. A speed stays **Testing** until data arrives. Failed directions remain **Unavailable**; an incomplete test does not receive a bufferbloat grade. Retry to measure both directions.
 
+Valid bytes from shortened responses are counted, and the next request stays on the working server rather than incorrectly treating that response as empty.
+
 Speed measurement excludes connection setup and warms up from the first received bytes. All eight download streams and six upload streams start immediately in their respective phases, without speed thresholds or a bandwidth cap. Readings use actual transferred bytes, with the same average for the live and final result. Different test servers and traffic conditions can still produce different results.
 
 ### HatchZip
