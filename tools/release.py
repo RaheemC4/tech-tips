@@ -336,6 +336,7 @@ def prepare(background_only=False):
         print(report.read_text(), flush=True)
     finally:
         check.unlink(missing_ok=True)
+    run([sys.executable, APP / 'tools/check-packaged-https.py', built])
     if background_only:
         print('DEFERRED: native screenshot refresh; retaining the previously captured companion image.', flush=True)
     else:

@@ -6,6 +6,25 @@ import json
 import re
 import subprocess
 
+
+def https_probe():
+    """Bounded read-only release check through the real packaged worker pipe."""
+    import ssl
+    import urllib.request
+    context = ssl.create_default_context()
+    if context.verify_mode != ssl.CERT_REQUIRED or not context.check_hostname:
+        raise RuntimeError('HTTPS verification must remain enabled.')
+    request = urllib.request.Request('https://proof.ovh.net/files/100Mb.dat',
+                                    headers={'User-Agent': 'TechLoungeTweaks/1.0',
+                                             'Range': 'bytes=0-65535'})
+    with urllib.request.urlopen(request, context=context, timeout=15) as response:
+        data = response.read(65536)
+        status = response.status
+    if status not in (200, 206) or not data:
+        raise RuntimeError('Verified HTTPS did not return data.')
+    return {'ok': True, 'certificate_verification': True,
+            'status': status, 'bytes_received': len(data)}
+
 THEMES = ('blue', 'blurple', 'purple', 'red', 'green', 'cyan')
 ULTIMATE = 'e9a42b02-d5df-448d-aa00-03f14749eb61'
 MANAGED_ULTIMATE = 'c4b4b5f7-6c83-4b22-89d9-227f0831e32a'
@@ -69,6 +88,10 @@ def select_plan(value):
 
 
 def execute(action, payload, emit):
+    if action == 'https-probe':
+        if payload is not None:
+            raise ValueError('The HTTPS check accepts no custom address or payload.')
+        return https_probe()
     if action == 'update-tools':
         from updates import UpdateManager
         manager = UpdateManager()

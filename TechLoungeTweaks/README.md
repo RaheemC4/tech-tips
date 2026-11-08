@@ -32,6 +32,8 @@ DLSS Swapper, Bulk Crap Uninstaller and NVIDIA Profile Inspector update from the
 
 Downloads retain the existing official-source and checksum checks, and tool updates keep previous files for rollback. These updates manage the app’s own toolbox, not every program installed on Windows. Install this build once to receive its new update behaviour; future app releases must be published to GitHub before they can be detected.
 
+The packaged connection worker is checked with real HTTPS data and normal certificate verification during release preparation. Incomplete download or upload tests remain clearly labelled rather than receiving a misleading grade.
+
 ## Before applying changes
 
 Read each setting. Disabling Memory Integrity can prevent some anti-cheat games from launching; disabling CPU mitigations reduces security. App removal and cleared Start pins need manual restoration.
