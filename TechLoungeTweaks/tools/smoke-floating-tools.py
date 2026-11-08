@@ -105,12 +105,20 @@ try:
     settle(.15)
     region=gdi.CreateRectRgn(0,0,0,0)
     try:
-        native.GetWindowRgn(hwnd,region)
+        deadline=time.monotonic()+1
+        while True:
+            native.GetWindowRgn(hwnd,region)
+            if not gdi.PtInRegion(region,*point) or time.monotonic()>=deadline:break
+            settle(.01)
         assert not gdi.PtInRegion(region,*point),'Tool covers shell popup'
         assert gdi.PtInRegion(region,point[0]+200,point[1]),'Rest of tool was hidden'
         assert native.IsWindowVisible(hwnd) and child.poll() is None
         floating.overlay_regions=()
-        settle(.15);native.GetWindowRgn(hwnd,region)
+        deadline=time.monotonic()+1
+        while True:
+            native.GetWindowRgn(hwnd,region)
+            if gdi.PtInRegion(region,*point) or time.monotonic()>=deadline:break
+            settle(.01)
         assert gdi.PtInRegion(region,*point),'Tool region was not restored after popup closed'
     finally: gdi.DeleteObject(region)
     # Native tool movement must pull its owner along, never snap back.

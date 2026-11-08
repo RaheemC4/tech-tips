@@ -83,13 +83,15 @@ sealed class TrayMetricCard:Control {
     }
     internal void UpdateValue(object raw,string unit,bool pending,bool testing,bool live=false){
         var good=Color.FromArgb(61,220,151);var warn=Color.FromArgb(255,190,61);var muted=Color.FromArgb(176,191,212);
+        double speed;
+        if(live&&(icon=="download"||icon=="upload")&&double.TryParse(Convert.ToString(raw,System.Globalization.CultureInfo.InvariantCulture),System.Globalization.NumberStyles.Float,System.Globalization.CultureInfo.InvariantCulture,out speed)&&speed<=0){pending=true;testing=true;}
         if(pending){Value="…";Caption=testing?"Testing…":"Waiting";StatusColor=accent;}
         else if(icon=="grade"){
             string grade=Convert.ToString(raw);Value=Array.IndexOf(new[]{"A+","A","B","C","D","F"},grade)>=0?grade:"Unavailable";
             StatusColor=grade=="A+"||grade=="A"?good:grade=="B"||grade=="C"||grade=="D"?warn:grade=="F"?Color.FromArgb(255,93,108):muted;
             Caption=grade=="A+"?"Excellent":grade=="A"?"Great":grade=="B"?"Good":grade=="C"?"Fair":grade=="D"?"Poor":grade=="F"?"Heavy lag":"Not measured";
         }else{Value=Number(raw,!live&&(icon=="download"||icon=="upload"));StatusColor=Value=="Unavailable"?muted:Color.FromArgb(242,244,248);Caption=Value=="Unavailable"?"Not measured":unit;}
-        if(live)Caption=icon=="grade"?"Live estimate":icon=="latency"?unit:"Mbps · Live";
+        if(live&&!pending)Caption=icon=="grade"?"Live estimate":icon=="latency"?unit:"Mbps · Live";
         double numeric;if(!pending&&icon!="grade"&&Value!="Unavailable"&&double.TryParse(Convert.ToString(raw,System.Globalization.CultureInfo.InvariantCulture),System.Globalization.NumberStyles.Float,System.Globalization.CultureInfo.InvariantCulture,out numeric)){
             if(hasNumber&&PopupMotion.Enabled()&&Visible){target=numeric;if(!numbers.Enabled){transition.Restart();numbers.Start();}Value=Number(shown,false);}else{numbers.Stop();velocity=0;shown=target=numeric;}hasNumber=true;
         }else{numbers.Stop();velocity=0;hasNumber=false;}
