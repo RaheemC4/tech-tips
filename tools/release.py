@@ -19,7 +19,7 @@ APP = ROOT / 'TechLoungeTweaks'
 REMOTE = 'https://github.com/RaheemC4/tech-tips.git'
 SKIP = {'build', 'dist', '__pycache__', '_to_delete', 'node_modules', '.build-venv', '.venv'}
 REVIEW = APP / 'docs-review.json'
-MANIFEST = APP / 'release.json'
+MANIFEST = APP / 'release-v2.json'
 ARCHIVE = APP / 'TechLoungeTweaks.zip'
 RESOURCE_ARCHIVE = None
 
@@ -187,7 +187,7 @@ def publish_files():
     paths = []
     for folder in ('src', 'tools', 'tests', 'docs'):
         paths += files(APP / folder)
-    paths += [APP / name for name in ('README.md', 'docs-review.json', 'release.json', 'requirements-build.txt')]
+    paths += [APP / name for name in ('README.md', 'docs-review.json', 'release.json', 'release-v2.json', 'requirements-build.txt')]
     paths += [ROOT / name for name in ('AGENTS.md', 'README.md', 'RELEASE-NOTES.md', 'HOW-TO-UPLOAD.txt',
                                       'PUSH-TO-GITHUB.bat', 'PREPARE-RELEASE.bat', '.gitignore', '.gitattributes')]
     paths += files(ROOT / 'tools')

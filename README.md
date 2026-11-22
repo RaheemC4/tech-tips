@@ -24,9 +24,11 @@ Windows 11 recommended. Windows 10 requires [Microsoft WebView2](https://develop
 
 ## Automatic updates
 
+**Existing installations:** install the latest GitHub ZIP once to switch to the new update feed. After that, the standard-user tray checks for future releases automatically while the app is open.
+
 With **Open on startup** enabled, the tray starts about 30 seconds after sign-in and begins its first update check about 30 seconds later. It checks again every 15 minutes. Opening the full app also starts background checks and updates.
 
-New published app releases download without a confirmation prompt. The app restarts automatically after startup work, system actions, downloads and open tool windows have finished. If the full app is closed, the tray applies app updates quietly in the background. Failed or offline checks retry later; the app cannot stay current while publishers are unreachable.
+New published app releases download without a confirmation prompt. The standard-user tray installs new versions alongside the open app. The running window keeps its existing version until it is reopened. If the full app is closed, the tray applies app updates quietly in the background. Failed or offline checks retry later; the app cannot stay current while publishers are unreachable.
 
 DLSS Swapper, Bulk Crap Uninstaller and NVIDIA Profile Inspector update from their supported official stable release feeds. **Update all** in the top-right update panel runs all available app and tool updates together; downloads remain cancellable. A tool that is running is deferred. Driver Booster, TreeSize and the reviewed Windows integrations are refreshed with complete app releases rather than downloading unreviewed replacements separately.
 
@@ -44,7 +46,7 @@ During a batch, cards show queued, applying and verified results as each setting
 
 ## Help
 
-Resize the main window from any edge or corner. Its initial size fits the current monitor’s available area at Windows display scaling, with a smaller minimum size and responsive content. The tray rescales when its monitor’s DPI changes. The tray uses the main app’s font, shows all cleanup items and detected GPUs together, and has no scrollbars or pagination. Its width is 380 logical pixels; page height fits its content while the Open app footer stays anchored. Windows supplies the pointer shapes.
+Resize the main window from any edge or corner. Its initial size fits the current monitor’s available area at Windows display scaling, with a smaller minimum size and responsive content. The tray rescales when its monitor’s DPI changes. The tray uses the main app’s font, shows all cleanup items and detected GPUs together, and has no scrollbars or pagination. The home panel measures 380 × 366 logical pixels. Detail pages fit their content and keep the Open app footer anchored. The popup fades in at its tray position and page transitions use a short slide. Both respect Windows animation settings. Windows supplies the pointer shapes.
 
 The custom window controls preserve Windows animations and restore the original window size and position, including after rapidly minimising and maximising.
 

@@ -22,12 +22,15 @@ class InstallerChecks {
                 if(!task.IsCompleted)throw new Exception("Cancellation test timed out.");
                 if(!requested||task.Result!=1223||File.Exists(Path.Combine(cancelled,"current.txt")))throw new Exception("Cancelled installation became current or returned success.");
             }
+            string current=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Programs","TechLoungeTweaks","current.txt");
+            var pointerStamp=File.GetLastWriteTimeUtc(current);
             string blocked=Path.Combine(root,"blocked");File.WriteAllText(blocked,"fixture");
             using(var runner=(IDisposable)Activator.CreateInstance(type,new object[]{blocked,true})){
                 var task=Task.Run(()=>Convert.ToInt32(type.GetMethod("Run").Invoke(runner,null)));
                 if(!task.Wait(60000))throw new Exception("Invalid-destination test timed out.");
                 if(task.Result==0||File.ReadAllText(blocked)!="fixture")throw new Exception("Invalid destination was not rejected safely.");
             }
+            if(File.GetLastWriteTimeUtc(current)!=pointerStamp)throw new Exception("Invalid destination modified the real installation.");
             string corrupt=Path.Combine(root,"corrupt.exe");File.Copy(args[0],corrupt);
             using(var stream=new FileStream(corrupt,FileMode.Open,FileAccess.ReadWrite)){stream.Position=stream.Length-32;int value=stream.ReadByte();stream.Position--;stream.WriteByte((byte)(value^1));}
             using(var process=Process.Start(new ProcessStartInfo(corrupt,"/S /UPDATE /D="+Path.Combine(root,"corrupt-target")){UseShellExecute=false,CreateNoWindow=true})){

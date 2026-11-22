@@ -5,6 +5,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Net;
 using System.Security.Cryptography;
+using System.Security.Principal;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
@@ -29,21 +30,33 @@ static class InstallerUpdates {
     }}
     static void Copy(Stream input,Stream output,long limit){var buffer=new byte[65536];long total=0;int n;while((n=input.Read(buffer,0,buffer.Length))>0){total+=n;if(total>limit)throw new IOException("Update exceeds size limit.");output.Write(buffer,0,n);}}
     internal static void VerifyAndExtract(string zip,string expected,string setup){
-        using(var sha=SHA256.Create())using(var input=File.OpenRead(zip)){string actual=BitConverter.ToString(sha.ComputeHash(input)).Replace("-","").ToLowerInvariant();if(actual!=expected)throw new IOException("Update checksum mismatch.");}
-        using(var archive=ZipFile.OpenRead(zip)){
-            var entry=archive.GetEntry("TechLoungeTweaks-Setup.exe");if(entry==null||entry.Length>Limit)throw new IOException("Installer is missing.");
-            using(var input=entry.Open())using(var output=File.Create(setup))Copy(input,output,Limit);
+        using(var input=File.OpenRead(zip)){
+            using(var sha=SHA256.Create()){
+                string actual=BitConverter.ToString(sha.ComputeHash(input)).Replace("-","").ToLowerInvariant();
+                if(actual!=expected)throw new IOException("Update checksum mismatch.");
+            }
+            input.Position=0;
+            using(var archive=new ZipArchive(input,ZipArchiveMode.Read)){
+                var entry=archive.GetEntry("TechLoungeTweaks-Setup.exe");
+                if(entry==null||entry.Length>Limit)throw new IOException("Installer is missing.");
+                using(var source=entry.Open())using(var output=new FileStream(setup,FileMode.CreateNew,FileAccess.Write,FileShare.None))
+                    Copy(source,output,Limit);
+            }
         }
     }
     public static bool FullAppRunning(){foreach(var p in Process.GetProcessesByName("TechLoungeTweaks")){using(p){try{if(p.SessionId==Process.GetCurrentProcess().SessionId)return true;}catch{ return true; }}}return false;}
     public static string Run(Tray tray,bool manual,out bool retry){
         retry=false;
+        using(var identity=WindowsIdentity.GetCurrent()){
+            if(new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator))
+                return "Start the tray as a standard user to install updates.";
+        }
         if(tray.Preview)return "Preview: your app is up to date.";
         if(!File.Exists(Path.Combine(Program.Root,"current.txt")))return "Updates are available after installing the app.";
         ServicePointManager.SecurityProtocol=SecurityProtocolType.Tls12;
-        var manifest=Metadata("https://raw.githubusercontent.com/RaheemC4/tech-tips/main/TechLoungeTweaks/release.json");
+        var manifest=Metadata("https://raw.githubusercontent.com/RaheemC4/tech-tips/main/TechLoungeTweaks/release-v2.json");
         if(!manifest.ContainsKey("distribution")||Convert.ToString(manifest["distribution"])!="installer")return "No installed-app update is available yet.";
-        string latest=Convert.ToString(manifest["version"]),current=Path.GetFileName(Program.Here);
+        string latest=Convert.ToString(manifest["version"]),current=Path.GetFileName(Program.Current);
         if(!Regex.IsMatch(latest,@"^\d{4}\.\d{2}\.\d{2}\.\d{6}$"))throw new IOException("Invalid update version.");
         if(String.CompareOrdinal(latest,current)<=0){tray.Post(()=>tray.SetUpdateAvailable(false));return "Your app is up to date.";}
         string url=Convert.ToString(manifest["download_url"]);
@@ -57,18 +70,21 @@ static class InstallerUpdates {
         foreach(var raw in (System.Collections.IEnumerable)release["assets"]){var asset=(Dictionary<string,object>)raw;if(Convert.ToString(asset["browser_download_url"])==url && asset.ContainsKey("digest") && Convert.ToString(asset["digest"])=="sha256:"+expected)verified=true;}
         if(!verified)throw new IOException("Release metadata is not consistent yet.");
         tray.Post(()=>tray.SetUpdateAvailable(true));
-        if(FullAppRunning()){retry=true;return "Updates will install automatically after the full app closes.";}
+
         string cache=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"TechLoungeTweaks","UpdateCache",Guid.NewGuid().ToString("N"));Directory.CreateDirectory(cache);
         try {
             string zip=Path.Combine(cache,"update.zip");
             using(var response=Open(url))using(var input=response.GetResponseStream())using(var output=File.Create(zip))Copy(input,output,Limit);
             string setup=Path.Combine(cache,"TechLoungeTweaks-Setup.exe");
             VerifyAndExtract(zip,expected,setup);
-            if(FullAppRunning()){retry=true;return "Installation deferred until the full app closes.";}
+            // Never start a second installation if another updater advanced the pointer.
+            if(!String.Equals(current,Path.GetFileName(Program.Current),StringComparison.Ordinal)){retry=true;return "Installed version changed. Checking again shortly.";}
             using(var install=Process.Start(new ProcessStartInfo(setup,"/S /UPDATE /D="+Program.Root){UseShellExecute=false,CreateNoWindow=true})){
                 if(!install.WaitForExit(10*60*1000))return "Installer is still finishing. Check again later.";
                 if(install.ExitCode!=0)throw new IOException("Installer did not complete. Current version retained.");
             }
+            if(!String.Equals(latest,Path.GetFileName(Program.Current),StringComparison.Ordinal))
+                throw new IOException("Installer did not select the expected release.");
             Program.Start(Path.Combine(Program.Root,"TechLounge.exe"),"--handoff");
             // New tray waits for this instance to release its mutex.
             tray.Post(()=>Application.ExitThread());

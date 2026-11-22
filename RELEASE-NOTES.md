@@ -1,3 +1,7 @@
+- Smooth the tray outline by painting the rounded stroke inside the native window clip. Scale its inset and corner radius with display DPI so the clip preserves antialias coverage.
+
+- Refine the tray companion with a 380 × 366 logical-pixel home panel, compact result pages, squared controls and a subtle frame. Use a stationary 110 ms entrance fade and short page transitions without bounce. Start refreshing power plans before opening the popup, use one activation on launch and keep keyboard focus inside the popup while rebuilding a page. Preserve reduced motion, the anchored footer and a scroll-free cleanup list.
+
 - Fix an incorrect download-server fallback: partial bytes from an IncompleteRead response now count toward both the throughput total and the per-response received-byte check. A shortened but nonempty response no longer falsely triggers an empty-response error and moves the whole test to OVHcloud. Add a regression that verifies exact byte totals and continued use of the working server.
 
 - Remove speed-dependent startup stream restrictions: start all eight download streams and six upload streams immediately, with no application bandwidth cap. Begin warm-up at the first transferred bytes, exclude connection/fallback waiting time from the average, and sample loaded latency once measurement is ready. Add delayed 1,600 Mbps transfer and immediate-stream regressions; retain actual-byte live/final averages without selecting an old peak. Keep the packaged TLS check independent of speed-test node availability by reading bounded official repository metadata with certificate verification enabled.
@@ -454,3 +458,8 @@ Bundled tools, a simpler update panel and clearer version status.
 - App and tool update notifications are distinct. Content-based app identity prevents unchanged rebuilds from appearing as new software.
 - Fixed sidebar crowding with independent menu scrolling and a spaced, fixed-height status footer.
 - The push batch publishes the larger bundled ZIP as a verified GitHub Release asset and commits updated source, README, release notes and screenshots together.
+
+BIOS Info now reads its firmware fields in a single PowerShell process to reduce the wait on first open.
+The standard-user tray can install a verified app release alongside an open window. The new version is used on next launch.
+Setup now rejects invalid destinations before extraction and checks that the engine selected the requested install directory.
+Existing installations need one manual upgrade to join the new tray update feed. The legacy feed stays pinned.

@@ -35,9 +35,21 @@ def _s(v):
 
 
 def cpu():
-    rows = _q("Get-CimInstance Win32_Processor | Select-Object Name,"
-              "NumberOfCores,NumberOfLogicalProcessors,MaxClockSpeed,"
-              "L2CacheSize,L3CacheSize,SocketDesignation")
+    fields = ("Name", "NumberOfCores", "NumberOfLogicalProcessors",
+              "MaxClockSpeed", "L3CacheSize", "SocketDesignation")
+    columns = ",".join(fields)
+    try:
+        import clr
+        clr.AddReference("System.Management")
+        from System.Management import ManagementObjectSearcher
+        with ManagementObjectSearcher("SELECT " + columns + " FROM Win32_Processor") as searcher:
+            with searcher.Get() as processors:
+                rows = []
+                for processor in processors:
+                    with processor:
+                        rows.append({key: processor[key] for key in fields})
+    except Exception:
+        rows = _q("Get-CimInstance Win32_Processor | Select-Object " + columns)
     out = []
     for r in rows:
         out.append([

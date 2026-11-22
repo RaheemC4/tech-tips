@@ -7,6 +7,7 @@ settings from Windows. It deliberately does not poke firmware directly.
 
 from tweaks_engine import ps, run, reg_get, HKLM
 import winreg
+import json
 
 
 def _ps_val(cmd):
@@ -19,18 +20,44 @@ def _ps_val(cmd):
 
 def collect():
     """Return a list of (label, value) plus a vendor-support verdict."""
+    # Query all firmware fields in one Windows PowerShell process.
+    queries = {
+        'board_mfr': '(Get-CimInstance Win32_BaseBoard).Manufacturer',
+        'board': '(Get-CimInstance Win32_BaseBoard).Product',
+        'cpu': '(Get-CimInstance Win32_Processor | Select-Object -First 1).Name',
+        'bios_v': '(Get-CimInstance Win32_BIOS).SMBIOSBIOSVersion',
+        'bios_d': '(Get-CimInstance Win32_BIOS).ReleaseDate',
+        'sb': "try { if (Confirm-SecureBootUEFI) {'On'} else {'Off'} } catch { 'Not supported' }",
+        'tpm': "try { $t=Get-Tpm; if ($t.TpmPresent -and $t.TpmReady) {'Present and ready'} elseif ($t.TpmPresent) {'Present, not ready'} else {'Not detected'} } catch { 'Could not query' }",
+        'virt': '(Get-CimInstance Win32_ComputerSystem).HypervisorPresent',
+        'vt': '(Get-CimInstance Win32_Processor | Select-Object -First 1).VirtualizationFirmwareEnabled',
+        'vbs': "try { (Get-CimInstance -ClassName Win32_DeviceGuard -Namespace root\\Microsoft\\Windows\\DeviceGuard).VirtualizationBasedSecurityStatus } catch { '' }",
+        'ram': '[math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory/1GB,1)',
+        'speed': '(Get-CimInstance Win32_PhysicalMemory | Select-Object -First 1).ConfiguredClockSpeed',
+        'xmp': "$a=(Get-CimInstance Win32_PhysicalMemory | Select-Object -First 1); if ($a.ConfiguredClockSpeed -gt $a.Speed) {'Likely on'} elseif ($a.ConfiguredClockSpeed -eq $a.Speed) {'At JEDEC / rated speed'} else {'Unknown'}",
+    }
+    script = ["$snapshot = @{}"]
+    for key, query in queries.items():
+        script.append(f"try {{ $snapshot['{key}'] = ((& {{ {query} }} | Out-String).Trim() -split [Environment]::NewLine)[0] }} catch {{}}")
+    script.append("$snapshot | ConvertTo-Json -Compress")
+    rc, output = ps("; ".join(script))
+    try:
+        values = json.loads(output) if rc == 0 else None
+    except (ValueError, TypeError):
+        values = None
+    if not isinstance(values, dict):
+        values = {key: _ps_val(query) for key, query in queries.items()}
     info = []
 
-    board_mfr = _ps_val("(Get-CimInstance Win32_BaseBoard).Manufacturer")
-    board = _ps_val("(Get-CimInstance Win32_BaseBoard).Product")
+    board_mfr = values.get("board_mfr")
+    board = values.get("board")
     info.append(("Motherboard",
                  " ".join(x for x in (board_mfr, board) if x) or "Unknown"))
 
-    info.append(("CPU", _ps_val("(Get-CimInstance Win32_Processor "
-                                "| Select-Object -First 1).Name") or "Unknown"))
+    info.append(("CPU", values.get("cpu") or "Unknown"))
 
-    bios_v = _ps_val("(Get-CimInstance Win32_BIOS).SMBIOSBIOSVersion")
-    bios_d = _ps_val("(Get-CimInstance Win32_BIOS).ReleaseDate")
+    bios_v = values.get("bios_v")
+    bios_d = values.get("bios_d")
     if bios_d and len(bios_d) >= 8 and bios_d[:8].isdigit():
         bios_d = f"{bios_d[6:8]}/{bios_d[4:6]}/{bios_d[0:4]}"
     info.append(("BIOS version",
@@ -41,20 +68,14 @@ def collect():
     info.append(("Boot mode",
                  {1: "Legacy BIOS", 2: "UEFI"}.get(fw, "Unknown")))
 
-    sb = _ps_val("try { if (Confirm-SecureBootUEFI) {'On'} else {'Off'} } "
-                 "catch { 'Not supported' }")
+    sb = values.get("sb")
     info.append(("Secure Boot", sb or "Unknown"))
 
-    tpm = _ps_val("try { $t=Get-Tpm; "
-                  "if ($t.TpmPresent -and $t.TpmReady) {'Present and ready'} "
-                  "elseif ($t.TpmPresent) {'Present, not ready'} "
-                  "else {'Not detected'} } catch { 'Could not query' }")
+    tpm = values.get("tpm")
     info.append(("TPM", tpm or "Unknown"))
 
-    virt = _ps_val("(Get-CimInstance Win32_ComputerSystem)."
-                   "HypervisorPresent")
-    vt = _ps_val("(Get-CimInstance Win32_Processor "
-                 "| Select-Object -First 1).VirtualizationFirmwareEnabled")
+    virt = values.get("virt")
+    vt = values.get("vt")
     if vt == "True":
         vtxt = "Enabled in firmware"
     elif vt == "False":
@@ -63,24 +84,16 @@ def collect():
         vtxt = "Hypervisor running" if virt == "True" else "Unknown"
     info.append(("Virtualization (VT-x/SVM)", vtxt))
 
-    vbs = _ps_val("try { (Get-CimInstance -ClassName Win32_DeviceGuard "
-                  "-Namespace root\\Microsoft\\Windows\\DeviceGuard)."
-                  "VirtualizationBasedSecurityStatus } catch { '' }")
+    vbs = values.get("vbs")
     info.append(("VBS", {"2": "Running", "1": "Enabled, reboot pending",
                          "0": "Not running"}.get(vbs, "Unknown")))
 
-    ram = _ps_val("[math]::Round((Get-CimInstance Win32_ComputerSystem)."
-                  "TotalPhysicalMemory/1GB,1)")
-    speed = _ps_val("(Get-CimInstance Win32_PhysicalMemory "
-                    "| Select-Object -First 1).ConfiguredClockSpeed")
+    ram = values.get("ram")
+    speed = values.get("speed")
     info.append(("Memory", f"{ram} GB"
                  + (f" @ {speed} MT/s" if speed else "") if ram else "Unknown"))
 
-    xmp = _ps_val("$a=(Get-CimInstance Win32_PhysicalMemory "
-                  "| Select-Object -First 1); "
-                  "if ($a.ConfiguredClockSpeed -gt $a.Speed) {'Likely on'} "
-                  "elseif ($a.ConfiguredClockSpeed -eq $a.Speed) "
-                  "{'At JEDEC / rated speed'} else {'Unknown'}")
+    xmp = values.get("xmp")
     info.append(("XMP / EXPO", xmp or "Unknown"))
 
     return info

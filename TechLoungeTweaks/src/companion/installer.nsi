@@ -43,6 +43,13 @@ Function .onInit
     MessageBox MB_ICONSTOP "Tech Lounge Tweaks requires 64-bit Windows."
     Abort
   ${EndIf}
+  ReadEnvStr $0 "TLT_SETUP_ROOT"
+  StrCmp $0 "" reject_destination
+  StrCmp $INSTDIR $0 accepted_destination
+  reject_destination:
+    SetErrorLevel 1
+    Abort
+  accepted_destination:
   SetShellVarContext current
   ReadEnvStr $StatusPath "TLT_SETUP_STATUS"
   StrCpy $CanCancel "1"

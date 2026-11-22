@@ -19,12 +19,12 @@ static class PopupMotionChecks {
     }
     static void Motion(){
         using(var window=new Form{Location=new Point(40,40),StartPosition=FormStartPosition.Manual,Size=new Size(180,100),ShowInTaskbar=false})
-        using(var motion=new PopupMotion(window,18,true)){
+        using(var motion=new PopupMotion(window,true)){
             window.Shown+=(s,e)=>motion.Show();window.Show();
             Require(window.Opacity==0,"Opening must start invisible");
             var tops=new List<int>();var alpha=new List<double>();
             Pump(420,()=>{tops.Add(window.Top);alpha.Add(window.Opacity);});
-            Require(tops.Exists(y=>y<40),"Entrance did not spring past its resting position");
+            Require(tops.TrueForAll(y=>y==40),"Opening moved away from the tray anchor");
             Require(alpha.Exists(a=>a>0&&a<1),"Entrance did not fade progressively");
             Require(window.Top==40&&window.Opacity==1,"Opening did not settle exactly");
             window.Close();Require(!window.IsDisposed,"Close skipped its animation");Pump(55);
@@ -34,7 +34,7 @@ static class PopupMotionChecks {
             Pump(420);Require(!window.IsDisposed&&window.Top==40&&window.Opacity==1,"Interrupted close did not reopen");
             window.Close();Pump(250);Require(window.IsDisposed,"Animated close never completed");
         }
-        using(var window=new Form{ShowInTaskbar=false})using(var motion=new PopupMotion(window,18,false)){
+        using(var window=new Form{ShowInTaskbar=false})using(var motion=new PopupMotion(window,false)){
             window.Shown+=(s,e)=>motion.Show();window.Show();Require(window.Opacity==1,"Reduced motion hid the window");
             window.Close();Require(window.IsDisposed,"Reduced motion delayed closure");
         }
@@ -164,7 +164,7 @@ static class PopupMotionChecks {
             using(var motion=new TrayPageMotion(window,body,24,()=>body.Height=window.ClientSize.Height-172,()=>false)){
                 motion.Start(original,taller,20,true);Require(body.Left==44&&window.Bounds==original,"Page entrance skipped its initial pose");
                 var offsets=new List<int>();var heights=new List<int>();Pump(360,()=>{offsets.Add(body.Left-24);heights.Add(window.Height);});
-                Require(offsets.Exists(x=>x>0&&x<20)&&offsets.Exists(x=>x<0),"Page content did not spring through intermediate positions");
+                Require(offsets.Exists(x=>x>0&&x<20)&&offsets.TrueForAll(x=>x>=0&&x<=20),"Page content skipped intermediate positions or overshot");
                 Require(heights.Exists(h=>h>original.Height&&h<taller.Height),"Cleanup viewport height snapped instead of animating");
                 Require(body.Left==24&&window.Bounds==taller&&!motion.Running,"Page entrance did not settle exactly");
                 motion.Start(taller,original,-20,true);Pump(55);int position=motion.Offset;var current=window.Bounds;motion.Pause();motion.Start(current,taller,position,true);
@@ -230,13 +230,16 @@ static class PopupMotionChecks {
             tray.Jobs["connection"]=new Job{Running=true,Message="Testing download"};
             var page=typeof(Popup).GetField("page",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance);
             // A scan rendered before Show must use the same split layout.
-            page.SetValue(popup,"scan");popup.Render();popup.Show();Pump(420);
+            page.SetValue(popup,"scan");popup.Render();
+            // Keep screen comparisons away from Windows notification toasts.
+            popup.Left=Screen.FromRectangle(popup.Bounds).WorkingArea.Left+popup.Pixels(40);
+            popup.Show();Pump(420);
             var original=FindButton(popup,"Open app");IntPtr handle=original.Handle;
             Require(!original.Bounds.IntersectsWith(FindButton(popup,"Clean selected").Bounds),"Hidden-to-visible cleanup overlapped its footer");
             var stableBounds=popup.Bounds;int stableFooterTop=original.PointToScreen(Point.Empty).Y;
             using(var resize=new ResizeProbe(popup)){
             foreach(string route in new[]{"scan","home","connection","scan","settings","drivers","scan","home"}){
-                page.SetValue(popup,route);popup.Render();Pump(340,()=>{Require(popup.Left==stableBounds.Left&&popup.Width==stableBounds.Width&&Math.Abs(popup.Bottom-stableBounds.Bottom)<=1&&Math.Abs(original.PointToScreen(Point.Empty).Y-stableFooterTop)<=1,"Navigation moved the anchored footer during "+route);});
+                page.SetValue(popup,route);popup.Render();Pump(340,()=>{Require(popup.Left==stableBounds.Left&&popup.Width==stableBounds.Width&&Math.Abs(popup.Bottom-stableBounds.Bottom)<=1&&Math.Abs(original.PointToScreen(Point.Empty).Y-stableFooterTop)<=1,"Navigation moved the anchored footer during "+route+": "+stableBounds+" to "+popup.Bounds+", footer "+stableFooterTop+" to "+original.PointToScreen(Point.Empty).Y);});
                 Require(object.ReferenceEquals(original,FindButton(popup,"Open app"))&&original.Handle==handle,"Navigation recreated the footer HWND");
                 Require(popup.Controls.Count==5,"Navigation duplicated native header/footer controls");
                 using(var actual=new Bitmap(popup.Width,popup.Height,System.Drawing.Imaging.PixelFormat.Format24bppRgb))
@@ -330,7 +333,7 @@ static class PopupMotionChecks {
         }
     }
     [STAThread] static int Main(string[] args){
-        try{PopupDpi.Enable();Application.EnableVisualStyles();if(args.Length>1&&args[1]=="--pages-only"){LoadingNavigation();LoadingIcons();Appearance();CleanupFooter();TransitionPixels();ResponsiveProgress();ConnectionResults();File.WriteAllText(args[0],"PASS: one correct heading icon on every running action, compact progress, cleanup layout, persistent footer geometry/pixels, background navigation and independent connection results. No app actions ran.");return 0;}LoadingNavigation();LoadingIcons();Motion();PageMotion();AtomicRedraw();Dropdown();Appearance();CleanupFooter();TransitionPixels();ResponsiveProgress();ConnectionResults();File.WriteAllText(args[0],"PASS: native opening overshoot, opacity frames, exact settling, close/reopen continuity, reduced motion, dropdown dismissal-click guard, rounded menu sizing, all cleanup rows visible together, stable non-overlapping footer through loading and animated reversal, selection enablement, selection persistence, inline power selection, 200 progress updates without replacing navigation controls, background navigation, page spring frames, animated height, rapid reversal, reduced page motion, atomic redraw without intermediate paints, persistent chrome HWNDs, native footer/page pixel comparisons during rapid navigation, bottom-anchored popup and footer throughout every navigation frame, theme updates, partial connection results without replacing cards, pending/retry/error states, mixed-DPI fonts and outside dismissal. No app actions ran.");return 0;}
+        try{PopupDpi.Enable();Application.EnableVisualStyles();if(args.Length>1&&args[1]=="--pages-only"){LoadingNavigation();LoadingIcons();Appearance();CleanupFooter();TransitionPixels();ResponsiveProgress();ConnectionResults();File.WriteAllText(args[0],"PASS: one correct heading icon on every running action, compact progress, cleanup layout, persistent footer geometry/pixels, background navigation and independent connection results. No app actions ran.");return 0;}LoadingNavigation();LoadingIcons();Motion();PageMotion();AtomicRedraw();Dropdown();Appearance();CleanupFooter();TransitionPixels();ResponsiveProgress();ConnectionResults();File.WriteAllText(args[0],"PASS: anchored native entrance, opacity frames, exact settling, close/reopen continuity, reduced motion, dropdown dismissal-click guard, rounded menu sizing, all cleanup rows visible together, stable non-overlapping footer through loading and animated reversal, selection enablement, selection persistence, inline power selection, 200 progress updates without replacing navigation controls, background navigation, bounded page motion frames, animated height, rapid reversal, reduced page motion, atomic redraw without intermediate paints, persistent chrome HWNDs, native footer/page pixel comparisons during rapid navigation, bottom-anchored popup and footer throughout every navigation frame, theme updates, partial connection results without replacing cards, pending/retry/error states, mixed-DPI fonts and outside dismissal. No app actions ran.");return 0;}
         catch(Exception error){File.WriteAllText(args[0],error.ToString());return 1;}
     }
 }

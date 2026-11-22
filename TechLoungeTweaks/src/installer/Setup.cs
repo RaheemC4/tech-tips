@@ -70,8 +70,11 @@ sealed class Installation:IDisposable {
                 }
             }
             if(cancel)return ExitCode=1223;
+            // Reject an unusable destination before NSIS can select its registered default.
+            Directory.CreateDirectory(Root);
             var start=new ProcessStartInfo(engine,"/S "+(update?"/UPDATE ":"")+"/D="+Root){UseShellExecute=false,CreateNoWindow=true};
             start.EnvironmentVariables["TLT_SETUP_STATUS"]=status;
+            start.EnvironmentVariables["TLT_SETUP_ROOT"]=Root;
             using(var process=Process.Start(start)){
                 while(!process.WaitForExit(100)){
                     ReadProgress(status);

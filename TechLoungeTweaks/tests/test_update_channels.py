@@ -26,7 +26,7 @@ class ChannelTests(unittest.TestCase):
     def test_stable_retains_original_feed(self):
         with patch.object(updates, 'get_json', return_value={}) as get:
             updates.app_manifest({})
-            get.assert_called_once_with(updates.RAW + 'release.json')
+            get.assert_called_once_with(updates.RAW + 'release-v2.json')
 
     def test_selects_nuitka_metadata_and_checks_asset(self):
         prefix=f'https://github.com/{updates.APP_REPO}/releases/download/nuitka-test-2/'

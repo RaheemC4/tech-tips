@@ -172,8 +172,8 @@ sealed class Tray : ApplicationContext {
     public void ShowPopup(){
         var previous=Accent;LoadTheme();UpdateIcon(true);
         if(Window!=null && !Window.IsDisposed){if(previous!=Accent)Window.Render();Window.Reveal();return;}
-        Window=new Popup(this);Window.Show();Window.Activate();
         Run("plans",null,false);
+        Window=new Popup(this);Window.Show();
     }
     public void OpenApp(bool updates=false){try{Program.Start(Path.Combine(Program.Here,"TechLoungeTweaks.exe"),updates?"--updates":"");if(Window!=null)Window.Close();}catch(Exception ex){Jobs["open"]=new Job{Message=ex.Message};Refresh();}}
     public void Run(string action,object payload,bool elevate) {
@@ -228,7 +228,7 @@ sealed class Tray : ApplicationContext {
     static string Get(Dictionary<string,object> data,string key){return data.ContainsKey(key)?Convert.ToString(data[key]):"Unavailable";}
     public void SetUpdateAvailable(bool available){if(UpdateAvailable==available)return;UpdateAvailable=available;RefreshJob("updates");}
     public void CheckUpdates(bool manual){Post(()=>{
-        if(InstallerUpdates.FullAppRunning()){ScheduleUpdate(true);return;}
+        // App versions use separate directories. The running UI retains its original files.
         if(Busy){if(!Updating){Jobs["updates"]=new Job{Message="Updates will check after the current action finishes."};RefreshJob("updates");ScheduleUpdate(true);}return;}
         Updating=true;Jobs["updates"]=new Job{Running=true,Message="Checking for updates…"};RefreshJob("updates");
         Task.Run(()=>{string status;bool retry;try{status=InstallerUpdates.Run(this,manual,out retry);}catch(Exception ex){retry=false;status="Update check unavailable. Will retry later. "+ex.Message;}
@@ -252,9 +252,9 @@ sealed class GlassButton:Button {
         }else using(var fill=new SolidBrush(BackColor))e.Graphics.FillRectangle(fill,ClientRectangle);
         e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;
         var box=new Rectangle(0,0,Width-1,Height-1);
-        int radius=popup==null?10:popup.Pixels(10);
+        int radius=popup==null?6:popup.Pixels(6);
         using(var shape=Popup.Round(box,radius)){
-            using(var fill=new SolidBrush(Primary?Color.FromArgb(210,Tint):Color.FromArgb(Focused||ClientRectangle.Contains(PointToClient(Cursor.Position))?52:25,180,200,235)))e.Graphics.FillPath(fill,shape);
+            using(var fill=new SolidBrush(Primary?Color.FromArgb(185,Tint):Color.FromArgb(Focused||ClientRectangle.Contains(PointToClient(Cursor.Position))?44:18,190,200,215)))e.Graphics.FillPath(fill,shape);
             using(var rim=new Pen(Color.FromArgb(18,255,255,255)))e.Graphics.DrawPath(rim,shape);
         }
         if(Text=="⚙"&&popup!=null){
@@ -308,13 +308,13 @@ sealed class Popup:Form {
         Job job;
         if(page=="scan"&&tray.Jobs.TryGetValue("scan",out job)&&job.Result!=null&&job.Result.ContainsKey("items")){
             int count=0;foreach(var item in (System.Collections.IEnumerable)job.Result["items"])count++;
-            return Math.Max(430,182+count*32);
+            return Math.Max(252,182+count*32);
         }
         if(page=="drivers"&&tray.Jobs.TryGetValue("drivers",out job)&&job.Result!=null&&job.Result.ContainsKey("gpus")){
             int height=44;foreach(var raw in (System.Collections.IEnumerable)job.Result["gpus"]){var gpu=(Dictionary<string,object>)raw;height+=TrayGpuCard.HeightFor(gpu,this,LayoutWidth-40)+12;if(DriverLinks.UpdateUrl(gpu)!=null)height+=44;}
-            return Math.Max(380,height+128);
+            return Math.Max(252,height+128);
         }
-        return page=="connection"?450:page=="settings"?380:430;
+        return page=="home"?366:page=="connection"?428:page=="settings"?350:380;
     }}
     int BodyHeight {get{return (int)Math.Floor(body.ClientSize.Height/uiScale);}}
     int BodyWidth {get{return (int)Math.Round(body.ClientSize.Width/uiScale);}}
@@ -323,32 +323,32 @@ sealed class Popup:Form {
             motion.Settle();pageMotion.Pause();float next=(message.WParam.ToInt64()&0xffff)/96f;
             if(next>0&&Math.Abs(next-uiScale)>.001f){
                 float ratio=next/uiScale;uiScale=next;
-                foreach(Control c in Controls)if(c!=body){c.Bounds=new Rectangle((int)Math.Round(c.Left*ratio),(int)Math.Round(c.Top*ratio),(int)Math.Round(c.Width*ratio),(int)Math.Round(c.Height*ratio));if(c is Label)c.Font=FontAt(16,true);}
+                foreach(Control c in Controls)if(c!=body){c.Bounds=new Rectangle((int)Math.Round(c.Left*ratio),(int)Math.Round(c.Top*ratio),(int)Math.Round(c.Width*ratio),(int)Math.Round(c.Height*ratio));if(c is Label)c.Font=FontAt(14,true);}
                 var work=Screen.FromHandle(Handle).WorkingArea;
                 ClientSize=new Size(Math.Min(Pixels(380),work.Width-Pixels(28)),Math.Min(Pixels(PopupHeight),work.Height-Pixels(28)));
                 Location=new Point(work.Right-Width-Pixels(14),work.Bottom-Height-Pixels(14));
                 openFooter.Font=FontAt(10,true);settingsButton.Font=FontAt(10,true);
                 body.Top=Pixels(64);body.Left=Pixels(20);pageMotion.SetBaseLeft(Pixels(20));Render();
-            }
+            }else{LayoutPageChrome();}
             message.Result=IntPtr.Zero;return;
         }
         TrayGeometry.DiscardCopiedPixels(ref message,false);base.WndProc(ref message);
     }
     public Popup(Tray owner){
         tray=owner;Text="Tech Lounge quick actions";FormBorderStyle=FormBorderStyle.None;ShowInTaskbar=false;TopMost=true;StartPosition=FormStartPosition.Manual;
-        uiScale=PopupDpi.PointerScale();AutoScaleMode=AutoScaleMode.None;DoubleBuffered=true;SetStyle(ControlStyles.ResizeRedraw|ControlStyles.AllPaintingInWmPaint,true);BackColor=Color.FromArgb(24,35,53);ForeColor=Color.FromArgb(242,244,248);Font=FontAt(10,false);KeyPreview=true;
+        uiScale=PopupDpi.PointerScale();AutoScaleMode=AutoScaleMode.None;DoubleBuffered=true;SetStyle(ControlStyles.ResizeRedraw|ControlStyles.AllPaintingInWmPaint,true);BackColor=Color.FromArgb(24,27,33);ForeColor=Color.FromArgb(242,244,248);Font=FontAt(10,false);KeyPreview=true;
         KeyDown+=(s,e)=>{if(e.KeyCode==Keys.Escape)Close();};
         var area=Screen.FromPoint(Cursor.Position).WorkingArea;ClientSize=new Size(Math.Min(Pixels(380),area.Width-Pixels(28)),Math.Min(Pixels(PopupHeight),area.Height-Pixels(28)));Location=new Point(area.Right-Width-Pixels(14),area.Bottom-Height-Pixels(14));
         body.SetBounds(Pixels(20),Pixels(64),ClientSize.Width-Pixels(40),ClientSize.Height-Pixels(128));body.BackColor=Color.Transparent;body.AutoScroll=false;Controls.Add(body);
         // Keep native chrome handles alive across page changes. Only the content changes.
-        Label("Tech Lounge",20,16,LayoutWidth-88,28,16,true,this);
+        Label("Tech Lounge",20,17,LayoutWidth-88,26,14,true,this);
         settingsButton=Button("⚙",LayoutWidth-56,14,36,36,()=>{page="settings";Render();},this);settingsButton.AccessibleName="Companion settings";
         secondaryFooter=Button("",20,LayoutHeight-52,180,36,()=>{if(page=="scan")CleanSelected();else if(page=="connection")tray.Run("connection",null,false);else if(page=="home"&&tray.UpdateAvailable)tray.OpenApp(true);},this);secondaryFooter.Visible=false;
         openFooter=Button("Open app",20,LayoutHeight-52,LayoutWidth-40,36,()=>tray.OpenApp(),this,true);
-        motion=new PopupMotion(this,Pixels(12),PopupMotion.Enabled());
+        motion=new PopupMotion(this,PopupMotion.Enabled());
         pageMotion=new TrayPageMotion(this,body,Pixels(20),LayoutPageChrome,()=>motion.Running);
         Shown+=(s,e)=>{Update();motion.Show();SetForegroundWindow(Handle);};
-        Activated+=(s,e)=>motion.Reopen();
+        Activated+=(s,e)=>{++dismissGeneration;motion.Reopen();};
         Deactivate+=(s,e)=>QueueDismiss();FormClosed+=(s,e)=>{tray.Window=null;tray.UpdateIcon(false);};Render();
     }
     internal Bitmap Snapshot(){
@@ -360,22 +360,32 @@ sealed class Popup:Form {
             return bitmap;
         }
     }
-    internal void Reveal(){motion.Reopen();pageMotion.Resume();Activate();}
-    void QueueDismiss(){if(!IsDisposed&&IsHandleCreated)BeginInvoke((Action)(()=>{
+    int dismissGeneration;
+    internal void Reveal(){++dismissGeneration;motion.Reopen();pageMotion.Resume();Activate();}
+    void QueueDismiss(){int generation=++dismissGeneration;if(!IsDisposed&&IsHandleCreated)BeginInvoke((Action)(()=>{
         // Focus has not necessarily moved yet inside the Deactivate event.
-        if(IsDisposed||ContainsFocus)return;
+        if(generation!=dismissGeneration||IsDisposed||ContainsFocus)return;
         foreach(Control c in body.Controls)if(c.ContextMenuStrip!=null&&c.ContextMenuStrip.Visible)return;
         Close();
     }));}
+    const int FrameRadius=8;
     public static GraphicsPath Round(Rectangle r,int radius){var p=new GraphicsPath();int d=radius*2;p.AddArc(r.X,r.Y,d,d,180,90);p.AddArc(r.Right-d,r.Y,d,d,270,90);p.AddArc(r.Right-d,r.Bottom-d,d,d,0,90);p.AddArc(r.X,r.Bottom-d,d,d,90,90);p.CloseFigure();return p;}
     protected override void OnPaint(PaintEventArgs e){
         base.OnPaint(e);e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;
-        PaintBackdrop(e.Graphics,ClientRectangle);
+        // A stroke on the window region boundary loses its antialias coverage.
+        // Leave a small gutter and keep the curve concentric with the clip.
+        int inset=Pixels(2);
+        var bounds=Rectangle.Inflate(new Rectangle(0,0,Width-1,Height-1),-inset,-inset);
+        using(var border=new Pen(Color.FromArgb(58,64,74))){
+            if(bounds.Width>0&&bounds.Height>0)
+                using(var outline=Round(bounds,Math.Max(1,Pixels(FrameRadius)-inset)))e.Graphics.DrawPath(border,outline);
+            e.Graphics.DrawLine(border,Pixels(20),Pixels(56),Width-Pixels(20),Pixels(56));
+        }
     }
     internal void PaintBackdrop(Graphics graphics,Rectangle bounds){
-        using(var b=new SolidBrush(Color.FromArgb(25,32,43)))graphics.FillRectangle(b,bounds);
+        using(var b=new SolidBrush(BackColor))graphics.FillRectangle(b,bounds);
     }
-    protected override void OnResize(EventArgs e){base.OnResize(e);if(Width>0&&Height>0)using(var p=Round(ClientRectangle,Math.Max(1,Pixels(12)))){var old=Region;Region=new Region(p);if(old!=null)old.Dispose();}}
+    protected override void OnResize(EventArgs e){base.OnResize(e);if(Width>0&&Height>0)using(var p=Round(ClientRectangle,Math.Max(1,Pixels(FrameRadius)))){var old=Region;Region=new Region(p);if(old!=null)old.Dispose();}}
     Label Label(string text,int x,int y,int width,int height,int size,bool bold,Control parent){var l=new Label{Text=text,BackColor=Color.Transparent,ForeColor=ForeColor,Font=FontAt(size,bold),UseCompatibleTextRendering=false};l.SetBounds(Pixels(x),Pixels(y),Pixels(width),Pixels(height));parent.Controls.Add(l);return l;}
     GlassButton Button(string text,int x,int y,int w,int h,Action click,Control parent,bool primary=false){var b=new GlassButton{Text=text,Tint=tray.Accent,Primary=primary,BackColor=BackColor,Font=FontAt(10,true)};b.SetBounds(Pixels(x),Pixels(y),Pixels(w),Pixels(h));b.Click+=(s,e)=>click();parent.Controls.Add(b);return b;}
     void LayoutPageChrome(){
@@ -393,7 +403,6 @@ sealed class Popup:Form {
         foreach(Control chrome in Controls)if(chrome is Label)chrome.Width=Math.Max(1,ClientSize.Width-Pixels(88));
         // Clear the previous footer backing when the animated window changes height.
         Invalidate();
-        if(!motion.Running)motion.Reanchor();
     }
     void UpdateCleanupSelection(){
         if(page!="scan"||secondaryFooter==null||secondaryFooter.IsDisposed)return;
@@ -410,12 +419,14 @@ sealed class Popup:Form {
         bool continuing=pageMotion.Running;int offset=pageMotion.Offset;var previous=Bounds;
         bool animate=Visible&&PopupMotion.Enabled()&&(renderedPage!=page||continuing);
         pageMotion.Pause();
+        // Move focus to persistent chrome before disposing the focused page control.
+        if(body.ContainsFocus)openFooter.Focus();
         using(var redraw=new TrayRedrawBatch(this,body)){
         SuspendLayout();try{
         if(animate)motion.Settle();
         var work=Screen.FromPoint(new Point(Left+Width/2,Top+Height/2)).WorkingArea;
         int height=Math.Min(Pixels(PopupHeight),work.Height-Pixels(28));
-        if(ClientSize.Height!=height){if(Visible)motion.Settle();int bottom=Bottom;ClientSize=new Size(ClientSize.Width,height);Top=Math.Max(work.Top+Pixels(14),bottom-Height);if(Visible)motion.Reanchor();}
+        if(ClientSize.Height!=height){int bottom=Bottom;Bounds=new Rectangle(Left,Math.Max(work.Top+Pixels(14),bottom-height),Width,height);}
         body.Height=ClientSize.Height-Pixels(128);
         bool hadCleanup=false;foreach(Control c in body.Controls)if(c is CheckBox&&c.Tag is string){if(!hadCleanup){cleanupSelected.Clear();hadCleanup=true;}if(((CheckBox)c).Checked)cleanupSelected.Add((string)c.Tag);}
         foreach(Control c in Children(body))c.Dispose();body.Controls.Clear();detailMessage=null;homeStatus=null;connectionCards.Clear();connectionRetry=null;
@@ -431,7 +442,7 @@ sealed class Popup:Form {
         LayoutPageChrome();
         if(page=="home")Home();else if(page=="settings")Settings();else Detail();
         var destination=Bounds;
-        pageMotion.Start(previous.Size==destination.Size?previous:destination,destination,continuing?offset:Pixels(page=="home"?-14:14),animate);
+        pageMotion.Start(previous.Size==destination.Size?previous:destination,destination,continuing?offset:Pixels(page=="home"?-4:4),animate);
         renderedPage=page;Invalidate();
         }finally{ResumeLayout();}
         }
@@ -456,21 +467,25 @@ sealed class Popup:Form {
             dismissedFromSelector=0;
             if(sameClick)return;
             if(choices.Visible){choices.Close();return;}
-            if(ready){motion.Settle();choices.Show(plans,new Point(0,plans.Height));}else tray.Run("plans",null,false);
+            if(ready){
+                motion.Settle();
+                if(!plans.IsDisposed && plans.Parent==body && !choices.IsDisposed)
+                    choices.Show(plans,new Point(0,plans.Height));
+            }else tray.Run("plans",null,false);
         },body);
         choices.Closing+=(s,e)=>{if(e.CloseReason==ToolStripDropDownCloseReason.AppClicked&&plans.ClientRectangle.Contains(plans.PointToClient(Cursor.Position)))dismissedFromSelector=Stopwatch.GetTimestamp();};
         plans.AccessibleName="Power plan";plans.ContextMenuStrip=choices;choices.Closed+=(s,e)=>QueueDismiss();plans.Disposed+=(s,e)=>choices.Dispose();Job powerJob;bool switching=tray.Jobs.TryGetValue("power",out powerJob)&&powerJob.Running;plans.Enabled=!tray.Updating&&!switching;
-        Button("Disk cleanup",0,78,BodyWidth,36,()=>Open("scan"),body).Symbol="clean";
-        Button("Connection",0,122,BodyWidth,36,()=>Open("connection"),body).Symbol="network";
-        Button("Restore point",0,166,BodyWidth,36,()=>Open("restore"),body).Symbol="restore";
-        var gpuButton=Button("GPU drivers",0,210,BodyWidth,36,()=>Open("drivers"),body);gpuButton.Symbol="gpu";
+        Button("Disk cleanup",0,68,BodyWidth,32,()=>Open("scan"),body).Symbol="clean";
+        Button("Connection",0,104,BodyWidth,32,()=>Open("connection"),body).Symbol="network";
+        Button("Restore point",0,140,BodyWidth,32,()=>Open("restore"),body).Symbol="restore";
+        var gpuButton=Button("GPU drivers",0,176,BodyWidth,32,()=>Open("drivers"),body);gpuButton.Symbol="gpu";
         Job driverJob;if(tray.Jobs.TryGetValue("drivers",out driverJob)&&!driverJob.Running&&driverJob.Result!=null&&driverJob.Result.ContainsKey("gpus")){
             bool outdated=false,verified=true;int count=0;
             foreach(var raw in (System.Collections.IEnumerable)driverJob.Result["gpus"]){var gpu=(Dictionary<string,object>)raw;string status=Convert.ToString(gpu["status"]);outdated|=status=="update";verified&=status=="current"||status=="ahead";count++;}
             if(outdated){gpuButton.Text="GPU drivers · Out of date";gpuButton.Tint=Color.FromArgb(255,190,61);}
             else if(verified&&count>0){gpuButton.Text="GPU drivers · Up to date";gpuButton.Tint=Color.FromArgb(61,220,151);}
         }
-        homeStatus=Label("",0,252,BodyWidth,28,9,false,body);homeStatus.Visible=false;UpdateHomeStatus();
+        homeStatus=Label("",0,210,BodyWidth,28,9,false,body);homeStatus.Visible=false;UpdateHomeStatus();
     }
     void UpdateHomeStatus(){
         if(homeStatus==null||homeStatus.IsDisposed)return;

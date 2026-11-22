@@ -68,7 +68,7 @@ def app_channel(build):
 
 def app_manifest(build):
     if app_channel(build) == 'stable':
-        return get_json(RAW + 'release.json')
+        return get_json(RAW + 'release-v2.json')
     # Prereleases do not appear at /releases/latest. Only explicit Nuitka
     # metadata qualifies; an absent channel never falls back to stable.
     for page in range(1, 11):
@@ -438,8 +438,11 @@ class UpdateManager:
                             published = release(APP_REPO)
                             if not any(a.get('browser_download_url') == offer['url'] and a.get('digest') == 'sha256:' + offer['sha256'] for a in published.get('assets', [])):
                                 raise ValueError('GitHub release checksum does not match the app manifest yet.')
+                            if automatic:
+                                offers.pop('app')
+                                row['action'] = None
                             offer['distribution'] = 'installer'
-                            row['message'] = 'Downloads automatically and restarts when no jobs or tools are running.'
+                            row['message'] = 'The tray installs the new version in the background.'
                         else:
                             offers.pop('app', None)
                             row['action'] = None
@@ -709,6 +712,15 @@ class UpdateManager:
         ready = self.status().get('ready')
         if not ready or not getattr(sys, 'frozen', False):
             return {'ok': False, 'message': 'No app update is ready.'}
+        # The per-user cache cannot supply executable code to an elevated process.
+        if os.name == 'nt':
+            import ctypes
+            try:
+                elevated = ctypes.windll.shell32.IsUserAnAdmin()
+            except OSError:
+                elevated = True
+            if elevated:
+                return {'ok': False, 'message': 'Close the app so the standard-user tray can install the update.'}
         try:
             path = Path(ready).resolve()
             installer = self.status().get('ready_kind') == 'installer'

@@ -30,13 +30,15 @@ sealed class TrayPageMotion:IDisposable {
     internal void Resume(){if(!pausedForClose||disposed)return;pausedForClose=false;from=window.Bounds;startOffset=Offset;waiting=true;clock.Restart();frames.Start();}
     void Tick(){
         if(waiting){if(windowMoving())return;waiting=false;from=window.Bounds;startOffset=Offset;clock.Restart();}
-        double t=Math.Min(1,clock.Elapsed.TotalMilliseconds/300.0);
-        double spring=t==1?1:1-Math.Exp(-7*t)*Math.Cos(10*t);
-        Apply(spring);
+        double t=Math.Min(1,clock.Elapsed.TotalMilliseconds/110.0);
+        Apply(1-(1-t)*(1-t));
         if(t==1){frames.Stop();clock.Stop();}
     }
     void Apply(double progress){
-        window.Bounds=new Rectangle((int)Math.Round(from.Left+(target.Left-from.Left)*progress),(int)Math.Round(from.Top+(target.Top-from.Top)*progress),target.Width,(int)Math.Round(from.Height+(target.Height-from.Height)*progress));
+        int height=(int)Math.Round(from.Height+(target.Height-from.Height)*progress);
+        int bottom=(int)Math.Round(from.Bottom+(target.Bottom-from.Bottom)*progress);
+        int left=(int)Math.Round(from.Left+(target.Left-from.Left)*progress);
+        window.Bounds=new Rectangle(left,bottom-height,target.Width,height);
         body.Left=baseLeft+(int)Math.Round(startOffset*(1-progress));layout();TrayRedrawBatch.Paint(window);
     }
     public void Dispose(){if(disposed)return;disposed=true;frames.Stop();frames.Dispose();}

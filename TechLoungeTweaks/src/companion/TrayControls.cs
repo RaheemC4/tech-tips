@@ -17,7 +17,7 @@ sealed class TrayCheckBox:CheckBox {
         var popup=FindForm() as Popup;if(popup==null){base.OnPaint(e);return;}
         var offset=popup.PointToClient(PointToScreen(Point.Empty));var state=e.Graphics.Save();e.Graphics.TranslateTransform(-offset.X,-offset.Y);popup.PaintBackdrop(e.Graphics,popup.ClientRectangle);e.Graphics.Restore(state);
         e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;
-        using(var shape=Popup.Round(new Rectangle(0,0,Width-1,Height-1),popup.Pixels(9)))using(var fill=new SolidBrush(Color.FromArgb(Focused||ClientRectangle.Contains(PointToClient(Cursor.Position))?42:20,180,200,235)))e.Graphics.FillPath(fill,shape);
+        using(var shape=Popup.Round(new Rectangle(0,0,Width-1,Height-1),popup.Pixels(6)))using(var fill=new SolidBrush(Color.FromArgb(Focused||ClientRectangle.Contains(PointToClient(Cursor.Position))?42:20,180,200,235)))e.Graphics.FillPath(fill,shape);
         int size=popup.Pixels(14),left=popup.Pixels(11),top=(Height-size)/2;
         using(var shape=Popup.Round(new Rectangle(left,top,size,size),popup.Pixels(4))){using(var fill=new SolidBrush(Checked?Tint:Color.FromArgb(30,190,210,240)))e.Graphics.FillPath(fill,shape);using(var pen=new Pen(Color.FromArgb(90,200,217,241)))e.Graphics.DrawPath(pen,shape);}
         if(Checked)using(var pen=new Pen(Color.White,Math.Max(1,popup.Pixels(1)))){e.Graphics.DrawLines(pen,new[]{new Point(left+size/4,top+size/2),new Point(left+size*7/16,top+size*11/16),new Point(left+size*3/4,top+size/3)});}
@@ -43,7 +43,7 @@ sealed class TrayGpuCard:Control {
         var popup=FindForm() as Popup;if(popup==null)return;
         var offset=popup.PointToClient(PointToScreen(Point.Empty));var state=e.Graphics.Save();e.Graphics.TranslateTransform(-offset.X,-offset.Y);popup.PaintBackdrop(e.Graphics,popup.ClientRectangle);e.Graphics.Restore(state);
         e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;
-        using(var shape=Popup.Round(new Rectangle(0,0,Width-1,Height-1),popup.Pixels(11)))using(var fill=new SolidBrush(Color.FromArgb(24,180,200,235)))e.Graphics.FillPath(fill,shape);
+        using(var shape=Popup.Round(new Rectangle(0,0,Width-1,Height-1),popup.Pixels(6)))using(var fill=new SolidBrush(Color.FromArgb(24,180,200,235)))e.Graphics.FillPath(fill,shape);
         var flags=TextFormatFlags.Left|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix|TextFormatFlags.PreserveGraphicsClipping|TextFormatFlags.PreserveGraphicsTranslateTransform;
         TraySymbols.Draw(e.Graphics,"gpu",new Rectangle(popup.Pixels(13),popup.Pixels(12),popup.Pixels(22),popup.Pixels(22)),Green?Color.FromArgb(61,220,151):status=="update"?Color.FromArgb(255,190,61):Color.FromArgb(176,191,212));
         int nameHeight=NameHeight(name,popup,Width),extra=nameHeight-popup.Pixels(32);
@@ -103,7 +103,7 @@ sealed class TrayMetricCard:Control {
         var popup=FindForm() as Popup;if(popup==null)return;int pad=popup.Pixels(14);
         var offset=popup.PointToClient(PointToScreen(Point.Empty));var state=e.Graphics.Save();e.Graphics.TranslateTransform(-offset.X,-offset.Y);popup.PaintBackdrop(e.Graphics,popup.ClientRectangle);e.Graphics.Restore(state);
         e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;
-        using(var shape=Popup.Round(new Rectangle(0,0,Width-1,Height-1),popup.Pixels(14))){using(var fill=new SolidBrush(Color.FromArgb(28,180,200,235)))e.Graphics.FillPath(fill,shape);using(var rim=new Pen(Color.FromArgb(22,220,235,255)))e.Graphics.DrawPath(rim,shape);}
+        using(var shape=Popup.Round(new Rectangle(0,0,Width-1,Height-1),popup.Pixels(6))){using(var fill=new SolidBrush(Color.FromArgb(28,180,200,235)))e.Graphics.FillPath(fill,shape);using(var rim=new Pen(Color.FromArgb(22,220,235,255)))e.Graphics.DrawPath(rim,shape);}
         Color tint=icon=="grade"?StatusColor:accent;
         var saved=e.Graphics.Save();e.Graphics.TranslateTransform(pad,popup.Pixels(9));e.Graphics.ScaleTransform(popup.Pixels(18)/22f,popup.Pixels(18)/22f);
         using(var pen=new Pen(tint,1.8f)){pen.StartCap=pen.EndCap=LineCap.Round;pen.LineJoin=LineJoin.Round;
